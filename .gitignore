@@ -1,0 +1,27 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# AWS SAM build artifacts (from child B onward)
+.aws-sam/
+
+# Secrets and local configuration — NEVER commit these.
+# Configuration and credentials for this service are supplied
+# exclusively through environment variables at runtime (Lambda
+# environment configuration, or a local .env file for development).
+# See README.md "Configuration and secrets".
+.env
+.env.*
+*.pem
+*.key
+credentials.json
+secrets.json
+
+# Editor / OS noise
+.DS_Store
+.vscode/
+.idea/
+*.log
+npm-debug.log*
