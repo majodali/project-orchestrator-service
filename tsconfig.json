@@ -12,7 +12,9 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "noUncheckedIndexedAccess": true
+    "noUncheckedIndexedAccess": true,
+    "resolveJsonModule": true,
+    "types": ["node"]
   },
   "include": ["src"]
 }

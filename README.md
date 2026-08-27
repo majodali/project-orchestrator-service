@@ -54,29 +54,61 @@ second plan hierarchy:
 
 ## Build / run / test
 
-Stack: **TypeScript / Node** (targeting AWS Lambda / HTTP API /
-DynamoDB via AWS SAM — see the chunk plan; nothing is deployed by this
-skeleton).
+Stack: **TypeScript / Node** on AWS Lambda / HTTP API via AWS SAM
+(`template.yaml`). Nothing is deployed by cloning this repository —
+see [`docs/runbook.md`](docs/runbook.md) for the owner's deploy
+procedure.
 
 ```
 npm install
-npm run build     # tsc -> dist/
-npm test          # vitest run
-npm run lint       # eslint .
-npm run format     # prettier --check .
+npm run build          # tsc -> dist/ (type-checks; not what ships to Lambda)
+npm run dev             # runs the MCP server locally (Hono + @hono/node-server), port 8787
+npm run bundle:lambda   # esbuild-bundles src/lambda.ts -> dist-lambda/lambda.mjs, the same bundle `sam build` produces
+npm test                # vitest run
+npm run lint            # eslint .
+npm run format           # prettier --check .
 ```
 
-Node 22+ is required (`engines.node` in `package.json`). There is no
-service to run yet: this repository currently ships only the
-methodology scaffolding and project skeleton (node P2-N007). The MCP
-server, its tools, the Lambda handler, and the deploy runbook arrive
-in the chunk's later children — see `docs/backlog.md`.
+Node 22+ is required (`engines.node` in `package.json`).
+
+As of node P2-N008 (chunk 1 child B, the reachability slice), this
+repository ships a real MCP server: one tool, `service_identity`
+(name, version, build commit, configured project — deliberately
+near-empty of content, to prove the round trip before any plan-state
+logic exists), served over streamable HTTP with bearer-token auth,
+runnable locally (`npm run dev`) and deployable to Lambda behind an
+HTTP API (`template.yaml`, `scripts/deploy.sh`,
+[`docs/runbook.md`](docs/runbook.md)). `plan_read` /
+`plan_lease_acquire` / `plan_update` / `plan_confirm` — the actual
+plan-state tools — are later children; see `docs/backlog.md`.
+
+### Trying it locally
+
+```
+MCP_AUTH_TOKEN=dev-secret npm run dev
+curl -i http://localhost:8787/health                                    # unauthenticated
+curl -i -X POST http://localhost:8787/mcp \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -H 'Authorization: Bearer dev-secret' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"service_identity","arguments":{}}}'
+```
+
+The `.mcp.json` shape a Claude Code session enlists with — including
+where it goes and why it is not committed here or in the coordinating
+repository by this task — is documented in
+[`docs/mcp-enlistment.md`](docs/mcp-enlistment.md).
 
 ## Configuration and secrets
 
-This service will hold real credentials once later children land (a
-GitHub App private key to read the coordinating repository, a bearer
-token clients present). The convention, fixed from the start:
+| Variable         | Required        | Meaning                                                                                                                                                |
+| ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `MCP_AUTH_TOKEN` | yes             | The bearer token clients must present. No default — the server refuses every `/mcp` call with 500 if this is unset, rather than accepting all callers. |
+| `PORT`           | no (local only) | Port `npm run dev` listens on. Default `8787`.                                                                                                         |
+| `SERVICE_COMMIT` | no              | Reported by `service_identity`. Set by `scripts/deploy.sh` from `git rev-parse HEAD`; unset locally defaults to `"unknown"`.                           |
+| `MCP_PROJECT`    | no              | Reported by `service_identity`. Defaults to `majodali/project-orchestrator`.                                                                           |
+
+A GitHub App private key arrives with chunk 1 child C (this slice does
+no git reads). The convention, fixed from the start:
 
 - **Configuration and credentials are supplied only through
   environment variables**, never through a committed file.

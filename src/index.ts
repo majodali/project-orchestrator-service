@@ -1,22 +1,21 @@
 /**
- * project-orchestrator-service — entry point.
+ * project-orchestrator-service — legacy skeleton smoke-test target.
  *
- * This module is iteration-zero scaffolding (node P2-N007, chunk 1
- * child A of the orchestration-service plan). It exists to prove the
- * TypeScript/Node skeleton builds, lints, and tests cleanly — it is
- * not the MCP server itself.
- *
- * The MCP server, its tools (`plan_read`, `plan_lease_acquire`,
- * `plan_update`, `plan_confirm`, ...), the Lambda handler, and the
- * infrastructure-as-code definition arrive in later children of this
- * chunk (see ../docs/backlog.md and the chunk plan/spec cited there).
+ * This module dates from iteration-zero scaffolding (node P2-N007,
+ * chunk 1 child A). It is kept, unchanged in behavior, only because
+ * test/index.test.ts still exercises it as a build/module-resolution
+ * smoke test; it is not part of the running service. The MCP server
+ * itself now lives in src/mcpServer.ts + src/httpApp.ts, run locally
+ * via src/localServer.ts and deployed via src/lambda.ts (chunk 1
+ * child B, node P2-N008 — see ../docs/backlog.md). Later children add
+ * `plan_read` / `plan_lease_acquire` / `plan_update` / `plan_confirm`.
  */
 
 export const SERVICE_NAME = "project-orchestrator-service";
 
-/** Placeholder describing the skeleton's current state. Superseded
- * once the reachability slice (chunk 1 child B) adds a real identity
- * tool answered over MCP. */
+/** Unchanged since P2-N007; describes the pre-service-code state this
+ * module was written to prove buildable, not the service's current
+ * state (see src/serviceInfo.ts's `getServiceIdentity` for that). */
 export function describeService(): string {
   return `${SERVICE_NAME}: skeleton only, no MCP tools implemented yet`;
 }

@@ -1,0 +1,129 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  project-orchestrator-service — chunk 1 child B (node P2-N008, the
+  reachability slice): one Lambda function behind an HTTP API, serving
+  MCP over streamable HTTP, with a single `service_identity` tool.
+  See docs/runbook.md for the deploy procedure and
+  https://github.com/majodali/project-orchestrator/blob/main/docs/plans/p2-n002-service-skeleton.md
+  for why this template is shaped the way it is. No plan-state
+  resources (DynamoDB, GitHub App wiring) — this slice proves
+  reachability only; those land with children C and D.
+
+Parameters:
+  Stage:
+    Type: String
+    Default: prod
+    Description: >
+      API Gateway stage name. Also used in resource naming so multiple
+      stages (e.g. a scratch stage for testing the runbook itself) can
+      coexist without colliding.
+    AllowedPattern: "^[a-zA-Z0-9]+$"
+
+  AuthTokenSecretName:
+    Type: String
+    Description: >
+      Name (not ARN) of the AWS Secrets Manager secret whose
+      SecretString is the bearer token clients present in the
+      `Authorization: Bearer <token>` header (decision 5 of the
+      p2-n002 plan). The owner creates this secret out of band (O4)
+      before deploying — see docs/runbook.md step 4. Resolved into the
+      Lambda's environment via a CloudFormation dynamic reference at
+      deploy time, so the token is never a literal in this template,
+      in a parameter-overrides file, or in git.
+
+  ProjectName:
+    Type: String
+    Default: majodali/project-orchestrator
+    Description: >
+      The coordinating repository this deployment answers
+      `service_identity` for. Chunk 1 child B does no git reads of its
+      own (that starts at child C) — this is metadata only.
+
+  ServiceCommit:
+    Type: String
+    Default: unknown
+    Description: >
+      The git commit of project-orchestrator-service this build was
+      deployed from. Set by scripts/deploy.sh from `git rev-parse
+      HEAD` — see docs/runbook.md. Used only to answer
+      `service_identity`; never used for authorization.
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Architectures:
+      - arm64
+    MemorySize: 256
+    # Every chunk-1 tool is specified to answer well inside the
+    # enlistment file's per-server timeout (docs/runbook.md records
+    # the measured cold/warm latency once this is deployed); this cap
+    # is a backstop against a hung call, not the expected case.
+    Timeout: 10
+
+Resources:
+  McpFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      # esbuild bundles the TypeScript entry point directly; no
+      # separate `npm run build` step is needed before `sam build`
+      # (see docs/runbook.md and scripts/deploy.sh).
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "node22"
+        Sourcemap: false
+        EntryPoints:
+          - src/lambda.ts
+        Format: esm
+        # hono/aws-lambda and @modelcontextprotocol/sdk both ship as
+        # ESM; the Lambda Node.js 22 runtime resolves .mjs handlers
+        # natively, so no extra loader config is required here.
+        OutExtension:
+          - .js=.mjs
+    Properties:
+      Handler: src/lambda.handler
+      Description: >
+        project-orchestrator-service MCP endpoint (reachability
+        slice, node P2-N008).
+      Environment:
+        Variables:
+          MCP_PROJECT: !Ref ProjectName
+          SERVICE_COMMIT: !Ref ServiceCommit
+          # Resolved by CloudFormation at deploy time from Secrets
+          # Manager — never a literal in this template or in any
+          # parameter-overrides file committed to git (I7).
+          MCP_AUTH_TOKEN: !Sub "{{resolve:secretsmanager:${AuthTokenSecretName}:SecretString}}"
+      Events:
+        McpAny:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /mcp
+            Method: ANY
+        HealthCheck:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /health
+            Method: GET
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Stage
+      # No custom domain (plan decision 9) — the default execute-api
+      # endpoint URL is what the runbook records and what .mcp.json
+      # enlists against.
+
+Outputs:
+  Endpoint:
+    Description: >
+      The base URL to enlist against. The MCP endpoint is
+      `<Endpoint>/mcp`; the unauthenticated liveness check is
+      `<Endpoint>/health`. Recorded in docs/runbook.md after the first
+      deploy (O2).
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}"
+  McpFunctionName:
+    Description: The deployed Lambda function's name (for `aws logs tail`, etc.).
+    Value: !Ref McpFunction
