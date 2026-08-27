@@ -69,7 +69,15 @@ npm run lint            # eslint .
 npm run format           # prettier --check .
 ```
 
-Node 22+ is required (`engines.node` in `package.json`).
+Node 22+ is required (`engines.node` in `package.json`). `esbuild` is
+a `dependencies` entry rather than a `devDependencies` one, even
+though it is only ever used as a build tool: `sam build`'s Node.js
+esbuild builder runs its own `npm install` inside an isolated build
+sandbox that installs only `dependencies`, so an `esbuild` that lives
+in `devDependencies` is invisible to it there (confirmed by running
+`sam build` locally — see this repository's Backlog, node P2-N008)
+even though it is present for every other command run directly in
+this checkout.
 
 As of node P2-N008 (chunk 1 child B, the reachability slice), this
 repository ships a real MCP server: one tool, `service_identity`
