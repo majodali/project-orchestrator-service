@@ -26,21 +26,31 @@ for why it exists.
 
 ```
 npm install
-npm run build   # tsc -> dist/
-npm test        # vitest run
-npm run lint    # eslint .
-npm run format  # prettier --check .
+npm run build          # tsc -> dist/ (type-check)
+npm run dev             # run the MCP server locally, port 8787
+npm run bundle:lambda   # esbuild-bundle src/lambda.ts, same as `sam build`
+npm test                # vitest run
+npm run lint            # eslint .
+npm run format           # prettier --check .
 ```
 
-Node 22+. No deployed service exists yet at the current state of this
-repository (node P2-N007, chunk 1 child A: methodology scaffolding and
-project skeleton only) — see docs/backlog.md for what has shipped and
+Node 22+. As of node P2-N008 (chunk 1 child B), a real MCP server
+exists (one tool, `service_identity`), runnable locally and deployable
+to Lambda — see README.md "Build / run / test" and docs/runbook.md.
+Nothing is deployed by cloning this repository; deployment is an owner
+action (docs/runbook.md). See docs/backlog.md for what has shipped and
 what is next.
 
 ## Architecture at a glance
 
-`src/` holds the service implementation (currently a skeleton only);
-`docs/` holds this repository's own Classification and Backlog. This
+`src/` holds the service implementation: `mcpServer.ts` (the
+`service_identity` tool), `httpApp.ts` (the Hono app: auth + `/mcp` +
+`/health`, shared by both entry points below), `auth.ts` (bearer-token
+check), `serviceInfo.ts` (identity payload), `localServer.ts` (local
+dev entry point), `lambda.ts` (AWS Lambda entry point). `template.yaml`
+and `scripts/deploy.sh` are the infrastructure and the one-command
+deploy. `docs/` holds this repository's own Classification, Backlog,
+the deploy runbook, and the `.mcp.json` enlistment template. This
 repository has **no `docs/plan-register.md`, `docs/cost-log.md`, or
 `docs/process/`, and no `.claude/agents/`** — it is planned and
 dispatched from majodali/project-orchestrator under owner-granted

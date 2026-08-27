@@ -30,14 +30,54 @@
       the MCP server, its tools, and the Lambda handler are chunk 1
       children B–E.
 
+- [x] **Reachability slice** (chunk 1 child B, node P2-N008 in the
+      coordinating repository) — a real MCP server over streamable
+      HTTP: one tool, `service_identity` (name, version, build commit
+      from `SERVICE_COMMIT`, configured project from `MCP_PROJECT`),
+      served by a Hono app (`src/httpApp.ts`) shared byte-for-byte
+      between the local dev entry point (`src/localServer.ts`,
+      `npm run dev`) and the AWS Lambda entry point (`src/lambda.ts`,
+      via `hono/aws-lambda`). Bearer-token auth on the transport
+      (`src/auth.ts`; constant-time comparison; a server with no
+      `MCP_AUTH_TOKEN` configured fails closed with 500 rather than
+      accepting all callers). Stateless streamable HTTP
+      (`WebStandardStreamableHTTPServerTransport`,
+      `enableJsonResponse: true`) — a fresh server/transport per
+      request, single JSON response per call, no session store,
+      matching a Lambda-proxy-integration's request/response shape.
+      Infrastructure: `template.yaml` (SAM: one Lambda behind an HTTP
+      API, esbuild TypeScript bundling, no DynamoDB — this slice
+      carries no plan-state logic, so none is provisioned; that lands
+      with children C/D), `scripts/deploy.sh` (the one-command deploy:
+      `sam build && sam deploy` with the auth token resolved from
+      Secrets Manager via a CloudFormation dynamic reference, never a
+      template literal). `docs/runbook.md` — deploy procedure, written
+      before any owner action was requested, naming every human step as
+      one of O1/O2/O4/O5 (O3, the GitHub App, is out of scope for this
+      child). `docs/mcp-enlistment.md` +
+      `docs/mcp-enlistment.template.json` — the `.mcp.json` shape and
+      where it goes, proposed rather than committed to the coordinating
+      repository (that commit is the Orchestrator's/owner's to make).
+      Local verification only (this session held no AWS credentials):
+      `npm test` (unit + integration tests against the Hono app
+      in-process), a real local process (`npm run dev`) exercised over
+      real HTTP with curl — `/health` unauthenticated, `/mcp` rejecting
+      no-token and wrong-token calls with 401, accepting the correct
+      token and answering `tools/list` and `tools/call service_identity`
+      correctly, and the `initialize` handshake exercised too — and the
+      exact Lambda bundle (`sam build`,
+      validated with `sam validate --lint`) invoked directly against a
+      synthetic API Gateway v2 event with the same results. **Not
+      verified**, and blocking the gate's G2/G7/I6 criteria: an actual
+      AWS deployment, the deployed endpoint's cold/warm latency
+      (`docs/runbook.md` Step 7 records placeholders pending this), and
+      enlistment from a real local and web Claude Code session against
+      that deployment — each needs owner actions O1/O2/O4 (and O5 if
+      the web surface needs it) this session cannot perform. See task
+      T008's report for the full account.
+
 ## Upcoming
 
-- [ ] **Reachability slice** (chunk 1 child B, node P2-N008 in the
-      coordinating repository) — the first real MCP tool (service
-      identity/version), the SAM infrastructure template, the auth path,
-      the deploy runbook, and the `.mcp.json` enlistment file (in the
-      coordinating repository). Adds the first real dependencies
-      (`@modelcontextprotocol/sdk`, AWS Lambda types) to this skeleton.
 - [ ] **Plan-state read** (chunk 1 child C, node P2-N009) —
       `plan_read` over the coordinating repository's real Plan register,
       fetched through the GitHub App, SHA-stamped, taking an explicit

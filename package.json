@@ -9,6 +9,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/localServer.ts",
+    "bundle:lambda": "esbuild src/lambda.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist-lambda/lambda.mjs",
     "test": "vitest run",
     "lint": "eslint .",
     "format": "prettier --check .",
@@ -20,8 +22,16 @@
     "eslint": "^10.9.1",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.9.6",
+    "tsx": "^4.23.12",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.68.0",
     "vitest": "^4.1.11"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "esbuild": "^0.28.2",
+    "hono": "^4.13.5",
+    "zod": "^4.4.3"
   }
 }

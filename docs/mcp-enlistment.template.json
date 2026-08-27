@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "project-orchestrator": {
+      "type": "http",
+      "url": "https://REPLACE-WITH-ENDPOINT-FROM-RUNBOOK-STEP-2/mcp",
+      "headers": {
+        "Authorization": "Bearer ${MCP_AUTH_TOKEN}"
+      },
+      "timeout": 30000
+    }
+  }
+}
