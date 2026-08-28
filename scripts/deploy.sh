@@ -15,7 +15,11 @@
 #
 # Optional:
 #   STACK_NAME    Default: project-orchestrator-service
-#   STAGE         Default: prod
+#   STAGE         Default: prod — a deployment label only (resource
+#                 tag), NOT the API Gateway stage. The HTTP API's
+#                 stage is fixed to $default in template.yaml so the
+#                 endpoint carries no stage segment; see that file's
+#                 Stage parameter and HttpApi resource for why.
 #   PROJECT_NAME  Default: majodali/project-orchestrator
 
 set -euo pipefail

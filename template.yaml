@@ -15,9 +15,18 @@ Parameters:
     Type: String
     Default: prod
     Description: >
-      API Gateway stage name. Also used in resource naming so multiple
-      stages (e.g. a scratch stage for testing the runbook itself) can
-      coexist without colliding.
+      A label for this deployment (e.g. `prod`, or a scratch value for
+      testing the runbook itself) — NOT the API Gateway stage name.
+      The HTTP API's actual stage is fixed to the reserved name
+      `$default` (see the HttpApi resource below) so the invoke URL
+      carries no stage segment and `rawPath` is `/health` / `/mcp`,
+      identical to what `src/httpApp.ts` routes locally. A named stage
+      puts that name in `rawPath` (e.g. `/prod/health`), which Hono
+      never matches — the defect this rework (node P2-N008) fixes; see
+      docs/runbook.md's "Why the endpoint has no stage segment" note.
+      `Stage` is still applied as a resource tag below, so deployments
+      can be told apart in CloudWatch/Cost Explorer without needing
+      distinct API stages.
     AllowedPattern: "^[a-zA-Z0-9]+$"
 
   AuthTokenSecretName:
@@ -107,11 +116,25 @@ Resources:
             ApiId: !Ref HttpApi
             Path: /health
             Method: GET
+      Tags:
+        Stage: !Ref Stage
 
   HttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
-      StageName: !Ref Stage
+      # Fixed to the API Gateway reserved stage name `$default` — NOT
+      # `!Ref Stage`. This is deliberate, not a placeholder: a named
+      # stage puts that name in the invoke URL and in every request's
+      # `rawPath` (API Gateway HTTP API behavior), which `src/httpApp.ts`
+      # never registers, so the deployed endpoint 404s on every path
+      # (the defect fixed by this rework, node P2-N008 — see
+      # docs/runbook.md's "Why the endpoint has no stage segment" note
+      # and test/lambda.test.ts, which regression-tests this exact
+      # shape). Do not change this back to `!Ref Stage` or any named
+      # stage.
+      StageName: "$default"
+      Tags:
+        Stage: !Ref Stage
       # No custom domain (plan decision 9) — the default execute-api
       # endpoint URL is what the runbook records and what .mcp.json
       # enlists against.
@@ -121,9 +144,10 @@ Outputs:
     Description: >
       The base URL to enlist against. The MCP endpoint is
       `<Endpoint>/mcp`; the unauthenticated liveness check is
-      `<Endpoint>/health`. Recorded in docs/runbook.md after the first
-      deploy (O2).
-    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}"
+      `<Endpoint>/health`. No stage segment (the HTTP API's stage is
+      fixed to `$default`; see the HttpApi resource above). Recorded
+      in docs/runbook.md after the first deploy (O2).
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
   McpFunctionName:
     Description: The deployed Lambda function's name (for `aws logs tail`, etc.).
     Value: !Ref McpFunction
