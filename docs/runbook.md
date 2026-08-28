@@ -70,7 +70,30 @@ the stack's `Endpoint` output. **Report that URL** — it is the value
 below call `$ENDPOINT`.
 
 **Verify:** the script exits 0 and the printed `Endpoint` is an
-`https://…execute-api…amazonaws.com/prod` URL.
+`https://…execute-api…amazonaws.com` URL — no stage segment (see "Why
+the endpoint has no stage segment" below).
+
+### Why the endpoint has no stage segment
+
+The HTTP API's actual stage is fixed to the API Gateway reserved name
+`$default` (`template.yaml`'s `HttpApi` resource), not the `Stage`
+parameter. This was discovered as a defect after the first deploy:
+with a named stage (`StageName: prod`), the invoke URL and every
+request's `rawPath` carried a `/prod` prefix
+(`/prod/health`, `/prod/mcp`), but `src/httpApp.ts` only ever
+registers `/health` and `/mcp` — so every path 404d, even though the
+function was being invoked correctly and auth was never reached (the
+body was Hono's plain-text `404 Not Found`, not API Gateway's JSON
+`{"message":"Not Found"}`). `$default` makes `rawPath` identical to
+what the app routes locally, preserving the one-Hono-app,
+no-local/deployed-drift design this service is built around. **Do not
+"tidy" `template.yaml`'s `HttpApi.Properties.StageName` back to
+`!Ref Stage` or any named stage** — that reintroduces this exact
+outage. `Stage` still exists as a deployment label (default `prod`)
+applied as a resource tag, for telling deployments apart in
+CloudWatch/Cost Explorer; it no longer selects the API Gateway stage.
+`test/lambda.test.ts` regression-tests the deployed `rawPath` shape
+directly against the Lambda handler.
 
 ## Step 3 — Verify the deployed endpoint answers, unauthenticated first
 
@@ -176,11 +199,21 @@ comfortably above the cold figure (the template above ships a
 conservative placeholder of 30000 ms pending this measurement — treat
 it as provisional, not the recorded value):
 
-| Measurement                    | Value                                                                                          | Measured |
-| ------------------------------ | ---------------------------------------------------------------------------------------------- | -------- |
-| Cold (first call after idle)   | **TBD — no deployment exists yet; this session has no AWS credentials (see task T008 report)** | —        |
-| Warm (immediately following)   | **TBD**                                                                                        | —        |
-| Configured `.mcp.json` timeout | 30000 ms (provisional; revise once cold/warm are measured)                                     | —        |
+| Measurement                    | Value                                                   | Measured |
+| ------------------------------ | ------------------------------------------------------- | -------- |
+| Cold (first call after idle)   | **~1.70 s**                                             | yes      |
+| Warm (immediately following)   | **~0.35–0.60 s**                                        | yes      |
+| Configured `.mcp.json` timeout | 30000 ms (ample headroom above the ~1.70 s cold figure) | —        |
+
+First measurements, taken from a cloud session against the deployed
+endpoint **before** the `$default`-stage fix (node P2-N008 rework,
+this document's "Why the endpoint has no stage segment" note) — every
+call in that session 404d (Hono never matched the stage-prefixed
+`rawPath`), but the round trip being timed here is API Gateway +
+Lambda cold/warm start, which that fix does not touch, so these
+figures still stand. Re-measure once the fix is redeployed if a more
+precise number is wanted; the 30s enlistment timeout has ample
+headroom over either figure regardless.
 
 ## Running cost
 

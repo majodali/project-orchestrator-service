@@ -76,6 +76,57 @@
       the web surface needs it) this session cannot perform. See task
       T008's report for the full account.
 
+- [x] **Rework: fix the deployed 404 (post-deploy defect, node
+      P2-N008)** — the owner deployed the reachability slice above and
+      every path returned 404. Root cause: `template.yaml`'s HttpApi
+      had `StageName: !Ref Stage` (`prod`), so the invoke URL carried a
+      `/prod` segment and API Gateway handed Lambda `rawPath =
+/prod/health` / `/prod/mcp`; `src/httpApp.ts` only ever registers
+      `/health` and `/mcp`, so Hono 404d before auth was ever reached
+      (confirmed live: `/health`, `/mcp` unauthenticated, and `/mcp`
+      with a bad token all 404d with Hono's plain-text body, not API
+      Gateway's own JSON 404 — the function was being invoked; only the
+      path failed to match). Fix: `template.yaml`'s `HttpApi` now pins
+      `StageName` to the API Gateway reserved name `$default` (a
+      literal, not `!Ref Stage`) so the invoke URL and `rawPath` carry
+      no stage segment, identical to local — the one-Hono-app,
+      no-local/deployed-drift design's deliberate property, preserved
+      rather than routing around it with a stage-named Hono basePath.
+      `Stage` is kept (still referenced by `scripts/deploy.sh`) but now
+      only labels a deployment as a resource tag (`Tags: Stage: !Ref
+Stage` on `McpFunction` and `HttpApi`) rather than selecting the
+      API's stage; its parameter description, `scripts/deploy.sh`'s
+      comment, and `docs/runbook.md`'s new "Why the endpoint has no
+      stage segment" note all say so, so it is not "tidied" back to
+      `!Ref Stage` later. The `Endpoint` output no longer appends
+      `/${Stage}`. Regression test added — `test/lambda.test.ts` — that
+      invokes the real exported `handler` (the same `hono/aws-lambda`
+      wrapper the deployed function runs) with a synthetic API Gateway
+      v2 event shaped like what the deployed HTTP API actually sends
+      (`rawPath: "/health"` / `"/mcp"`, no stage segment) and asserts
+      200; a companion test with `rawPath: "/prod/health"` documents
+      the original defect (404), and both are new tests — no existing
+      test was weakened or changed. `docs/runbook.md` Step 7's latency
+      table now records the first real measurement from a cloud session
+      against the (pre-fix) live endpoint — cold ~1.70s, warm
+      ~0.35–0.60s — noted as taken before this fix but still valid
+      (they measure the API Gateway + Lambda round trip, which the fix
+      does not change), with the 30s `.mcp.json` timeout noted as ample
+      headroom. `README.md`'s Build/run/test section and the runbook
+      both flag the `$default` pinning so it is not undone by a future
+      "tidy the template" pass.
+      Verified this session: `npm run build`, `npm test` (18/18
+      passing, including the 3 new regression tests), `npm run lint`,
+      `npm run format`, `sam validate --lint`, and `sam build` (rendered
+      `.aws-sam/build/template.yaml` confirmed `StageName: $default`
+      and the `Stage` tag on both resources) — all clean. **Not
+      verified**, needing the owner's redeploy: that the live endpoint
+      actually answers `/health` and `/mcp` post-fix, and a fresh
+      cold/warm latency measurement if a more precise number than the
+      pre-fix one is wanted (not required — the pre-fix figures still
+      hold per the note above). See task T009's report for the full
+      account.
+
 ## Upcoming
 
 - [ ] **Plan-state read** (chunk 1 child C, node P2-N009) —

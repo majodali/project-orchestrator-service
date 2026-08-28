@@ -57,7 +57,12 @@ second plan hierarchy:
 Stack: **TypeScript / Node** on AWS Lambda / HTTP API via AWS SAM
 (`template.yaml`). Nothing is deployed by cloning this repository —
 see [`docs/runbook.md`](docs/runbook.md) for the owner's deploy
-procedure.
+procedure. The HTTP API's stage is pinned to the reserved name
+`$default` (not a named stage like `prod`) so the deployed `rawPath`
+matches what the app routes locally — see `template.yaml`'s `Stage`
+parameter and `docs/runbook.md`'s "Why the endpoint has no stage
+segment" for why (node P2-N008's post-deploy rework); do not change it
+to a named stage.
 
 ```
 npm install
