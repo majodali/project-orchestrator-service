@@ -1,17 +1,28 @@
 #!/usr/bin/env bash
 #
-# One-command deploy for project-orchestrator-service (chunk 1 child B,
-# node P2-N008 — the reachability slice). See docs/runbook.md for what
-# must be true before this runs (owner actions O1 and O4) and what to
-# do with what it prints.
+# One-command deploy for project-orchestrator-service. See
+# docs/runbook.md for what must be true before this runs (owner
+# actions O1, O3, and O4) and what to do with what it prints.
 #
 # Required environment variables:
-#   AWS_REGION              The region chosen under O1.
-#   AUTH_TOKEN_SECRET_NAME   Name (not ARN) of the Secrets Manager
-#                            secret created under O4 (docs/runbook.md
-#                            Step 1). Never read by this script — only
-#                            named, so CloudFormation can resolve it at
-#                            deploy time.
+#   AWS_REGION                     The region chosen under O1.
+#   AUTH_TOKEN_SECRET_NAME          Name (not ARN) of the Secrets
+#                                   Manager secret created under O4
+#                                   (docs/runbook.md Step 1). Never
+#                                   read by this script — only named,
+#                                   so CloudFormation can resolve it at
+#                                   deploy time.
+#   GITHUB_APP_ID                   The GitHub App's numeric ID
+#                                   (owner action O3, docs/runbook.md).
+#                                   Not secret.
+#   GITHUB_APP_INSTALLATION_ID      The App's installation ID for
+#                                   majodali/project-orchestrator
+#                                   (owner action O3). Not secret.
+#   GITHUB_APP_PRIVATE_KEY_SECRET_NAME   Name (not ARN) of the Secrets
+#                                   Manager secret holding the App's
+#                                   PEM private key (owner action O3).
+#                                   Never read by this script, the same
+#                                   pattern as AUTH_TOKEN_SECRET_NAME.
 #
 # Optional:
 #   STACK_NAME    Default: project-orchestrator-service
@@ -26,6 +37,9 @@ set -euo pipefail
 
 : "${AWS_REGION:?Set AWS_REGION (the region chosen under O1; see docs/runbook.md).}"
 : "${AUTH_TOKEN_SECRET_NAME:?Set AUTH_TOKEN_SECRET_NAME to the secret created under O4 (docs/runbook.md Step 1).}"
+: "${GITHUB_APP_ID:?Set GITHUB_APP_ID to the GitHub App's numeric ID (owner action O3; see docs/runbook.md).}"
+: "${GITHUB_APP_INSTALLATION_ID:?Set GITHUB_APP_INSTALLATION_ID to the App's installation ID for majodali/project-orchestrator (owner action O3; see docs/runbook.md).}"
+: "${GITHUB_APP_PRIVATE_KEY_SECRET_NAME:?Set GITHUB_APP_PRIVATE_KEY_SECRET_NAME to the secret created under O3 (see docs/runbook.md).}"
 
 STACK_NAME="${STACK_NAME:-project-orchestrator-service}"
 STAGE="${STAGE:-prod}"
@@ -48,7 +62,10 @@ sam deploy \
     "Stage=${STAGE}" \
     "AuthTokenSecretName=${AUTH_TOKEN_SECRET_NAME}" \
     "ProjectName=${PROJECT_NAME}" \
-    "ServiceCommit=${SERVICE_COMMIT}"
+    "ServiceCommit=${SERVICE_COMMIT}" \
+    "GithubAppId=${GITHUB_APP_ID}" \
+    "GithubAppInstallationId=${GITHUB_APP_INSTALLATION_ID}" \
+    "GithubAppPrivateKeySecretName=${GITHUB_APP_PRIVATE_KEY_SECRET_NAME}"
 
 echo
 echo "== Endpoint =="

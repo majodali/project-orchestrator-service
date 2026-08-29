@@ -22,9 +22,15 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 
 import { requireBearerToken } from "./auth.js";
 import { createMcpServer } from "./mcpServer.js";
+import type { CreateMcpServerOptions } from "./mcpServer.js";
 import { getServiceIdentity } from "./serviceInfo.js";
 
-export function createApp(): Hono {
+export interface CreateAppOptions {
+  /** Forwarded to createMcpServer — test-only, see src/mcpServer.ts. */
+  planRegisterFetcher?: CreateMcpServerOptions["planRegisterFetcher"];
+}
+
+export function createApp(options: CreateAppOptions = {}): Hono {
   const app = new Hono();
 
   app.use(
@@ -59,7 +65,9 @@ export function createApp(): Hono {
         sessionIdGenerator: undefined, // stateless: no session store
         enableJsonResponse: true, // single JSON response, not SSE
       });
-      const server = createMcpServer();
+      const server = createMcpServer({
+        planRegisterFetcher: options.planRegisterFetcher,
+      });
       await server.connect(transport);
       try {
         return await transport.handleRequest(c.req.raw);

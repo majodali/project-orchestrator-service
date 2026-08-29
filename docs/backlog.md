@@ -47,8 +47,11 @@
       matching a Lambda-proxy-integration's request/response shape.
       Infrastructure: `template.yaml` (SAM: one Lambda behind an HTTP
       API, esbuild TypeScript bundling, no DynamoDB — this slice
-      carries no plan-state logic, so none is provisioned; that lands
-      with children C/D), `scripts/deploy.sh` (the one-command deploy:
+      carries no plan-state logic, so none is provisioned; child C
+      (node P2-N009) turned out not to need one either — reads
+      reconcile from GitHub on every call, nothing cached in AWS — so
+      DynamoDB now lands with child D alone, the advisory lease),
+      `scripts/deploy.sh` (the one-command deploy:
       `sam build && sam deploy` with the auth token resolved from
       Secrets Manager via a CloudFormation dynamic reference, never a
       template literal). `docs/runbook.md` — deploy procedure, written
@@ -70,7 +73,7 @@
       synthetic API Gateway v2 event with the same results. **Not
       verified**, and blocking the gate's G2/G7/I6 criteria: an actual
       AWS deployment, the deployed endpoint's cold/warm latency
-      (`docs/runbook.md` Step 7 records placeholders pending this), and
+      (`docs/runbook.md` Step 8 records placeholders pending this), and
       enlistment from a real local and web Claude Code session against
       that deployment — each needs owner actions O1/O2/O4 (and O5 if
       the web surface needs it) this session cannot perform. See task
@@ -106,7 +109,7 @@ Stage` on `McpFunction` and `HttpApi`) rather than selecting the
       (`rawPath: "/health"` / `"/mcp"`, no stage segment) and asserts
       200; a companion test with `rawPath: "/prod/health"` documents
       the original defect (404), and both are new tests — no existing
-      test was weakened or changed. `docs/runbook.md` Step 7's latency
+      test was weakened or changed. `docs/runbook.md` Step 8's latency
       table now records the first real measurement from a cloud session
       against the (pre-fix) live endpoint — cold ~1.70s, warm
       ~0.35–0.60s — noted as taken before this fix but still valid
@@ -127,12 +130,102 @@ Stage` on `McpFunction` and `HttpApi`) rather than selecting the
       hold per the note above). See task T009's report for the full
       account.
 
+- [x] **Plan-state read** (chunk 1 child C, node P2-N009) — `plan_read`,
+      the first real plan-state MCP tool. `src/planRegister/parser.ts`
+      parses `docs/plan-register.md`'s grammar (cited to
+      `docs/process/plan-register.md` in the coordinating repository,
+      not restated) into structured nodes: ID, stage, hold marker,
+      title, best-effort `label: target` links (plus the verbatim
+      post-em-dash `annotation`, so a non-link annotation like the real
+      register's P1-N006 line is never lost), and parent/child edges
+      from list nesting. A node-like line that fails to parse, or a
+      duplicate ID, is recorded in a structured `errors` list naming
+      the line and reason — never a silently dropped node — while
+      every other node still parses. `subtreeIds` answers subtree
+      queries (a node and its descendants only). Round-trip-tested
+      against a byte-for-byte copy of the coordinating repository's
+      real register (`test/fixtures/plan-register.sample.md`, 19
+      nodes, 0 parse errors — matching
+      `plugin/scripts/form_check.py`'s independent count on the same
+      text there) plus constructed malformed-line, duplicate-ID, and
+      hold-marker cases. GitHub access:
+      `src/planRegister/registerFetcher.ts` (`GithubAppRegisterFetcher`)
+      resolves a ref (or the repository's default branch, when none is
+      given) to a commit SHA via the GitHub Commits API, then fetches
+      `docs/plan-register.md`'s content pinned to that exact SHA via
+      the Contents API — so the SHA an answer reports is always the
+      commit its content came from. `src/planRegister/githubAppAuth.ts`
+      mints the installation access token: an App JWT via
+      `universal-github-app-jwt` (a small, official octokit-org,
+      zero-dependency package — chosen over the full
+      `@octokit/auth-app`, which also pulls in OAuth strategies this
+      service never uses, and over hand-rolled JWT signing), exchanged
+      for an installation token, cached in memory until shortly before
+      expiry so a warm Lambda container reuses it instead of minting
+      fresh on every call. `RegisterFetcher` is the injectable seam I5
+      calls for: every test above and the tool's own contract tests
+      (`test/planRead.test.ts`) run against a stubbed fetcher or an
+      injected fake `fetch` — no real GitHub credentials anywhere in
+      this repository. There is no local-disk or unauthenticated-URL
+      fallback for register content anywhere in `src/` —
+      `GithubAppRegisterFetcher` is the only production implementation
+      of `RegisterFetcher` (I5: "no tool derives plan state from
+      anything but repository content fetched through the GitHub
+      App"). `src/planReadTool.ts` registers `plan_read` (input:
+      optional `ref`, optional `nodeId` for a subtree query; output:
+      `ref`, `sha`, `fetchedAt`, `rootIds`, `nodes`, `errors` — every
+      response carries its source SHA and fetch time, never optional).
+      Wired into `src/mcpServer.ts` / `src/httpApp.ts` via an optional
+      `planRegisterFetcher` override threaded through both (test-only;
+      production call sites omit it and get
+      `src/planRegister/defaultFetcher.ts`'s real, lazily-built,
+      GitHub-App-backed fetcher — built from environment configuration
+      only when the tool is actually called, so a server with no
+      GitHub App configured still starts and lists `plan_read` cleanly,
+      and only the call itself reports the missing `GITHUB_APP_*`
+      variable(s) by name). `src/githubAppConfig.ts` reuses the
+      existing `MCP_PROJECT` variable for which repository to read
+      rather than adding a second one that could disagree with it.
+      `template.yaml`: three new parameters (`GithubAppId`,
+      `GithubAppInstallationId` — not secret; the private key
+      resolved via a CloudFormation dynamic reference at deploy time,
+      the same pattern as `AuthTokenSecretName`, never a literal),
+      wired into the Lambda's environment as `GITHUB_APP_ID` /
+      `GITHUB_APP_INSTALLATION_ID` / `GITHUB_APP_PRIVATE_KEY`. The
+      function `Timeout` moved from 10s to 20s (`plan_read` can make up
+      to four sequential GitHub API round trips; still comfortable
+      headroom under the enlistment file's 30s per-server timeout — not
+      yet measured against a real deployment, see below).
+      `scripts/deploy.sh` now requires `GITHUB_APP_ID` /
+      `GITHUB_APP_INSTALLATION_ID` /
+      `GITHUB_APP_PRIVATE_KEY_SECRET_NAME` alongside the existing
+      required variables. `docs/runbook.md` gained Step 2 ("Configure
+      GitHub App access (O3)" — create, install, and record the App's
+      ID and installation ID, store its private key in Secrets Manager
+      the same way Step 1 stores the bearer token) and a `plan_read`
+      verification call in what is now Step 6, both filed under owner
+      action **O3** (already named by the parent plan — not a new
+      action outside O1–O6); Steps 2–7 renumbered to 3–8 and every
+      cross-repository-internal reference to a step number
+      (`docs/mcp-enlistment.md`, this Backlog's own Step-8 references
+      above) updated in this same commit so no link goes stale.
+      Verified this session: `npm run build`, `npm test` (60/60
+      passing — the pre-existing 18 unaltered, 42 new), `npm run lint`,
+      `npm run format`, all clean; `template.yaml` checked for valid
+      YAML and correct parameter/environment wiring (no `sam` CLI
+      available in this session, so `sam validate --lint` and
+      `sam build` were **not** run — unlike node P2-N008, which had
+      it). **Not verified**, and blocking this criterion until owner
+      action **O3** (create and install the GitHub App, store its
+      private key) is complete: `plan_read` against the real, deployed
+      service — "a session reads P2 nodes and their stages through it"
+      — and `plan_read`'s actual cold/warm latency (`docs/runbook.md`
+      Step 8). See task T010's report for the full account, including
+      the cross-check against `plugin/scripts/form_check.py` and the
+      Backlog additions this session identified but did not execute.
+
 ## Upcoming
 
-- [ ] **Plan-state read** (chunk 1 child C, node P2-N009) —
-      `plan_read` over the coordinating repository's real Plan register,
-      fetched through the GitHub App, SHA-stamped, taking an explicit
-      `ref`.
 - [ ] **Plan-state update with the advisory lease** (chunk 1 child D,
       node P2-N010) — `plan_lease_acquire` / `plan_update` / `plan_confirm`
       / `plan_lease_release`, the three-step git-authoritative write model.
@@ -150,3 +243,29 @@ Stage` on `McpFunction` and `HttpApi`) rather than selecting the
       repository) with a Classification field once the methodology's
       multi-repo update lands (tracked in the coordinating repository's
       Backlog).
+- [ ] **Re-verify `plan_read` against the deployed service and record
+      its cold/warm latency** (node P2-N009 follow-up) — owner action
+      O3 (create and install the GitHub App, store its private key,
+      redeploy per `docs/runbook.md` Steps 2–3) is outstanding; once
+      done, run `docs/runbook.md` Step 8's `plan_read` timing and
+      confirm a real session reads P2 nodes and their stages through
+      the deployed endpoint (the one criterion this node's local
+      verification could not reach). Revisit the `template.yaml`
+      `Timeout: 20` figure against the measurement.
+- [ ] **`sam validate --lint` / `sam build` for the GitHub App wiring**
+      (node P2-N009 follow-up) — this session had no AWS SAM CLI
+      available, so `template.yaml`'s new parameters and environment
+      wiring were checked only by parsing the YAML and reading the
+      rendered structure, not by SAM's own validator or a real
+      esbuild-bundle build (node P2-N008 had both). Run both once SAM
+      is available, the same way node P2-N008's rework did.
+- [ ] **Keep `test/fixtures/plan-register.sample.md` current, or stop
+      needing to** (node P2-N009 follow-up) — the round-trip test
+      fixture is a byte-for-byte copy of the coordinating repository's
+      `docs/plan-register.md` taken at implementation time; it will
+      drift as that register grows. Either refresh it periodically (a
+      one-line `cp` from a coordinating-repository checkout) or, if
+      this repository ever gains CI that can reach the coordinating
+      repository, fetch it there instead of committing a copy — out of
+      scope for a C1 read tool today, worth a look once CI for this
+      repository exists (see the CI item above).

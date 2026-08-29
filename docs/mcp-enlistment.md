@@ -43,14 +43,14 @@ Two placeholders a proposer must fill in before this is committed
 anywhere:
 
 - **`url`** — `<Endpoint>/mcp`, where `<Endpoint>` is the value
-  [`docs/runbook.md`](runbook.md) Step 2 reports after deploy. Never a
+  [`docs/runbook.md`](runbook.md) Step 3 reports after deploy. Never a
   literal placeholder in the committed file — it is public (an API
   Gateway URL, not a secret) but still needs to name the real,
   deployed endpoint.
 - **`timeout`** — the MCP default is 5000 ms, far too low for a
   cold-starting Lambda (R11); this template ships a conservative
   30000 ms placeholder pending the real cold/warm measurement
-  `docs/runbook.md` Step 7 records once a deployment exists. Whoever
+  `docs/runbook.md` Step 8 records once a deployment exists. Whoever
   commits the live file should set this from that measurement, not
   leave the placeholder.
 
@@ -60,7 +60,7 @@ anywhere:
 the p2-n002 plan) — the literal four characters `${MCP_AUTH_TOKEN}`
 belong in the committed file; the token itself never does. Each
 surface that enlists this server needs `MCP_AUTH_TOKEN` set in its own
-environment (`docs/runbook.md` Step 4 and Step 6) — how a given Claude
+environment (`docs/runbook.md` Step 5 and Step 7) — how a given Claude
 Code surface exposes environment variables to an enlisted session is a
 surface-configuration detail outside this repository's scope to
 document (out of scope per this document's Not verified here /

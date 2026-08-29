@@ -84,16 +84,26 @@ in `devDependencies` is invisible to it there (confirmed by running
 even though it is present for every other command run directly in
 this checkout.
 
-As of node P2-N008 (chunk 1 child B, the reachability slice), this
-repository ships a real MCP server: one tool, `service_identity`
-(name, version, build commit, configured project — deliberately
-near-empty of content, to prove the round trip before any plan-state
-logic exists), served over streamable HTTP with bearer-token auth,
-runnable locally (`npm run dev`) and deployable to Lambda behind an
-HTTP API (`template.yaml`, `scripts/deploy.sh`,
-[`docs/runbook.md`](docs/runbook.md)). `plan_read` /
-`plan_lease_acquire` / `plan_update` / `plan_confirm` — the actual
-plan-state tools — are later children; see `docs/backlog.md`.
+This repository ships a real MCP server, served over streamable HTTP
+with bearer-token auth, runnable locally (`npm run dev`) and
+deployable to Lambda behind an HTTP API (`template.yaml`,
+`scripts/deploy.sh`, [`docs/runbook.md`](docs/runbook.md)). Two tools
+so far:
+
+- `service_identity` (chunk 1 child B, node P2-N008, the reachability
+  slice) — name, version, build commit, configured project;
+  deliberately near-empty of content, to prove the round trip before
+  any plan-state logic existed.
+- `plan_read` (chunk 1 child C, node P2-N009) — reads the coordinating
+  repository's real Plan register (`docs/plan-register.md`) at a git
+  ref, through an installed GitHub App (`contents: read`, never a
+  personal access token — decision 6 of the p2-n002 plan), and answers
+  whole-tree or subtree queries with the source commit SHA and fetch
+  time on every response. See `src/planReadTool.ts` and
+  `src/planRegister/`.
+
+`plan_lease_acquire` / `plan_update` / `plan_confirm` — the write
+path — is the next child (node P2-N010); see `docs/backlog.md`.
 
 ### Trying it locally
 
@@ -113,15 +123,21 @@ repository by this task — is documented in
 
 ## Configuration and secrets
 
-| Variable         | Required        | Meaning                                                                                                                                                |
-| ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `MCP_AUTH_TOKEN` | yes             | The bearer token clients must present. No default — the server refuses every `/mcp` call with 500 if this is unset, rather than accepting all callers. |
-| `PORT`           | no (local only) | Port `npm run dev` listens on. Default `8787`.                                                                                                         |
-| `SERVICE_COMMIT` | no              | Reported by `service_identity`. Set by `scripts/deploy.sh` from `git rev-parse HEAD`; unset locally defaults to `"unknown"`.                           |
-| `MCP_PROJECT`    | no              | Reported by `service_identity`. Defaults to `majodali/project-orchestrator`.                                                                           |
+| Variable                     | Required             | Meaning                                                                                                                                                |
+| ---------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `MCP_AUTH_TOKEN`             | yes                  | The bearer token clients must present. No default — the server refuses every `/mcp` call with 500 if this is unset, rather than accepting all callers. |
+| `PORT`                       | no (local only)      | Port `npm run dev` listens on. Default `8787`.                                                                                                         |
+| `SERVICE_COMMIT`             | no                   | Reported by `service_identity`. Set by `scripts/deploy.sh` from `git rev-parse HEAD`; unset locally defaults to `"unknown"`.                           |
+| `MCP_PROJECT`                | no                   | Reported by `service_identity`; also which `<owner>/<repo>` `plan_read` reads. Defaults to `majodali/project-orchestrator`.                            |
+| `GITHUB_APP_ID`              | yes, for `plan_read` | The installed GitHub App's numeric ID (owner action O3). Not secret. `plan_read` fails with a clear tool error, not a crash, if unset.                 |
+| `GITHUB_APP_INSTALLATION_ID` | yes, for `plan_read` | The App's installation ID for `MCP_PROJECT` (owner action O3). Not secret.                                                                             |
+| `GITHUB_APP_PRIVATE_KEY`     | yes, for `plan_read` | The App's PEM private key (owner action O3). A real secret — resolved from Secrets Manager at deploy time, see `template.yaml`.                        |
 
-A GitHub App private key arrives with chunk 1 child C (this slice does
-no git reads). The convention, fixed from the start:
+`service_identity` alone (chunk 1 child B) needs none of the three
+`GITHUB_APP_*` variables; a deployment made before owner action O3 is
+complete still serves it, and `plan_read` reports a tool error naming
+what is missing rather than crashing the server. The convention, fixed
+from the start:
 
 - **Configuration and credentials are supplied only through
   environment variables**, never through a committed file.
