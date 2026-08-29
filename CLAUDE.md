@@ -34,9 +34,10 @@ npm run lint            # eslint .
 npm run format           # prettier --check .
 ```
 
-Node 22+. As of node P2-N008 (chunk 1 child B), a real MCP server
-exists (one tool, `service_identity`), runnable locally and deployable
-to Lambda — see README.md "Build / run / test" and docs/runbook.md.
+Node 22+. A real MCP server exists — `service_identity` (chunk 1 child
+B, node P2-N008) and `plan_read` (chunk 1 child C, node P2-N009,
+through an installed GitHub App) — runnable locally and deployable to
+Lambda — see README.md "Build / run / test" and docs/runbook.md.
 Nothing is deployed by cloning this repository; deployment is an owner
 action (docs/runbook.md). See docs/backlog.md for what has shipped and
 what is next.
