@@ -1,16 +1,17 @@
 /**
- * The MCP server itself — chunk 1 child B, node P2-N008 (the
- * reachability slice). One tool, `service_identity`, deliberately
- * near-empty of content: it exists to prove that a session can call
- * this service at all, over an authenticated transport, and get a
- * real answer back. No plan-state logic; that starts with children C
- * and D (see docs/backlog.md).
+ * The MCP server itself. `service_identity` (chunk 1 child B, node
+ * P2-N008, the reachability slice) proves a session can call this
+ * service at all, over an authenticated transport, and get a real
+ * answer back. `plan_read` (chunk 1 child C, node P2-N009) is the
+ * first real plan-state tool — see src/planReadTool.ts.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import { getServiceIdentity } from "./serviceInfo.js";
+import { registerPlanReadTool } from "./planReadTool.js";
+import type { RegisterFetcher } from "./planRegister/registerFetcher.js";
 
 const identityOutputShape = {
   service: z.string().describe("The service's own name."),
@@ -27,12 +28,24 @@ const identityOutputShape = {
 
 const identityOutputSchema = z.object(identityOutputShape);
 
+export interface CreateMcpServerOptions {
+  /**
+   * Overrides `plan_read`'s GitHub fetcher — test-only. Production
+   * call sites (src/httpApp.ts) omit this and get the real,
+   * GitHub-App-backed fetcher built lazily from environment
+   * configuration (src/planRegister/defaultFetcher.ts).
+   */
+  planRegisterFetcher?: RegisterFetcher;
+}
+
 /**
  * Builds a fresh `McpServer` instance. Called once per request in
  * stateless mode (see `src/httpApp.ts`) — the server carries no state
  * of its own, so there is nothing to share or clean up between calls.
  */
-export function createMcpServer(): McpServer {
+export function createMcpServer(
+  options: CreateMcpServerOptions = {},
+): McpServer {
   const server = new McpServer({
     name: "project-orchestrator-service",
     version: getServiceIdentity().version,
@@ -63,6 +76,8 @@ export function createMcpServer(): McpServer {
       };
     },
   );
+
+  registerPlanReadTool(server, options.planRegisterFetcher);
 
   return server;
 }
