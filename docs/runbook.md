@@ -1,20 +1,19 @@
-# Deploy runbook — reachability slice (chunk 1 child B, node P2-N008)
+# Deploy runbook
 
 <!-- Written before any owner action named below is requested — the
      spec requires this ordering (I8), not just as a nicety. Every
-     step a human must take is one of O1, O2, O4, or O5 from the
+     step a human must take is one of O1, O2, O3, O4, or O5 from the
      [orchestration-service plan](https://github.com/majodali/project-orchestrator/blob/main/docs/plans/orchestration-service.md#what-this-environment-can-deliver-and-what-is-the-owners).
-     O3 (the GitHub App) is **not** part of this child — the
-     reachability slice does no git reads; O3 lands with chunk 1
-     child C. A step this document asks for that is not one of
-     O1/O2/O4/O5 is a runbook defect, to be fixed here, not narrated
-     at the gate. -->
+     A step this document asks for that is not one of O1–O6 is a
+     runbook defect, to be fixed here, not narrated at the gate. -->
 
 This is the procedure that takes a stranger from an empty AWS account
 to a deployed, authenticated MCP endpoint answering the
-`service_identity` tool — the reachability slice's entire content.
-Nothing here writes to git or reads plan state; that starts with
-children C and D.
+`service_identity` tool (chunk 1 child B, node P2-N008 — the
+reachability slice) and the `plan_read` tool (chunk 1 child C, node
+P2-N009 — the first real plan-state read, through an installed GitHub
+App). Nothing here writes to git; that starts with child D (node
+P2-N010).
 
 ## What you need before you start
 
@@ -24,6 +23,8 @@ children C and D.
 - AWS credentials for that account available to your shell (however
   you normally authenticate — this runbook does not prescribe a
   method).
+- A GitHub account with permission to create and install a GitHub App
+  on `majodali/project-orchestrator` (**O3**).
 - [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
   and the AWS CLI, installed locally.
 - Node.js 22+ and this repository cloned, with `npm install` already
@@ -49,16 +50,52 @@ aws secretsmanager create-secret \
   --secret-string "$TOKEN"
 ```
 
-**Verify:** `aws secretsmanager get-secret-value --region "$AWS_REGION" --secret-id project-orchestrator-service/mcp-auth-token --query SecretString --output text` prints the same value you generated. Keep `$TOKEN` — you need it again in Step 4; it does not need to be re-read from Secrets Manager for that.
+**Verify:** `aws secretsmanager get-secret-value --region "$AWS_REGION" --secret-id project-orchestrator-service/mcp-auth-token --query SecretString --output text` prints the same value you generated. Keep `$TOKEN` — you need it again in Step 5; it does not need to be re-read from Secrets Manager for that.
 
-## Step 2 — Deploy (O2)
+## Step 2 — Configure GitHub App access (O3)
+
+`plan_read` reads the coordinating repository's Plan register through
+a GitHub App installation with `contents: read` — decision 6 of the
+p2-n002 plan, never a personal access token.
+
+1. Create the App: GitHub → **Settings → Developer settings → GitHub
+   Apps → New GitHub App**. Repository permissions: **Contents:
+   Read-only**. No webhook is needed for chunk 1 — uncheck "Active"
+   under Webhook, or leave the URL blank.
+2. Generate a private key for the App (App settings → **Generate a
+   private key**) — this downloads a `.pem` file once; it cannot be
+   downloaded again later.
+3. Install the App on `majodali/project-orchestrator` only (**Install
+   App**, select the repository — not "all repositories").
+4. Record two values from the App's settings pages, both **not
+   secret**:
+   - the App's numeric **ID** (General settings page), and
+   - the installation's numeric **ID** (visible in the installed
+     App's settings URL, e.g.
+     `https://github.com/settings/installations/12345678` → `12345678`).
+5. Store the private key in Secrets Manager, the same pattern as
+   Step 1's token:
+
+```sh
+aws secretsmanager create-secret \
+  --region "$AWS_REGION" \
+  --name project-orchestrator-service/github-app-private-key \
+  --secret-string file:///path/to/the-downloaded-key.pem
+```
+
+**Verify:** `aws secretsmanager get-secret-value --region "$AWS_REGION" --secret-id project-orchestrator-service/github-app-private-key --query SecretString --output text | head -1` prints `-----BEGIN RSA PRIVATE KEY-----` (or `-----BEGIN PRIVATE KEY-----`). Keep the App ID and installation ID — you need them again in Step 3; the private key does not need to be re-read from Secrets Manager for that. Delete the local `.pem` file once it is stored (it is a real credential; do not leave it in a working tree — `.gitignore` already excludes `*.pem`, but "excluded from git" is not "does not exist on disk").
+
+## Step 3 — Deploy (O2)
 
 One command, `scripts/deploy.sh`, wraps `sam build` and `sam deploy`
-with this slice's required parameters:
+with this chunk's required parameters:
 
 ```sh
 export AWS_REGION=us-east-1                                       # the region from O1
 export AUTH_TOKEN_SECRET_NAME=project-orchestrator-service/mcp-auth-token   # from Step 1
+export GITHUB_APP_ID=123456                                       # from Step 2
+export GITHUB_APP_INSTALLATION_ID=12345678                        # from Step 2
+export GITHUB_APP_PRIVATE_KEY_SECRET_NAME=project-orchestrator-service/github-app-private-key   # from Step 2
 ./scripts/deploy.sh
 ```
 
@@ -66,7 +103,7 @@ It builds with esbuild (`template.yaml`'s `Metadata.BuildMethod`,
 bundling `src/lambda.ts`), deploys via CloudFormation
 (`--resolve-s3`, so no bucket needs to exist beforehand), and prints
 the stack's `Endpoint` output. **Report that URL** — it is the value
-`.mcp.json` needs (Step 4) and what this runbook's verification steps
+`.mcp.json` needs (Step 6) and what this runbook's verification steps
 below call `$ENDPOINT`.
 
 **Verify:** the script exits 0 and the printed `Endpoint` is an
@@ -95,7 +132,7 @@ CloudWatch/Cost Explorer; it no longer selects the API Gateway stage.
 `test/lambda.test.ts` regression-tests the deployed `rawPath` shape
 directly against the Lambda handler.
 
-## Step 3 — Verify the deployed endpoint answers, unauthenticated first
+## Step 4 — Verify the deployed endpoint answers, unauthenticated first
 
 ```sh
 curl -sS -i "$ENDPOINT/health"
@@ -109,7 +146,7 @@ isolates "is anything listening" (API Gateway → Lambda wiring) from
 stack status, and `aws logs tail /aws/lambda/<McpFunctionName-from-the-stack-output>` for a Lambda error. Nothing past this point will
 work until `/health` does.
 
-## Step 4 — Make the token available as an environment variable (O4, part 2)
+## Step 5 — Make the token available as an environment variable (O4, part 2)
 
 On every surface you enlist a session from (local shell, and the web
 surface's environment/secrets configuration — mechanism differs by
@@ -120,7 +157,7 @@ surface; both need the variable present under the same name
 export MCP_AUTH_TOKEN="$TOKEN"     # the value from Step 1
 ```
 
-## Step 5 — Verify the deployed endpoint over MCP, with and without the token
+## Step 6 — Verify the deployed endpoint over MCP, with and without the token
 
 ```sh
 # Without a token — expect 401
@@ -128,18 +165,37 @@ curl -sS -i -X POST "$ENDPOINT/mcp" \
   -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 
-# With the token — expect 200 and a tools list containing "service_identity"
+# With the token — expect 200 and a tools list containing "service_identity" and "plan_read"
 curl -sS -i -X POST "$ENDPOINT/mcp" \
   -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
   -H "Authorization: Bearer $MCP_AUTH_TOKEN" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"service_identity","arguments":{}}}'
+
+# plan_read against the coordinating repository's real register at its default branch —
+# expect 200, a node list, and a sha/ref/fetchedAt in structuredContent
+curl -sS -i -X POST "$ENDPOINT/mcp" \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer $MCP_AUTH_TOKEN" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"plan_read","arguments":{}}}'
 ```
 
-The second call's `structuredContent` should report `commit` as the
-SHA `scripts/deploy.sh` passed at deploy time — cross-check against
-`git rev-parse HEAD` in your clone at the moment you ran Step 2.
+The `service_identity` call's `structuredContent` should report
+`commit` as the SHA `scripts/deploy.sh` passed at deploy time —
+cross-check against `git rev-parse HEAD` in your clone at the moment
+you ran Step 3. The `plan_read` call's `structuredContent.sha` should
+match what GitHub shows as `majodali/project-orchestrator`'s default
+branch HEAD at the moment you ran it — cross-check on GitHub.
 
-## Step 6 — Enlist a session
+**If `plan_read` returns a tool error naming `GITHUB_APP_ID`,
+`GITHUB_APP_INSTALLATION_ID`, or `GITHUB_APP_PRIVATE_KEY`:** Step 3
+was run without Step 2's values (or they do not match what
+`template.yaml`'s parameters resolved) — re-run Step 3 with them set.
+**If it returns a tool error citing a GitHub API status (401/403/404):**
+recheck Step 2 — the App's installation, its `Contents: Read-only`
+permission, and the installation ID all matter; the private key in
+Secrets Manager must be the one downloaded for this same App.
+
+## Step 7 — Enlist a session
 
 Add the `.mcp.json` below to the coordinating repository
 (`majodali/project-orchestrator`) — see
@@ -165,9 +221,13 @@ Clone the coordinating repository fresh in both a local terminal
 session and a Claude Code web session, with only `MCP_AUTH_TOKEN` set
 in the environment (no other configuration). In each:
 
-1. List tools — `service_identity` should appear.
+1. List tools — `service_identity` and `plan_read` should appear.
 2. Call `service_identity` — it should return within the configured
-   timeout, matching Step 5's `curl` output.
+   timeout, matching Step 6's `curl` output.
+3. Call `plan_read` — it should return within the configured timeout,
+   matching Step 6's `curl` output, and match what the coordinating
+   repository's `docs/plan-register.md` shows on GitHub at the
+   reported SHA.
 
 **If the web surface cannot reach the endpoint** (a platform egress
 block, not an auth or deploy problem — distinguishable because the
@@ -177,10 +237,12 @@ requires. Apply it and repeat this step; if the platform makes it
 impossible rather than merely requiring configuration, stop and record
 that as a finding against R11 rather than continuing.
 
-## Step 7 — Cold and warm latency (G7)
+## Step 8 — Cold and warm latency (G7)
 
 With the endpoint deployed and idle for at least 10 minutes (Lambda
-has scaled to zero), time the identity call twice in a row:
+has scaled to zero), time the identity call twice in a row, then do
+the same for `plan_read` (its GitHub round trips make it the more
+latency-sensitive of the two — see `template.yaml`'s `Timeout` note):
 
 ```sh
 time curl -sS -o /dev/null -w '%{http_code}\n' -X POST "$ENDPOINT/mcp" \
@@ -192,17 +254,30 @@ time curl -sS -o /dev/null -w '%{http_code}\n' -X POST "$ENDPOINT/mcp" \
   -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
   -H "Authorization: Bearer $MCP_AUTH_TOKEN" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"service_identity","arguments":{}}}'
+
+# Let the function scale back to zero again before timing plan_read cold.
+time curl -sS -o /dev/null -w '%{http_code}\n' -X POST "$ENDPOINT/mcp" \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer $MCP_AUTH_TOKEN" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"plan_read","arguments":{}}}'
+# repeat immediately — warm, and the installation token is now cached in memory too
+time curl -sS -o /dev/null -w '%{http_code}\n' -X POST "$ENDPOINT/mcp" \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer $MCP_AUTH_TOKEN" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"plan_read","arguments":{}}}'
 ```
 
-Record both measured numbers here, then set `.mcp.json`'s `timeout`
-comfortably above the cold figure (the template above ships a
-conservative placeholder of 30000 ms pending this measurement — treat
-it as provisional, not the recorded value):
+Record all four measured numbers here, then set `.mcp.json`'s
+`timeout` comfortably above the highest cold figure (the template
+above ships a conservative placeholder of 30000 ms — treat it as
+provisional until both tools have been measured):
 
 | Measurement                    | Value                                                   | Measured |
 | ------------------------------ | ------------------------------------------------------- | -------- |
-| Cold (first call after idle)   | **~1.70 s**                                             | yes      |
-| Warm (immediately following)   | **~0.35–0.60 s**                                        | yes      |
+| `service_identity` cold        | **~1.70 s**                                             | yes      |
+| `service_identity` warm        | **~0.35–0.60 s**                                        | yes      |
+| `plan_read` cold               | not yet measured (owner action O3 outstanding)          | no       |
+| `plan_read` warm               | not yet measured (owner action O3 outstanding)          | no       |
 | Configured `.mcp.json` timeout | 30000 ms (ample headroom above the ~1.70 s cold figure) | —        |
 
 First measurements, taken from a cloud session against the deployed
@@ -215,6 +290,10 @@ figures still stand. Re-measure once the fix is redeployed if a more
 precise number is wanted; the 30s enlistment timeout has ample
 headroom over either figure regardless.
 
+`plan_read`'s cold/warm figures cannot be measured without owner
+action O3 (Step 2) and a redeploy (Step 3) — recorded here as a
+Backlog item, not silently left blank.
+
 ## Running cost
 
 Not yet measured — record the actual AWS Cost Explorer figure here
@@ -225,15 +304,18 @@ design sketch expects cents per month at this volume).
 
 - **`/health` never answers** — check `sam deploy`'s output for stack
   failure events (`aws cloudformation describe-stack-events`); the
-  most common cause is the `AuthTokenSecretName` parameter not
-  matching the secret created in Step 1 exactly (CloudFormation
-  resolves the dynamic reference at deploy time and fails the deploy,
-  not the runtime call, if it cannot).
+  most common cause is the `AuthTokenSecretName` (or, once Step 2 is
+  wired in, `GithubAppPrivateKeySecretName`) parameter not matching
+  the secret created for it exactly (CloudFormation resolves the
+  dynamic reference at deploy time and fails the deploy, not the
+  runtime call, if it cannot).
 - **`/mcp` returns 500 `server_misconfigured`** — `MCP_AUTH_TOKEN` did
   not resolve into the Lambda's environment; re-check the secret name
   and that the deploying principal has `secretsmanager:GetSecretValue`
   on it (CloudFormation resolves the dynamic reference using the
   deploying principal's permissions, not the Lambda's execution role —
   the Lambda never calls Secrets Manager itself).
+- **`plan_read` returns a tool error naming missing `GITHUB_APP_*`
+  variables** — see Step 6's troubleshooting note above.
 - **Local surface works, web surface does not** — this is O5, not a
-  deploy defect; see Step 6.
+  deploy defect; see Step 7.

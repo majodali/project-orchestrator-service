@@ -1,14 +1,15 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  project-orchestrator-service — chunk 1 child B (node P2-N008, the
-  reachability slice): one Lambda function behind an HTTP API, serving
-  MCP over streamable HTTP, with a single `service_identity` tool.
-  See docs/runbook.md for the deploy procedure and
+  project-orchestrator-service — chunk 1, node P2-N002 of
+  p2-n002-service-skeleton: one Lambda function behind an HTTP API,
+  serving MCP over streamable HTTP. `service_identity` (child B, node
+  P2-N008) and `plan_read` (child C, node P2-N009, GitHub App
+  credentials below) are wired; the advisory-lease write path (child
+  D, node P2-N010) and its DynamoDB table land next. See
+  docs/runbook.md for the deploy procedure and
   https://github.com/majodali/project-orchestrator/blob/main/docs/plans/p2-n002-service-skeleton.md
-  for why this template is shaped the way it is. No plan-state
-  resources (DynamoDB, GitHub App wiring) — this slice proves
-  reachability only; those land with children C and D.
+  for why this template is shaped the way it is.
 
 Parameters:
   Stage:
@@ -58,17 +59,54 @@ Parameters:
       HEAD` — see docs/runbook.md. Used only to answer
       `service_identity`; never used for authorization.
 
+  GithubAppId:
+    Type: String
+    Description: >
+      The numeric ID of the GitHub App `plan_read` reads through
+      (owner action O3, decision 6 of the p2-n002 plan — an
+      installation with `contents: read`, never a personal access
+      token). Not secret — visible on the App's own settings page.
+      Set by scripts/deploy.sh from the GITHUB_APP_ID environment
+      variable; see docs/runbook.md.
+
+  GithubAppInstallationId:
+    Type: String
+    Description: >
+      The App's installation ID for majodali/project-orchestrator
+      (owner action O3) — visible in the installation settings URL.
+      Not secret. Set by scripts/deploy.sh from
+      GITHUB_APP_INSTALLATION_ID; see docs/runbook.md.
+
+  GithubAppPrivateKeySecretName:
+    Type: String
+    Description: >
+      Name (not ARN) of the AWS Secrets Manager secret whose
+      SecretString is the GitHub App's PEM private key (owner action
+      O3). The owner creates this secret out of band before
+      deploying, the same pattern as AuthTokenSecretName above —
+      resolved into the Lambda's environment via a CloudFormation
+      dynamic reference at deploy time, so the key is never a literal
+      in this template, in a parameter-overrides file, or in git.
+
 Globals:
   Function:
     Runtime: nodejs22.x
     Architectures:
       - arm64
     MemorySize: 256
-    # Every chunk-1 tool is specified to answer well inside the
-    # enlistment file's per-server timeout (docs/runbook.md records
-    # the measured cold/warm latency once this is deployed); this cap
-    # is a backstop against a hung call, not the expected case.
-    Timeout: 10
+    # `service_identity` (chunk 1 child B) answers well inside 10s
+    # alone. `plan_read` (chunk 1 child C, node P2-N009) adds up to
+    # four sequential GitHub API round trips (mint/reuse an
+    # installation token, resolve the default branch when no ref is
+    # given, resolve the ref to a commit SHA, fetch file content) —
+    # still small individually, but a wider backstop than the
+    # reachability slice needed. 20s leaves comfortable headroom
+    # below the enlistment file's 30s per-server timeout (G7) while
+    # still failing well before a caller's own timeout does. Not yet
+    # measured against a real deployment (owner action O3 is
+    # outstanding); revisit this value once docs/runbook.md records
+    # plan_read's actual cold/warm latency.
+    Timeout: 20
 
 Resources:
   McpFunction:
@@ -103,6 +141,13 @@ Resources:
           # Manager — never a literal in this template or in any
           # parameter-overrides file committed to git (I7).
           MCP_AUTH_TOKEN: !Sub "{{resolve:secretsmanager:${AuthTokenSecretName}:SecretString}}"
+          # plan_read (chunk 1 child C, node P2-N009) — GitHub App
+          # credentials, owner action O3. GithubAppId and
+          # GithubAppInstallationId are not secret; the private key is
+          # resolved the same way MCP_AUTH_TOKEN is above.
+          GITHUB_APP_ID: !Ref GithubAppId
+          GITHUB_APP_INSTALLATION_ID: !Ref GithubAppInstallationId
+          GITHUB_APP_PRIVATE_KEY: !Sub "{{resolve:secretsmanager:${GithubAppPrivateKeySecretName}:SecretString}}"
       Events:
         McpAny:
           Type: HttpApi
