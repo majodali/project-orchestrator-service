@@ -2,3 +2,9 @@ dist
 node_modules
 coverage
 package-lock.json
+
+# A byte-for-byte copy of the coordinating repository's real
+# docs/plan-register.md (test/planRegisterParser.test.ts's round-trip
+# fixture, node P2-N009) — must stay untouched by Prettier's Markdown
+# emphasis-style rewriting or it stops being a verbatim copy.
+test/fixtures/plan-register.sample.md
