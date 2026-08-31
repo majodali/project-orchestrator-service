@@ -224,6 +224,24 @@ Stage` on `McpFunction` and `HttpApi`) rather than selecting the
       the cross-check against `plugin/scripts/form_check.py` and the
       Backlog additions this session identified but did not execute.
 
+- [x] **Migrated to methodology v1.4.0** — 2026-08-31, following the
+      coordinating repository
+      ([majodali/project-orchestrator](https://github.com/majodali/project-orchestrator)
+      PR #3) so the two repositories in this project do not declare
+      different compliance targets. All four v1.4.0 amendments carry
+      migration-note *none* or *none mandatory*, so the pin bump and
+      the Binding block are the whole migration. Two of them touch
+      this repository's future rather than its present: the prose
+      rules P-001–P-006 bind new and edited prose from adoption, and
+      the **Workflow declaration format** now requires three parts
+      (ordered stages, designated live stage, Backlog default rule)
+      in a canonical form — this repository declares no Workflow
+      today, so it carries no duty, but the format applies the moment
+      the deploy workflow is declared. The multi-repo relationship
+      field is **not** in v1.4.0, so the prose statement naming the
+      coordinating repository in
+      [docs/classification.md](classification.md) stays as it is.
+
 ## Upcoming
 
 - [ ] **Plan-state update with the advisory lease** (chunk 1 child D,

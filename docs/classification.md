@@ -5,7 +5,9 @@
      the declaration-accuracy MUST (Constitution Article 4). -->
 
 - **C-tier**: C1
-- **Pinned methodology version**: 1.3.0
+- **Pinned methodology version**: 1.4.0 (compliance target;
+  migrated from 1.3.0 on 2026-08-31 — v1.4.0 migration notes:
+  none mandatory, so the pin bump is the whole migration)
 - **S-level**: S1
 - **Type**: backend-service
 - **Target**: serverless-aws
