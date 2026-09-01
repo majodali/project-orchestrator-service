@@ -495,7 +495,49 @@ reserved keyword: token`. Root cause:
       coordinating repository in
       [docs/classification.md](classification.md) stays as it is.
 
+- [x] **Alias assumptions verified against AWS documentation** (node
+      P2-N013, child A of
+      [P2-N012](https://github.com/majodali/project-orchestrator/blob/main/docs/specs/p2-n012-deploy-from-ci-on-merge.md)) —
+      [docs/findings/alias-assumptions.md](findings/alias-assumptions.md),
+      all six assumptions confirmed (five yes, one yes-conditional).
+      No false assumption; the node is not returned to `plan`.
+      Environment variables are version-scoped (confirmed against
+      AWS's env-vars and versions pages); the invoked qualifier is
+      readable via `c.env.lambdaContext.invokedFunctionArn` through
+      the `hono/aws-lambda` adapter this service uses (confirmed
+      against `node_modules/hono`'s adapter source and AWS's Node.js
+      context-object page); a Function URL can be bound to an alias
+      and the production HTTP API integration can be bound to `live`
+      (both confirmed against AWS/CloudFormation reference pages); a
+      Function URL delivers a payload-format-2.0 event the adapter's
+      existing `EventV2Processor` already handles, the same path the
+      HTTP API integration exercises (confirmed against AWS's
+      Function-URL invocation page and the adapter source). The one
+      conditional finding: a stack update **can** reset `live` if the
+      template manages it through SAM's `AutoPublishAlias` (AWS
+      documents that mechanism as republishing and repointing the
+      named alias on every code-changing deploy) — avoidable, and the
+      finding prescribes the mechanism child C must use instead: a
+      plain `AWS::Lambda::Alias` for `live` whose `FunctionVersion` is
+      a template parameter that `scripts/deploy.sh` reads back from
+      the live AWS state on every ordinary deploy, with promotion done
+      as a separate `aws lambda update-alias` CLI call outside
+      CloudFormation. Read documentation only; no code or template
+      changed in this task (that is child C's, node P2-N015).
+
 ## Upcoming
+
+- [ ] **`scripts/deploy.sh` must read back `live`'s current
+      `FunctionVersion` before every ordinary deploy** (surfaced by
+      node P2-N013's finding 5,
+      [docs/findings/alias-assumptions.md](findings/alias-assumptions.md)) —
+      if the `LiveVersion` template parameter's declared value ever
+      goes stale relative to the alias's actual AWS state (e.g. a
+      manual promotion outside the deploy script, or a deploy run from
+      a stale checkout), the next ordinary `sam deploy` would
+      silently demote production by reverting `live` to the stale
+      value. Child C (node P2-N015) owns getting this right; noted
+      here so it is not rediscovered as a fresh defect after the fact.
 
 - [ ] **Degrade to git-only, and enlistment documentation** (chunk 1
       child E, node P2-N011) — the R12 exercise (dead endpoint and unset
