@@ -131,6 +131,25 @@ Resources:
         # natively, so no extra loader config is required here.
         OutExtension:
           - .js=.mjs
+        # Node P2-N010 rework (post-deploy 500 on every route,
+        # including /health): @aws-sdk/client-dynamodb pulls in
+        # @smithy/node-http-handler, which is CommonJS and
+        # require()s Node builtins (e.g. "node:https"). Under
+        # --format=esm there is no `require`, so esbuild's own
+        # dynamic-require shim throws at import time and the Lambda
+        # function never initializes — API Gateway's own 500, not the
+        # app's. This banner defines a real `require` via node:module's
+        # createRequire before any bundled code runs, the standard
+        # remedy for CJS-dependency interop in an ESM esbuild bundle;
+        # ESM output and hono/aws-lambda's `.mjs` handler resolution
+        # are unaffected. See package.json's `bundle:lambda` script for
+        # the identical banner applied there (kept in sync — both are
+        # "the same bundle `sam build` produces", per README.md), and
+        # test/lambdaBundle.test.ts for the regression test that
+        # imports the built bundle from a real ESM context, the way
+        # `node -e` (CommonJS mode) never would have caught this.
+        Banner:
+          - "js=import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);"
     Properties:
       Handler: src/lambda.handler
       Description: >

@@ -119,6 +119,29 @@ below call `$ENDPOINT`.
 `https://…execute-api…amazonaws.com` URL — no stage segment (see "Why
 the endpoint has no stage segment" below).
 
+### Why the bundle carries an esbuild banner
+
+`template.yaml`'s `BuildProperties.Banner` (and `package.json`'s
+`bundle:lambda` script, the identical bundle for local checking) defines
+a real `require` via `node:module`'s `createRequire` before any bundled
+code runs. This was added as node P2-N010 rework, fixing a post-deploy
+outage: `@aws-sdk/client-dynamodb` (the write path) reaches
+`@smithy/node-http-handler`, which is CommonJS and `require()`s Node
+builtins; under this template's `--format=esm` there is no ambient
+`require`, so esbuild's own dynamic-require shim threw
+`Dynamic require of "node:https" is not supported` the instant the
+bundle was loaded — every cold start, so every route, including
+`/health`, returned API Gateway's own `{"message":"Internal Server
+Error"}` rather than the app's. **Do not remove the `Banner` property
+or drop `--format=esm`'s banner flag** without re-running
+`test/lambdaBundle.test.ts` (which imports the built bundle from a real
+ESM subprocess, the only way this defect reproduces) against the
+result — a `node -e` check or a plain dynamic import from inside a test
+runner will not catch a regression here; see that test's doc comment.
+No deploy procedure or parameter changed — `sam build && sam deploy`
+(Step 3) is unchanged; a stack deployed before this fix simply needs a
+redeploy of this same Step 3 with the fixed `template.yaml`.
+
 ### Why the endpoint has no stage segment
 
 The HTTP API's actual stage is fixed to the API Gateway reserved name
@@ -333,6 +356,17 @@ design sketch expects cents per month at this volume).
 
 ## Troubleshooting
 
+- **Every route, including `/health`, returns
+  `{"message":"Internal Server Error"}` (API Gateway's own error body,
+  not the app's)** — the function never initialized; check
+  `aws logs tail /aws/lambda/<McpFunctionName>` for
+  `Dynamic require of "..." is not supported`. This was the node
+  P2-N010 rework outage — see "Why the bundle carries an esbuild
+  banner" above. If the deployed function predates that fix, redeploy
+  (Step 3) with the current `template.yaml`; if the error recurs after
+  that, a newly added CommonJS dependency has reintroduced it and
+  `test/lambdaBundle.test.ts` should already have failed locally before
+  this was ever deployed.
 - **`/health` never answers** — check `sam deploy`'s output for stack
   failure events (`aws cloudformation describe-stack-events`); the
   most common cause is the `AuthTokenSecretName` (or, once Step 2 is
