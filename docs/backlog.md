@@ -316,6 +316,61 @@ Stage` on `McpFunction` and `HttpApi`) rather than selecting the
       for the full account, including the packet-widening reads and the
       Backlog additions this session identified but did not execute.
 
+- [x] **Rework: fix the lease-release reserved-word defect (post-deploy
+      defect, node P2-N010)** — the chunk 1 gate demonstration moved a
+      real node through a real stage transition against the deployed
+      service; `plan_confirm` succeeded, then the first-ever production
+      call into the lease table failed to release the lease:
+      `confirmed, but could not release the lease: could not reach the
+write-lease store: 1 validation error detected: Invalid
+ConditionExpression: Attribute name is a reserved keyword;
+reserved keyword: token`. Root cause:
+      `src/planRegister/dynamoLeaseBackend.ts`'s `releaseLease` used
+      `ConditionExpression: "token = :token"` — `token` is one of
+      DynamoDB's reserved words, rejected unless aliased. `acquireLease`
+      (`attribute_not_exists(pk) OR expiresAt < :now`) and `readLease`
+      (no expression) use no reserved words, checked and confirmed
+      unaffected. Fix: `#token = :token"` with
+      `ExpressionAttributeNames: { "#token": "token" }`. The design is
+      unchanged — same lease shape, same TTL semantics (still the
+      authoritative expiry mechanism; not touched), same four tools; the
+      lease was never at risk because this service holds no write
+      credential and the lease self-releases by TTL when release fails.
+      Why every one of the pre-existing 124 tests missed this: all of
+      them run `InMemoryLeaseBackend`, and `DynamoLeaseBackend`'s own
+      contract test (`test/leaseBackend.test.ts`) uses a fake client
+      that reads `ExpressionAttributeValues` directly and never parses
+      the expression string DynamoDB actually validates — the same
+      "check that cannot fail in the environment the code runs in"
+      shape as the ESM-bundle and `$default`-stage defects. New:
+      `src/planRegister/dynamoReservedWords.ts` (a reconstruction —
+      declared partial and why in its own doc comment; this session had
+      no network access to AWS's reserved-word documentation page and
+      declined an unverified, suspiciously well-timed third-party npm
+      package offering "the complete list" instead) and
+      `src/planRegister/dynamoExpressionSafety.ts`
+      (`findUnaliasedReservedAttributeNames`, generalizing to any
+      `ConditionExpression` / `KeyConditionExpression` /
+      `ProjectionExpression` / `UpdateExpression` / `FilterExpression`
+      this file builds, not just the one already found).
+      `test/dynamoExpressionSafety.test.ts`: unit tests of that checker,
+      plus one integration test that drives the real
+      `DynamoLeaseBackend` through a recording fake client and asserts
+      every command it actually sends is reserved-word-safe — proven to
+      catch the defect by reverting the fix and watching it fail with
+      `token` named, then restoring it and watching it pass (both
+      transcripts in task T027's report), not merely written and
+      assumed to work. `docs/runbook.md` gained a Troubleshooting entry
+      recognizing this exact production error message. No existing test
+      altered (W-002); 6 new tests, 130/130 passing. Verified this
+      session: `npm run build`, `npm test` (130/130), `npm run lint`,
+      all clean — still no AWS credentials or Docker, so the fix is
+      verified against the reserved-word list and the real command
+      shapes `DynamoLeaseBackend` builds, not against a real DynamoDB
+      table. **Not verified**, needing the owner's redeploy: the fixed
+      `releaseLease` against the real `LeaseTable` (the next
+      `plan_lease_release` / `plan_confirm` call against the deployed
+      service). See task T027's report for the full account.
 - [x] **Rework: fix the ESM/CJS bundle outage — production 500s on
       every route (node P2-N010 rework)** — the owner merged and
       deployed the write path above; every route, including the
@@ -526,3 +581,7 @@ Stage` on `McpFunction` and `HttpApi`) rather than selecting the
       node's `template.yaml`) plus a session serving the Orchestrator
       role (p2-n002 specification, "How verification runs") — tracked
       here so it is not mistaken for something this node already did.
+      The first attempt at this exercise ran the transition and
+      `plan_confirm` successfully but hit the lease-release reserved-word
+      defect above; a redeploy carrying that fix (this repository's
+      `main`/this branch, once merged) is needed before re-attempting.
