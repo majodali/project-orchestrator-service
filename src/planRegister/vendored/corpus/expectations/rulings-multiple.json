@@ -1,0 +1,25 @@
+{
+  "fixture": "rulings-multiple",
+  "exitCode": 1,
+  "totalFindings": 3,
+  "findings": [
+    {
+      "severity": "violation",
+      "rule": "rulings",
+      "path": "docs/rulings.md",
+      "message": "precedent-applied names 'RU-999', which the Ruling register does not define"
+    },
+    {
+      "severity": "violation",
+      "rule": "rulings",
+      "path": "docs/rulings.md",
+      "message": "RU-002 was applied (task T002) but its status is 'superseded by RU-003, because it was wrong'"
+    },
+    {
+      "severity": "violation",
+      "rule": "rulings",
+      "path": "docs/rulings.md",
+      "message": "RU-003 was applied to T003 but its Applied list does not record it"
+    }
+  ]
+}

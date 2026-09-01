@@ -1,0 +1,13 @@
+{
+  "fixture": "register-id",
+  "exitCode": 1,
+  "totalFindings": 1,
+  "findings": [
+    {
+      "severity": "violation",
+      "rule": "register-id",
+      "path": "docs/plan-register.md",
+      "message": "line 6: duplicate node ID P1-N001"
+    }
+  ]
+}

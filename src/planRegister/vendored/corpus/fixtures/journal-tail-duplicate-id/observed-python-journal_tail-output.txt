@@ -1,0 +1,2 @@
+2026-01-01T00:00:00Z  dispatched          task=T001  P1-N001 (Second occurrence, duplicate ID, different title)  stage=execute  role=implementer  model=claude-sonnet-5  session=session_fixture
+journal_tail: showed 1 of 1 events.

@@ -1,0 +1,25 @@
+{
+  "fixture": "journal-malformed",
+  "exitCode": 1,
+  "totalFindings": 3,
+  "findings": [
+    {
+      "severity": "violation",
+      "rule": "journal-form",
+      "path": "orchestration/journal.jsonl",
+      "message": "line 1: invalid JSON (Expecting value)"
+    },
+    {
+      "severity": "violation",
+      "rule": "journal-form",
+      "path": "orchestration/journal.jsonl",
+      "message": "line 2: missing required field ts/event"
+    },
+    {
+      "severity": "violation",
+      "rule": "journal-form",
+      "path": "orchestration/journal.jsonl",
+      "message": "line 3: unknown event kind 'mystery-event'"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "fixture": "register-parse",
+  "exitCode": 1,
+  "totalFindings": 1,
+  "findings": [
+    {
+      "severity": "violation",
+      "rule": "register-parse",
+      "path": "docs/plan-register.md",
+      "message": "line 7: node-like line does not parse: '- P1-N002 [executing missing-close-bracket bad line'"
+    }
+  ]
+}

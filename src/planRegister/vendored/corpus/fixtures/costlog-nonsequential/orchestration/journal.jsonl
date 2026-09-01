@@ -1,0 +1,2 @@
+{"ts": "2026-01-01T00:00:00Z", "event": "accepted", "task": "T001", "node": "P1-N001", "stage": "execute", "role": "implementer"}
+{"ts": "2026-01-02T00:00:00Z", "event": "accepted", "task": "T003", "node": "P1-N001", "stage": "execute", "role": "implementer"}

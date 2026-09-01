@@ -1,0 +1,19 @@
+{
+  "fixture": "journal-crosscheck",
+  "exitCode": 1,
+  "totalFindings": 2,
+  "findings": [
+    {
+      "severity": "violation",
+      "rule": "journal-crosscheck",
+      "path": "docs/cost-log.md",
+      "message": "journal has accepted event for T002 but the Cost log has no row"
+    },
+    {
+      "severity": "violation",
+      "rule": "journal-crosscheck",
+      "path": "orchestration/journal.jsonl",
+      "message": "Cost log row T001 has no accepted journal event"
+    }
+  ]
+}

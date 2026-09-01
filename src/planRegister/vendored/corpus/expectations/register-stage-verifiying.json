@@ -1,0 +1,13 @@
+{
+  "fixture": "register-stage-verifiying",
+  "exitCode": 1,
+  "totalFindings": 1,
+  "findings": [
+    {
+      "severity": "violation",
+      "rule": "register-stage",
+      "path": "docs/plan-register.md",
+      "message": "P1-N001: unknown stage [verifiying]"
+    }
+  ]
+}

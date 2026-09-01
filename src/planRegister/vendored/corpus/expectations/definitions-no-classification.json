@@ -1,0 +1,13 @@
+{
+  "fixture": "definitions-no-classification",
+  "exitCode": 1,
+  "totalFindings": 1,
+  "findings": [
+    {
+      "severity": "violation",
+      "rule": "definitions",
+      "path": "docs/classification.md",
+      "message": "enrolled project has no docs/classification.md"
+    }
+  ]
+}

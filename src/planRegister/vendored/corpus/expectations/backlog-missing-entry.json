@@ -1,0 +1,13 @@
+{
+  "fixture": "backlog-missing-entry",
+  "exitCode": 1,
+  "totalFindings": 1,
+  "findings": [
+    {
+      "severity": "violation",
+      "rule": "backlog-ref",
+      "path": "docs/plan-register.md",
+      "message": "P1-N001 [identified] has no Backlog entry referencing it"
+    }
+  ]
+}

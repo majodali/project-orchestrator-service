@@ -1,0 +1,13 @@
+{
+  "fixture": "rulings-no-register",
+  "exitCode": 1,
+  "totalFindings": 1,
+  "findings": [
+    {
+      "severity": "violation",
+      "rule": "rulings",
+      "path": "docs/rulings.md",
+      "message": "journal has precedent-applied events but there is no Ruling register"
+    }
+  ]
+}

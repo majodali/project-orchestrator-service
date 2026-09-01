@@ -1,0 +1,25 @@
+{
+  "fixture": "costlog-malformed",
+  "exitCode": 1,
+  "totalFindings": 3,
+  "findings": [
+    {
+      "severity": "violation",
+      "rule": "costlog-form",
+      "path": "docs/cost-log.md",
+      "message": "row 5: malformed task ID 'Txx'"
+    },
+    {
+      "severity": "violation",
+      "rule": "costlog-form",
+      "path": "docs/cost-log.md",
+      "message": "row 6: 3 cells, expected 9"
+    },
+    {
+      "severity": "violation",
+      "rule": "costlog-form",
+      "path": "docs/cost-log.md",
+      "message": "duplicate task ID T001"
+    }
+  ]
+}
