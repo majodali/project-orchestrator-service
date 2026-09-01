@@ -1,0 +1,13 @@
+{
+  "fixture": "register-structure-interior-wrong-stage",
+  "exitCode": 1,
+  "totalFindings": 1,
+  "findings": [
+    {
+      "severity": "violation",
+      "rule": "register-structure",
+      "path": "docs/plan-register.md",
+      "message": "P1-N001: has children but stage is [executing] (interior nodes are broken-down/verifying/done)"
+    }
+  ]
+}

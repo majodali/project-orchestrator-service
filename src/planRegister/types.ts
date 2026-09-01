@@ -1,68 +1,31 @@
 /**
- * Structured shape of a Plan register (chunk 1 child C, node P2-N009).
- * The grammar this module's parser implements is
- * docs/process/plan-register.md in the coordinating repository
- * (majodali/project-orchestrator) — "Entry anatomy" and "Hierarchy is
- * expressed by list nesting" — cited, not restated here. `stage`'s
- * vocabulary is the node lifecycle in docs/process/plan-model.md,
- * also cited rather than re-declared: this module reports whatever
- * stage string the register carries and does not itself validate it
- * against the lifecycle (that is a verifier's/auditor's job, not a
- * read tool's — see I2, "legality is not a second truth").
+ * Structured shape of a Plan register.
+ *
+ * Re-exported from `./vendored/plan-register.ts`, the canonical shared
+ * grammar/lifecycle unit vendored from majodali/project-orchestrator's
+ * `plugin/scripts/lib/plan-register.ts` (ruling RU-012, node P2-N010
+ * — chunk 1 child D). Before this node, this file duplicated that
+ * grammar by hand (node P2-N009); RU-012 settled that two
+ * repositories share one canonical copy, vendored outward by a
+ * generator with a `--check` drift mode, rather than maintaining a
+ * second implementation here. See `./vendored/GENERATED.md` for
+ * provenance and `README.md`'s "Keeping the vendored grammar unit in
+ * sync" for how to re-vendor.
+ *
+ * `Stage` / `STAGES` (the node-lifecycle vocabulary, cited to
+ * `docs/process/plan-model.md` in the coordinating repository) travel
+ * with the same unit and are re-exported here too — the write path
+ * (`src/planRegister/transitions.ts`) is what actually enforces that
+ * vocabulary; this module, like the vendored unit itself, carries it
+ * only as data (D5 — "no policy in the unit").
  */
 
-export interface HoldMarker {
-  kind: "gated" | "blocked";
-  reason: string;
-}
-
-/** A `label: target` pair parsed out of a node's post-em-dash text. */
-export interface RegisterLink {
-  label: string;
-  target: string;
-}
-
-export interface PlanNode {
-  id: string;
-  stage: string;
-  hold: HoldMarker | null;
-  title: string;
-  /**
-   * Verbatim text after the entry's em dash, if any — kept in full so
-   * nothing is lost even when it does not fit the `label: target`
-   * link grammar (e.g. the real register's P1-N006 line, which
-   * carries plain prose there instead of a link). `links` below is a
-   * best-effort structured read of this same text.
-   */
-  annotation: string | null;
-  links: RegisterLink[];
-  parentId: string | null;
-  /** Document order, not creation order (register nodes are never
-   * reordered by this parser). */
-  childIds: string[];
-  /** 1-based line number in the source register text. */
-  line: number;
-}
-
-/**
- * A register line that looked like it was trying to be a node entry
- * (matched the node-*like* shape) but did not parse as one, or a
- * structural problem (a duplicate ID) discovered while parsing one
- * that did. Always reported, never silently dropped — see this
- * node's verification criteria.
- */
-export interface RegisterParseError {
-  line: number;
-  /** The literal source line, untouched. */
-  raw: string;
-  reason: string;
-}
-
-export interface RegisterParseResult {
-  nodes: Map<string, PlanNode>;
-  /** Node IDs in document (source-line) order. */
-  order: string[];
-  /** IDs of nodes with no parent — the register's top-level entries. */
-  rootIds: string[];
-  errors: RegisterParseError[];
-}
+export type {
+  HoldMarker,
+  PlanNode,
+  RegisterLink,
+  RegisterParseError,
+  RegisterParseResult,
+  Stage,
+} from "./vendored/plan-register.js";
+export { STAGES } from "./vendored/plan-register.js";

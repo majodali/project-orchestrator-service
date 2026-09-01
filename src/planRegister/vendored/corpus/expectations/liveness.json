@@ -1,0 +1,19 @@
+{
+  "fixture": "liveness",
+  "exitCode": 1,
+  "totalFindings": 2,
+  "findings": [
+    {
+      "severity": "violation",
+      "rule": "liveness",
+      "path": "docs/plan-register.md",
+      "message": "P1-N001 is [done] but carries a [gated: ...] hold marker"
+    },
+    {
+      "severity": "violation",
+      "rule": "liveness",
+      "path": "orchestration/journal.jsonl",
+      "message": "P1-N002 is [executing] with no hold marker and no open dispatched task in the journal"
+    }
+  ]
+}

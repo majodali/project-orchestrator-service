@@ -1,0 +1,31 @@
+{
+  "fixture": "definitions-missing-markers",
+  "exitCode": 1,
+  "totalFindings": 4,
+  "findings": [
+    {
+      "severity": "violation",
+      "rule": "definitions",
+      "path": "docs/classification.md",
+      "message": "Plan register instance exists but the Classification's Custom definitions section has no citation (marker 'plan-register')"
+    },
+    {
+      "severity": "violation",
+      "rule": "definitions",
+      "path": "docs/classification.md",
+      "message": "Cost log instance exists but the Classification's Custom definitions section has no citation (marker 'cost-log')"
+    },
+    {
+      "severity": "violation",
+      "rule": "definitions",
+      "path": "docs/classification.md",
+      "message": "Run journal instance exists but the Classification's Custom definitions section has no citation (marker 'observability')"
+    },
+    {
+      "severity": "violation",
+      "rule": "definitions",
+      "path": "docs/classification.md",
+      "message": "Ruling register instance exists but the Classification's Custom definitions section has no citation (marker 'rulings')"
+    }
+  ]
+}

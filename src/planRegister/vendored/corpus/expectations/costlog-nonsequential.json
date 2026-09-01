@@ -1,0 +1,13 @@
+{
+  "fixture": "costlog-nonsequential",
+  "exitCode": 0,
+  "totalFindings": 1,
+  "findings": [
+    {
+      "severity": "warning",
+      "rule": "costlog-form",
+      "path": "docs/cost-log.md",
+      "message": "task IDs not sequential: ['T001', 'T003']"
+    }
+  ]
+}

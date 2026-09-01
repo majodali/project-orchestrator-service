@@ -28,6 +28,8 @@ import { getServiceIdentity } from "./serviceInfo.js";
 export interface CreateAppOptions {
   /** Forwarded to createMcpServer — test-only, see src/mcpServer.ts. */
   planRegisterFetcher?: CreateMcpServerOptions["planRegisterFetcher"];
+  /** Forwarded to createMcpServer — test-only, see src/mcpServer.ts. */
+  planLeaseBackend?: CreateMcpServerOptions["planLeaseBackend"];
 }
 
 export function createApp(options: CreateAppOptions = {}): Hono {
@@ -67,6 +69,7 @@ export function createApp(options: CreateAppOptions = {}): Hono {
       });
       const server = createMcpServer({
         planRegisterFetcher: options.planRegisterFetcher,
+        planLeaseBackend: options.planLeaseBackend,
       });
       await server.connect(transport);
       try {

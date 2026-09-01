@@ -10,10 +10,17 @@
 This is the procedure that takes a stranger from an empty AWS account
 to a deployed, authenticated MCP endpoint answering the
 `service_identity` tool (chunk 1 child B, node P2-N008 — the
-reachability slice) and the `plan_read` tool (chunk 1 child C, node
+reachability slice), the `plan_read` tool (chunk 1 child C, node
 P2-N009 — the first real plan-state read, through an installed GitHub
-App). Nothing here writes to git; that starts with child D (node
-P2-N010).
+App), and the write path — `plan_lease_acquire` / `plan_update` /
+`plan_confirm` / `plan_lease_release` (chunk 1 child D, node P2-N010).
+**This service itself never writes to git** — the write path validates
+a transition and returns the exact edit to make; the calling session
+applies it, commits it, and pushes (G4). No owner action changes for
+child D: the advisory lease's DynamoDB table (`LeaseTable` in
+`template.yaml`) is provisioned by the same `sam deploy` Step 3
+already runs, with no secret and no new required environment
+variable.
 
 ## What you need before you start
 
@@ -101,8 +108,10 @@ export GITHUB_APP_PRIVATE_KEY_SECRET_NAME=project-orchestrator-service/github-ap
 
 It builds with esbuild (`template.yaml`'s `Metadata.BuildMethod`,
 bundling `src/lambda.ts`), deploys via CloudFormation
-(`--resolve-s3`, so no bucket needs to exist beforehand), and prints
-the stack's `Endpoint` output. **Report that URL** — it is the value
+(`--resolve-s3`, so no bucket needs to exist beforehand — this also
+provisions `LeaseTable`, the advisory write lease's DynamoDB table,
+node P2-N010; nothing extra to configure for it), and prints the
+stack's `Endpoint` output. **Report that URL** — it is the value
 `.mcp.json` needs (Step 6) and what this runbook's verification steps
 below call `$ENDPOINT`.
 
@@ -177,6 +186,21 @@ curl -sS -i -X POST "$ENDPOINT/mcp" \
   -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
   -H "Authorization: Bearer $MCP_AUTH_TOKEN" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"plan_read","arguments":{}}}'
+
+# The write path's lease, exercised without touching the real
+# register (a full plan_update/plan_confirm round trip against real
+# content is the gate demonstration itself — see the p2-n002
+# specification's G3). Expect 200 and a token in structuredContent,
+# then a second 200 with {"released": true}.
+curl -sS -i -X POST "$ENDPOINT/mcp" \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer $MCP_AUTH_TOKEN" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"plan_lease_acquire","arguments":{"holder":"runbook-verification"}}}'
+# copy the "token" field from the response above into $LEASE_TOKEN
+curl -sS -i -X POST "$ENDPOINT/mcp" \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer $MCP_AUTH_TOKEN" \
+  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"plan_lease_release\",\"arguments\":{\"leaseToken\":\"$LEASE_TOKEN\"}}}"
 ```
 
 The `service_identity` call's `structuredContent` should report
@@ -221,13 +245,20 @@ Clone the coordinating repository fresh in both a local terminal
 session and a Claude Code web session, with only `MCP_AUTH_TOKEN` set
 in the environment (no other configuration). In each:
 
-1. List tools — `service_identity` and `plan_read` should appear.
+1. List tools — `service_identity`, `plan_read`, `plan_lease_acquire`,
+   `plan_update`, `plan_confirm`, and `plan_lease_release` should all
+   appear.
 2. Call `service_identity` — it should return within the configured
    timeout, matching Step 6's `curl` output.
 3. Call `plan_read` — it should return within the configured timeout,
    matching Step 6's `curl` output, and match what the coordinating
    repository's `docs/plan-register.md` shows on GitHub at the
    reported SHA.
+4. Move a real node through a real stage transition end to end
+   (`plan_lease_acquire` -> `plan_update` -> apply the returned edit,
+   commit, push -> `plan_confirm`) — the gate demonstration itself
+   (p2-n002 specification, G3/G4); not a routine part of this runbook,
+   named here so it is not missed.
 
 **If the web surface cannot reach the endpoint** (a platform egress
 block, not an auth or deploy problem — distinguishable because the
@@ -317,5 +348,16 @@ design sketch expects cents per month at this volume).
   the Lambda never calls Secrets Manager itself).
 - **`plan_read` returns a tool error naming missing `GITHUB_APP_*`
   variables** — see Step 6's troubleshooting note above.
+- **`plan_lease_acquire` / `plan_update` / `plan_confirm` /
+  `plan_lease_release` return a tool error naming `LEASE_TABLE_NAME`**
+  — this should not happen from a stack deployed by `scripts/deploy.sh`
+  (`template.yaml` always wires `LEASE_TABLE_NAME` from `LeaseTable`);
+  if it does, the deployed function's environment does not match this
+  template — re-run Step 3. A tool error citing an AWS/DynamoDB error
+  instead (rather than naming the missing variable) means
+  `LeaseTable` exists but the function's role cannot reach it — check
+  `template.yaml`'s `McpFunction.Properties.Policies` (a
+  `DynamoDBCrudPolicy` scoped to `LeaseTable`) actually deployed
+  (`aws cloudformation describe-stack-resources`).
 - **Local surface works, web surface does not** — this is O5, not a
   deploy defect; see Step 7.
