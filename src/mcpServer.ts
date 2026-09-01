@@ -4,6 +4,9 @@
  * service at all, over an authenticated transport, and get a real
  * answer back. `plan_read` (chunk 1 child C, node P2-N009) is the
  * first real plan-state tool — see src/planReadTool.ts.
+ * `plan_lease_acquire` / `plan_update` / `plan_confirm` /
+ * `plan_lease_release` (chunk 1 child D, node P2-N010) are the write
+ * path — see src/planWriteTools.ts.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -11,7 +14,9 @@ import { z } from "zod";
 
 import { getServiceIdentity } from "./serviceInfo.js";
 import { registerPlanReadTool } from "./planReadTool.js";
+import { registerPlanWriteTools } from "./planWriteTools.js";
 import type { RegisterFetcher } from "./planRegister/registerFetcher.js";
+import type { LeaseBackend } from "./planRegister/leaseBackend.js";
 
 const identityOutputShape = {
   service: z.string().describe("The service's own name."),
@@ -30,12 +35,21 @@ const identityOutputSchema = z.object(identityOutputShape);
 
 export interface CreateMcpServerOptions {
   /**
-   * Overrides `plan_read`'s GitHub fetcher — test-only. Production
-   * call sites (src/httpApp.ts) omit this and get the real,
-   * GitHub-App-backed fetcher built lazily from environment
-   * configuration (src/planRegister/defaultFetcher.ts).
+   * Overrides `plan_read` and the write path's GitHub fetcher —
+   * test-only. Production call sites (src/httpApp.ts) omit this and
+   * get the real, GitHub-App-backed fetcher built lazily from
+   * environment configuration (src/planRegister/defaultFetcher.ts).
    */
   planRegisterFetcher?: RegisterFetcher;
+  /**
+   * Overrides the write path's lease backend — test-only (and used by
+   * a local `npm run dev` session with no DynamoDB configured, via
+   * src/planRegister/inMemoryLeaseBackend.ts). Production call sites
+   * omit this and get the real, DynamoDB-backed backend built lazily
+   * from environment configuration
+   * (src/planRegister/defaultLeaseBackend.ts).
+   */
+  planLeaseBackend?: LeaseBackend;
 }
 
 /**
@@ -78,6 +92,10 @@ export function createMcpServer(
   );
 
   registerPlanReadTool(server, options.planRegisterFetcher);
+  registerPlanWriteTools(server, {
+    fetcherOverride: options.planRegisterFetcher,
+    leaseBackendOverride: options.planLeaseBackend,
+  });
 
   return server;
 }

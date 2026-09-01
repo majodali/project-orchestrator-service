@@ -224,11 +224,100 @@ Stage` on `McpFunction` and `HttpApi`) rather than selecting the
       the cross-check against `plugin/scripts/form_check.py` and the
       Backlog additions this session identified but did not execute.
 
+- [x] **Plan-state update with the advisory lease** (chunk 1 child D,
+      node P2-N010) — `plan_lease_acquire` / `plan_update` / `plan_confirm`
+      / `plan_lease_release` (`src/planWriteTools.ts`), the three-step
+      git-authoritative write model: this service never writes git and
+      holds no repository write credential (G4) — `plan_update`
+      validates a requested stage transition against the node
+      lifecycle and the register as it currently stands in git, and
+      returns the exact edit (file, the line as it is, the line as it
+      should be) for the calling session to apply, commit with its own
+      documentation (W-003), and push itself; `plan_confirm` then
+      checks the pushed commit actually carries it. The shared grammar
+      unit is adopted (RU-012): the coordinating repository's canonical
+      `plugin/scripts/lib/plan-register.ts` and its conformance corpus
+      are vendored byte-for-byte into `src/planRegister/vendored/` via
+      `sync_shared_unit.ts`, and this repository's own
+      `src/planRegister/parser.ts` / `types.ts` — a hand-maintained
+      second copy of the same grammar since node P2-N009 — are now thin
+      re-exports of it (`README.md`'s "The vendored register grammar
+      unit, and its drift check" records the re-vendor/`--check`
+      command; `.prettierignore` and `eslint.config.js` exclude the
+      vendored tree, generated, not authored here). The P2-N009
+      stage-vocabulary finding (the parser passed an out-of-vocabulary
+      stage like `[verifiying]` through as fact) is closed for the
+      write path: `src/planRegister/transitions.ts`'s `isKnownStage`
+      checks every current and requested stage against the vendored
+      unit's `STAGES`, carried there as data (D5 — "no policy in the
+      unit"), and refuses anything outside it, naming
+      `docs/process/plan-model.md`; the read path (`plan_read`) is
+      unchanged; that vocabulary is exported but only the write path
+      enforces it, which is the first tool for which the question has
+      a practical answer. The transition table itself
+      (`src/planRegister/transitions.ts`, I2) cites
+      `docs/process/plan-model.md`'s node-lifecycle table directly:
+      every documented forward exit, backward moves to any earlier
+      stage (rank-ordered, with `broken-down` and `executing` sharing
+      one rank as parallel branches — a lateral hop between them is
+      refused as neither the documented forward exit nor a move to an
+      earlier stage, this node's own reading of a case the table does
+      not spell out explicitly; see that file's doc comment), and the
+      register-structure invariant (`checkStructural`, mirroring
+      `plugin/scripts/lib/form-check-core.ts`'s `INTERIOR_OK` set) so a
+      legalized transition can never immediately fail the coordinating
+      repository's own `register-structure` check. The edit itself
+      (`src/planRegister/updateEngine.ts`, I1) is the smallest possible
+      text change — the stage bracket on one line, nothing else —
+      located by the node-ID marker preceding it rather than by
+      searching for the stage text, so a title or annotation repeating
+      the stage word is never touched; proven byte-identical to a hand
+      edit operationally, not by argument:
+      `test/planUpdateGitExercise.test.ts` builds a real, throwaway
+      local git repository (never the coordinating repository, which
+      stayed read-only and untouched this whole node), applies the same
+      transition on one branch by hand and on a second branch by taking
+      `plan_update`'s returned edit verbatim, and asserts `git diff`
+      between the two branches' `docs/plan-register.md` is empty — it
+      is; the same file's second case is I3 — a deliberately induced
+      divergence (a commit that never actually lands the edit) makes
+      `plan_confirm` refuse, naming the file and the line and showing
+      both the actual and expected stage, without releasing the lease —
+      the R10 detection, exercised, not reasoned about (both
+      transcripts are in task T024's report). The lease (decision 7):
+      `src/planRegister/leaseBackend.ts`'s `LeaseBackend` interface, one
+      fixed lease item (chunk 1 scope — this repository only),
+      acquire/release as DynamoDB conditional writes
+      (`src/planRegister/dynamoLeaseBackend.ts`); TTL expiry is enforced
+      in application logic (`expiresAt < :now` in the
+      `ConditionExpression`) rather than trusted from DynamoDB's own TTL
+      sweep, which AWS documents as lagging real time by up to about 48
+      hours — that attribute is set anyway, as best-effort cleanup, not
+      the mechanism. `src/planRegister/inMemoryLeaseBackend.ts` is what
+      every test, and a local `npm run dev` session with no AWS
+      configured, uses instead (the same injectable-seam pattern
+      `RegisterFetcher` established at P2-N009); it is never reachable
+      from production wiring. `template.yaml` gained `LeaseTable`
+      (`AWS::DynamoDB::Table`, pay-per-request, TTL on `ttl`) and a
+      `DynamoDBCrudPolicy` scoped to it on `McpFunction`; no new owner
+      action or secret — `LEASE_TABLE_NAME` is wired automatically by
+      `sam deploy`. Verified this session: `npm run build`, `npm test`
+      (123/123 passing — the pre-existing 60 unaltered, 63 new,
+      including the two real-git I1/I3 exercises), `npm run lint`,
+      `npm run format`, all clean. **Not verified**, needing a `sam` CLI
+      this session did not have (the same gap node P2-N009's follow-up
+      records): `sam validate --lint` and `sam build` against the
+      `LeaseTable` addition — the template was checked only by parsing
+      the YAML and reading the rendered structure. **Not verified**,
+      needing the owner's deploy and a real session: the tools against
+      the deployed service, and a real end-to-end transition through
+      the gate demonstration itself (G3/G4) — chunk 1's remaining child
+      (P2-N011) and the gate are still ahead. See task T024's report
+      for the full account, including the packet-widening reads and the
+      Backlog additions this session identified but did not execute.
+
 ## Upcoming
 
-- [ ] **Plan-state update with the advisory lease** (chunk 1 child D,
-      node P2-N010) — `plan_lease_acquire` / `plan_update` / `plan_confirm`
-      / `plan_lease_release`, the three-step git-authoritative write model.
 - [ ] **Degrade to git-only, and enlistment documentation** (chunk 1
       child E, node P2-N011) — the R12 exercise (dead endpoint and unset
       credential) and the enlistment runbook.
@@ -268,4 +357,38 @@ Stage` on `McpFunction` and `HttpApi`) rather than selecting the
       this repository ever gains CI that can reach the coordinating
       repository, fetch it there instead of committing a copy — out of
       scope for a C1 read tool today, worth a look once CI for this
-      repository exists (see the CI item above).
+      repository exists (see the CI item above). Still stale as of node
+      P2-N010 (unchanged this session — refreshing it would touch
+      `test/planRegisterParser.test.ts`'s node-count assertions, a
+      W-002 question outside this node's scope); it does not exercise
+      the write path, since P2-N010's own tests
+      (`test/planUpdateGitExercise.test.ts`) build a throwaway fixture
+      register of their own instead.
+- [ ] **`sam validate --lint` / `sam build` for the `LeaseTable`
+      addition** (node P2-N010 follow-up) — this session again had no
+      AWS SAM CLI available (same gap as the P2-N009 follow-up above);
+      `template.yaml`'s new `LeaseTable` resource, `LEASE_TABLE_NAME`
+      environment wiring, and `DynamoDBCrudPolicy` were checked only by
+      parsing the YAML and reading the rendered structure. Run both
+      once SAM is available.
+- [ ] **Automate the vendored shared unit's drift check** (node P2-N010
+      follow-up, RU-012) — `README.md`'s "The vendored register grammar
+      unit, and its drift check" documents the manual
+      `sync_shared_unit.ts --check` command; nothing runs it
+      automatically today, so `src/planRegister/vendored/` can drift
+      from the coordinating repository's canonical copy unnoticed
+      between manual runs. Natural fit once this repository gains CI
+      (see the CI item above) and network access to the coordinating
+      repository from that CI.
+- [ ] **A full end-to-end write-path exercise against the deployed
+      service** (node P2-N010 follow-up) — this session verified the
+      write path locally only (an in-process Hono app, an
+      `InMemoryLeaseBackend`, and, for I1/I3, a real but throwaway
+      local git repository — never the deployed Lambda, the real
+      `LeaseTable`, or the coordinating repository's real register).
+      That full exercise, against the real deployment and a pushed
+      commit to the coordinating repository, is the gate demonstration
+      itself (G3/G4) and needs owner actions O1/O2 (redeploy with this
+      node's `template.yaml`) plus a session serving the Orchestrator
+      role (p2-n002 specification, "How verification runs") — tracked
+      here so it is not mistaken for something this node already did.

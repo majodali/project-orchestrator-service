@@ -4,9 +4,12 @@ Description: >
   project-orchestrator-service — chunk 1, node P2-N002 of
   p2-n002-service-skeleton: one Lambda function behind an HTTP API,
   serving MCP over streamable HTTP. `service_identity` (child B, node
-  P2-N008) and `plan_read` (child C, node P2-N009, GitHub App
-  credentials below) are wired; the advisory-lease write path (child
-  D, node P2-N010) and its DynamoDB table land next. See
+  P2-N008), `plan_read` (child C, node P2-N009, GitHub App credentials
+  below), and the advisory-lease write path — `plan_lease_acquire` /
+  `plan_update` / `plan_confirm` / `plan_lease_release` (child D, node
+  P2-N010) — are wired; its DynamoDB lease table (`LeaseTable` below)
+  is the one piece of plan-state storage this service holds — never
+  register content, only the lease (decision 7; I5). See
   docs/runbook.md for the deploy procedure and
   https://github.com/majodali/project-orchestrator/blob/main/docs/plans/p2-n002-service-skeleton.md
   for why this template is shaped the way it is.
@@ -148,6 +151,17 @@ Resources:
           GITHUB_APP_ID: !Ref GithubAppId
           GITHUB_APP_INSTALLATION_ID: !Ref GithubAppInstallationId
           GITHUB_APP_PRIVATE_KEY: !Sub "{{resolve:secretsmanager:${GithubAppPrivateKeySecretName}:SecretString}}"
+          # The write path (chunk 1 child D, node P2-N010) — the
+          # advisory write lease's only storage. No plan-state content
+          # is ever written here; see LeaseTable below.
+          LEASE_TABLE_NAME: !Ref LeaseTable
+      Policies:
+        # Scoped exactly to LeaseTable — no other DynamoDB table this
+        # function's role can touch. src/planRegister/dynamoLeaseBackend.ts
+        # only ever calls GetItem/PutItem/DeleteItem, all of which this
+        # SAM policy template covers.
+        - DynamoDBCrudPolicy:
+            TableName: !Ref LeaseTable
       Events:
         McpAny:
           Type: HttpApi
@@ -163,6 +177,34 @@ Resources:
             Method: GET
       Tags:
         Stage: !Ref Stage
+
+  LeaseTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      # Chunk 1 scope (plan decision 4): plan state for this
+      # repository only — a single fixed lease item
+      # (src/planRegister/leaseBackend.ts's LEASE_KEY), never one
+      # table per project or per node. Contention under multiple live
+      # sessions is deferred to chunk 4 (decision 7); this table's
+      # shape does not need to anticipate it.
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      TimeToLiveSpecification:
+        # Best-effort cleanup only — AWS documents native TTL deletion
+        # as running within (not guaranteed under) about 48 hours of
+        # expiry. The authoritative expiry check is application-level,
+        # in src/planRegister/dynamoLeaseBackend.ts's acquireLease
+        # ConditionExpression (expiresAt < :now), not this attribute.
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Stage
+          Value: !Ref Stage
 
   HttpApi:
     Type: AWS::Serverless::HttpApi
@@ -196,3 +238,8 @@ Outputs:
   McpFunctionName:
     Description: The deployed Lambda function's name (for `aws logs tail`, etc.).
     Value: !Ref McpFunction
+  LeaseTableName:
+    Description: >
+      The advisory write-lease table's name (for `aws dynamodb
+      get-item`, etc., if a lease ever needs inspecting by hand).
+    Value: !Ref LeaseTable
