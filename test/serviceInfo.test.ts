@@ -33,4 +33,44 @@ describe("getServiceIdentity", () => {
     const identity = getServiceIdentity({ SERVICE_COMMIT: "   " });
     expect(identity.commit).toBe("unknown");
   });
+
+  // node P2-N015 — the qualifier/lease-table fields are omitted
+  // entirely (not `undefined`-valued, not `null`) when no
+  // invokedQualifierInfo is given, which is what keeps every call site
+  // above — none of which passes a second argument — reporting the
+  // exact same four-key shape it always has (I7).
+  it("omits invokedQualifier and leaseTable when no qualifier info is given", () => {
+    const identity = getServiceIdentity({});
+    expect(identity).not.toHaveProperty("invokedQualifier");
+    expect(identity).not.toHaveProperty("leaseTable");
+    expect(Object.keys(identity).sort()).toEqual([
+      "commit",
+      "project",
+      "service",
+      "version",
+    ]);
+  });
+
+  it("reports the invoked qualifier and resolved lease table when given", () => {
+    const identity = getServiceIdentity(
+      {},
+      {
+        qualifier: "live",
+        leaseTable: "project-orchestrator-service-LeaseTable-abc",
+      },
+    );
+    expect(identity.invokedQualifier).toBe("live");
+    expect(identity.leaseTable).toBe(
+      "project-orchestrator-service-LeaseTable-abc",
+    );
+  });
+
+  it("reports the refused qualifier with leaseTable omitted, not null or a default table", () => {
+    const identity = getServiceIdentity(
+      {},
+      { qualifier: "$LATEST", leaseTable: null },
+    );
+    expect(identity.invokedQualifier).toBe("$LATEST");
+    expect(identity).not.toHaveProperty("leaseTable");
+  });
 });

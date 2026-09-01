@@ -155,3 +155,152 @@ describe("POST /mcp — service_identity", () => {
     });
   });
 });
+
+/**
+ * Alias-aware lease-table selection, failing closed (node P2-N015).
+ * Drives the real Hono app's actual `/mcp` handler — the code path
+ * src/httpApp.ts's `resolveLambdaAliasContext` runs on every request —
+ * via `app.request(input, init, env)`, Hono's own documented seam for
+ * supplying `c.env` in tests
+ * (https://hono.dev/docs/api/hono#request). This is not a
+ * reimplementation of the qualifier read: it is the same
+ * `c.env.lambdaContext.invokedFunctionArn` path a real
+ * `hono/aws-lambda`-wrapped Lambda invocation populates (confirmed
+ * against src/lambda.ts's real exported `handler` in
+ * test/lambda.test.ts's own new block).
+ */
+function envWithQualifier(qualifier: string) {
+  return {
+    lambdaContext: {
+      invokedFunctionArn: `arn:aws:lambda:us-west-2:123456789012:function:McpFunction:${qualifier}`,
+    },
+  };
+}
+
+describe("POST /mcp — alias-aware lease-table selection (node P2-N015)", () => {
+  beforeEach(() => {
+    process.env.MCP_AUTH_TOKEN = "test-token-123";
+    process.env.LEASE_TABLE_NAME = "prod-lease-table";
+    process.env.PREPROD_LEASE_TABLE_NAME = "preprod-lease-table";
+  });
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  it('reports invokedQualifier "live" and the production lease table', async () => {
+    const app = createApp();
+    const res = await app.request(
+      mcpRequest(TOOLS_CALL_BODY, { Authorization: "Bearer test-token-123" }),
+      undefined,
+      envWithQualifier("live"),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      result: {
+        structuredContent: { invokedQualifier: string; leaseTable: string };
+      };
+    };
+    expect(body.result.structuredContent.invokedQualifier).toBe("live");
+    expect(body.result.structuredContent.leaseTable).toBe("prod-lease-table");
+  });
+
+  it('reports invokedQualifier "preprod" and the preprod lease table', async () => {
+    const app = createApp();
+    const res = await app.request(
+      mcpRequest(TOOLS_CALL_BODY, { Authorization: "Bearer test-token-123" }),
+      undefined,
+      envWithQualifier("preprod"),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      result: {
+        structuredContent: { invokedQualifier: string; leaseTable: string };
+      };
+    };
+    expect(body.result.structuredContent.invokedQualifier).toBe("preprod");
+    expect(body.result.structuredContent.leaseTable).toBe(
+      "preprod-lease-table",
+    );
+  });
+
+  it("reports a refused qualifier ($LATEST) with leaseTable absent — fails closed", async () => {
+    const app = createApp();
+    const res = await app.request(
+      mcpRequest(TOOLS_CALL_BODY, { Authorization: "Bearer test-token-123" }),
+      undefined,
+      envWithQualifier("$LATEST"),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      result: {
+        structuredContent: { invokedQualifier: string; leaseTable?: string };
+      };
+    };
+    expect(body.result.structuredContent.invokedQualifier).toBe("$LATEST");
+    expect(body.result.structuredContent).not.toHaveProperty("leaseTable");
+  });
+
+  it("refuses plan_lease_acquire for an unrecognized qualifier, naming it, when invoked under Lambda", async () => {
+    const app = createApp();
+    const res = await app.request(
+      mcpRequest(
+        {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: {
+            name: "plan_lease_acquire",
+            arguments: { holder: "test" },
+          },
+        },
+        { Authorization: "Bearer test-token-123" },
+      ),
+      undefined,
+      envWithQualifier("staging"),
+    );
+    expect(res.status).toBe(200); // JSON-RPC 200; the error is in the payload
+    const body = await res.text();
+    expect(body).toContain("staging");
+    expect(body).toContain("neither");
+    expect(body).toContain("live");
+    expect(body).toContain("preprod");
+  });
+
+  it("with no Lambda context at all, plan_lease_acquire still resolves LEASE_TABLE_NAME through the pre-existing path — never the new alias-aware one (I7)", async () => {
+    // LEASE_TABLE_NAME deliberately left unset (unlike this describe
+    // block's other tests) so this assertion never has to reach a
+    // real DynamoDB table (no network access in this sandbox). The
+    // two candidate error messages share the substring
+    // "LEASE_TABLE_NAME", so the discriminating assertion is the
+    // *old*, pre-existing LeaseBackendNotConfiguredError's own unique
+    // text ("Owner action O2") — present only when this call went
+    // through src/planRegister/defaultLeaseBackend.ts's
+    // getDefaultLeaseBackend (node P2-N010, unchanged), never through
+    // the new aliasLeaseTable.ts resolution this node adds (whose
+    // AliasLeaseTableNotConfiguredError text never says "Owner action
+    // O2" — see that class's own message).
+    delete process.env.LEASE_TABLE_NAME;
+    delete process.env.PREPROD_LEASE_TABLE_NAME;
+    const app = createApp();
+    const res = await app.request(
+      mcpRequest(
+        {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: {
+            name: "plan_lease_acquire",
+            arguments: { holder: "test" },
+          },
+        },
+        { Authorization: "Bearer test-token-123" },
+      ),
+      // No third `env` argument — the shape the local dev server and
+      // every other test in this suite already run with.
+    );
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain("LEASE_TABLE_NAME");
+    expect(body).toContain("Owner action O2");
+  });
+});

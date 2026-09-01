@@ -119,6 +119,48 @@ below call `$ENDPOINT`.
 `https://…execute-api…amazonaws.com` URL — no stage segment (see "Why
 the endpoint has no stage segment" below).
 
+### Alias-aware lease-table selection (node P2-N015)
+
+`$ENDPOINT` now resolves through the `live` Lambda alias, not the
+function's bare `$LATEST` — see "Why `live` is a plain alias, and why
+`scripts/deploy.sh` reads it back" below. Nothing about this step
+changes for you: `scripts/deploy.sh` reads `live`'s current
+`FunctionVersion` back from AWS before every deploy and passes it
+through automatically, so an ordinary deploy leaves `live` exactly
+where it was (a first-ever deploy of this node's `template.yaml`
+bootstraps both `live` and `preprod` to `$LATEST`, identical to what
+production served before this node — nothing regresses). A second,
+permanent Lambda alias, `preprod`, is also provisioned, with its own
+Function URL (`PreprodEndpoint` in the stack outputs) and its own
+DynamoDB table (`PreprodLeaseTable`) — this is what child D's CI
+pipeline (node P2-N016) deploys and smoke-tests against before
+promoting `live`. Promotion itself — repointing `live` to a tested
+version — is not part of this script; it is a direct
+`aws lambda update-alias` call child D's pipeline makes, never a
+stack update.
+
+### Why `live` is a plain alias, and why `scripts/deploy.sh` reads it back
+
+`template.yaml`'s `LiveAlias` is a plain `AWS::Lambda::Alias`, not
+SAM's `AutoPublishAlias` sugar: `AutoPublishAlias` republishes and
+repoints its alias to the newly deployed code on **every**
+code-changing deploy, which would serve untested code to production
+the instant an ordinary `sam deploy` ran — exactly the failure mode
+"deploy, then merge to preprod, then promote" exists to prevent (see
+`docs/findings/alias-assumptions.md`, assumption 5, sourced to AWS's
+own gradual-deployment documentation). Instead, `LiveAlias`'s
+`FunctionVersion` comes from a `LiveVersion` template parameter, and
+`scripts/deploy.sh` reads `live`'s real, currently-deployed
+`FunctionVersion` back from AWS (`aws lambda get-alias --name live`)
+before every `sam build && sam deploy` and passes that same value back
+as the parameter override — so an ordinary deploy declares no change
+to it and CloudFormation leaves the alias alone, regardless of what
+code changed elsewhere in the template. **Do not pass an explicit
+`LiveVersion` override when running this script by hand** — that
+would defeat the read-back and risk resetting `live`. Promotion is
+always a direct `aws lambda update-alias --name live` call outside
+this script.
+
 ### Why the bundle carries an esbuild banner
 
 `template.yaml`'s `BuildProperties.Banner` (and `package.json`'s
@@ -415,3 +457,22 @@ keyword; reserved keyword: <name>`** — a real production defect
   real DynamoDB table.
 - **Local surface works, web surface does not** — this is O5, not a
   deploy defect; see Step 7.
+- **A write-path tool (`plan_lease_acquire` etc.) returns `could not
+reach the write-lease store: refusing to select a lease table: the
+invoked Lambda qualifier "..." is neither "live" nor "preprod" —
+failing closed...`** (node P2-N015) — this call was invoked through
+  something other than the `live` or `preprod` alias (`$LATEST`
+  included). It should not be reachable from either the production
+  endpoint (bound to `live`) or the preprod Function URL (bound to
+  `preprod`) — if you see this against `$ENDPOINT` or
+  `$PREPROD_ENDPOINT` specifically, the template's alias binding has
+  drifted from what is deployed (check
+  `template.yaml`'s `McpIntegration`/`LiveInvokePermission` still
+  target `LiveAlias`, and `PreprodFunctionUrl` still carries
+  `Qualifier: preprod`); if you see it while invoking the function
+  directly by ARN or version number (e.g. via `aws lambda invoke`),
+  this is the fail-closed rule working exactly as designed, not a
+  defect — invoke through one of the two aliases instead.
+  `service_identity`'s `invokedQualifier` / `leaseTable` fields (also
+  node P2-N015) report exactly what qualifier a given call was seen
+  with, which is the fastest way to confirm which case you are in.
