@@ -2,7 +2,7 @@
 
 ## Methodology — binding
 
-This project follows majodali/methodology v1.3.0 as declared in
+This project follows majodali/methodology v1.4.0 as declared in
 docs/classification.md. That file strictly defines this project's
 document lifecycles and workflows. Read it before any work; nothing
 in this file overrides it.
