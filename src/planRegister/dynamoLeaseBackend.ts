@@ -114,7 +114,17 @@ export class DynamoLeaseBackend implements LeaseBackend {
         new DeleteItemCommand({
           TableName: this.tableName,
           Key: { pk: { S: LEASE_KEY } },
-          ConditionExpression: "token = :token",
+          // "token" is a DynamoDB reserved word (T027, node P2-N010
+          // rework) — bare `token = :token` is rejected at call time
+          // ("Attribute name is a reserved keyword"), so the attribute
+          // name is aliased through ExpressionAttributeNames like any
+          // other reserved word must be. See
+          // ./dynamoReservedWords.ts and
+          // test/dynamoExpressionSafety.test.ts, which check every
+          // expression this file builds against DynamoDB's reserved
+          // word list rather than trusting only this one is fixed.
+          ConditionExpression: "#token = :token",
+          ExpressionAttributeNames: { "#token": "token" },
           ExpressionAttributeValues: { ":token": { S: token } },
         }),
       );

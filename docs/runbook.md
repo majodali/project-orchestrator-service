@@ -359,5 +359,25 @@ design sketch expects cents per month at this volume).
   `template.yaml`'s `McpFunction.Properties.Policies` (a
   `DynamoDBCrudPolicy` scoped to `LeaseTable`) actually deployed
   (`aws cloudformation describe-stack-resources`).
+- **`plan_confirm` (or `plan_lease_release`) returns `confirmed, but
+could not release the lease: could not reach the write-lease store:
+... Invalid ConditionExpression: Attribute name is a reserved
+keyword; reserved keyword: <name>`** — a real production defect
+  (node P2-N010 rework, T027), already fixed for `token` in
+  `src/planRegister/dynamoLeaseBackend.ts`'s `releaseLease`: DynamoDB
+  rejects an attribute name used bare in an expression when that name
+  is one of its reserved words (the full list runs to several
+  hundred; `AND`, `NAME`, `DATE`, `SIZE`, `TOKEN`, `STATUS`, and
+  `TYPE` are common collisions), unless it is aliased through
+  `ExpressionAttributeNames`. If this recurs — a new attribute name
+  added to this file's `ConditionExpression` /
+  `KeyConditionExpression` / `ProjectionExpression` without checking
+  it against `src/planRegister/dynamoReservedWords.ts` first — the
+  confirmation or update itself still succeeded (this message only
+  ever follows a successful write); the lease is left to expire by
+  TTL rather than at risk. Fix the expression the same way, and see
+  `test/dynamoExpressionSafety.test.ts`, which checks every expression
+  this file builds against that reserved-word list without needing a
+  real DynamoDB table.
 - **Local surface works, web surface does not** — this is O5, not a
   deploy defect; see Step 7.
