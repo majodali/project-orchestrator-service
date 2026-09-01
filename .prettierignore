@@ -3,6 +3,13 @@ node_modules
 coverage
 package-lock.json
 
+# `sam build` artifacts, gitignored, not source (node P2-N014). Since
+# Prettier's CLI already follows `.gitignore` by default, this entry
+# is a no-op today — listed explicitly anyway so the exclusion does
+# not silently depend on that fallback (same reasoning eslint.config.js
+# and .gitignore already apply to this directory).
+.aws-sam
+
 # A byte-for-byte copy of the coordinating repository's real
 # docs/plan-register.md (test/planRegisterParser.test.ts's round-trip
 # fixture, node P2-N009) — must stay untouched by Prettier's Markdown
