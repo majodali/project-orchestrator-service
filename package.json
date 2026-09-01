@@ -28,6 +28,7 @@
     "vitest": "^4.1.11"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1123.0",
     "@hono/node-server": "^2.1.1",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "esbuild": "^0.28.2",
