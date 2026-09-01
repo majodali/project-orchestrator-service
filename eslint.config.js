@@ -12,6 +12,15 @@ export default tseslint.config(
     // it is excluded from Prettier (see .prettierignore).
     ignores: [
       "dist/**",
+      // Lambda bundler output (package.json's `bundle:lambda`, also
+      // what `sam build` produces into `.aws-sam/`) — build artifacts,
+      // gitignored, not source. test/lambdaBundle.test.ts (node
+      // P2-N010 rework) runs `bundle:lambda` as part of the test
+      // suite, so this directory can now exist in the working tree
+      // whenever lint runs after test, not just after a manual
+      // `npm run bundle:lambda` — same reasoning as `dist/**` above.
+      "dist-lambda/**",
+      ".aws-sam/**",
       "node_modules/**",
       "coverage/**",
       "src/planRegister/vendored/**",

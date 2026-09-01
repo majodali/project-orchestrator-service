@@ -10,7 +10,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/localServer.ts",
-    "bundle:lambda": "esbuild src/lambda.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist-lambda/lambda.mjs",
+    "bundle:lambda": "esbuild src/lambda.ts --bundle --platform=node --target=node22 --format=esm --banner:js=\"import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);\" --outfile=dist-lambda/lambda.mjs",
     "test": "vitest run",
     "lint": "eslint .",
     "format": "prettier --check .",
