@@ -316,12 +316,118 @@ Stage` on `McpFunction` and `HttpApi`) rather than selecting the
       for the full account, including the packet-widening reads and the
       Backlog additions this session identified but did not execute.
 
+- [x] **Rework: fix the ESM/CJS bundle outage — production 500s on
+      every route (node P2-N010 rework)** — the owner merged and
+      deployed the write path above; every route, including the
+      unauthenticated `GET /health`, started returning API Gateway's
+      own `{"message":"Internal Server Error"}`, meaning the Lambda
+      function never initialized. Root cause: `@aws-sdk/client-dynamodb`
+      (the write path's new dependency) reaches
+      `@smithy/node-http-handler`, which is CommonJS and `require()`s
+      Node builtins (`node:https`, etc.); `package.json`'s
+      `bundle:lambda` and `template.yaml`'s `BuildProperties` (what
+      `sam build` actually uses to bundle — the two are kept in sync,
+      not one derived from the other) both build with `--format=esm`,
+      under which there is no ambient `require`, so esbuild's own
+      dynamic-require shim threw an error at import time — every cold
+      start. Fix (option (a) of three considered): an esbuild banner,
+      on both build paths, that defines a real `require` via
+      `node:module`'s `createRequire` before any bundled code runs, in
+      `package.json`'s script and the equivalent
+      `BuildProperties.Banner` (a generic esbuild CLI passthrough SAM's
+      Node.js esbuild workflow already supports, confirmed by reading
+      `aws_lambda_builders`' own source, not assumed) in
+      `template.yaml`. Chosen over (b) bundling as CommonJS (correct,
+      but a larger change touching `template.yaml`'s `Handler`
+      extension and the deployment surface for no benefit over (a)) and
+      over (c) marking `@aws-sdk/*` external and relying on the managed
+      Node 22 runtime to provide it (rejected: this session had no way
+      to verify the runtime actually bundles a compatible
+      `@aws-sdk/client-dynamodb`, and guessing wrong here reproduces
+      this exact outage) — the AWS-documented remedy for CJS-dependency
+      interop in an ESM esbuild bundle, and the smaller change of the
+      two verified options. Nothing in `src/`, the lease, the
+      transition table, or the vendored grammar unit changed — this was
+      a build-configuration defect only. No deploy procedure or
+      parameter changed (`docs/runbook.md`'s new "Why the bundle
+      carries an esbuild banner" note and a new Troubleshooting entry);
+      a stack deployed before this fix needs a redeploy of the existing
+      Step 3 with the fixed `template.yaml`, nothing more. The second
+      defect, which mattered as much: the check that should have caught
+      this before it shipped, used on every prior task, was
+      `node -e "import('...')"` against the built bundle — `node -e`
+      evaluates in CommonJS mode, and Node attaches `require` to
+      `globalThis` for that mode, so esbuild's shim finds it and the
+      bundle loads without error, a false negative; the deployed Lambda
+      loads the identical `.mjs` file through Node's real ESM loader,
+      which has no such global. Fixed by shipping a committed
+      regression test, `test/lambdaBundle.test.ts`, that builds the
+      bundle fresh (running `package.json`'s own `bundle:lambda` script
+      — one source of truth, not a second, copied esbuild invocation)
+      and imports it from a real `node` subprocess in genuine ESM mode
+      (`node --input-type=module -e`), asserting a callable `handler`
+      export; proven by reverting the banner, watching the test fail
+      with the exact production error, then restoring it and watching
+      the test pass (both transcripts in task T025's report). A related
+      discovery while building that test: a plain
+      `await import(bundlePath)` from inside a Vitest test does not
+      reproduce the failure either against the unfixed bundle —
+      Vitest/Vite's own module runner is a second instance of the same
+      false-negative trap, not fixed here (see "The false-negative
+      artifact-validation trap, generalized" below). No other committed
+      check in this repository validates a built artifact at all
+      (`test/lambda.test.ts` imports `src/lambda.ts`, the TypeScript
+      source, never a build output) — searched for and not found
+      elsewhere in this session. `eslint.config.js`'s `ignores` also
+      gained `dist-lambda/**` and `.aws-sam/**` (alongside the existing
+      `dist/**`), since `test/lambdaBundle.test.ts` now leaves a real
+      bundle in the working tree after every `npm test`, which
+      `npm run lint` would otherwise trip over — a latent gap in the
+      lint config that predates this node but was only now exercised.
+      Verified this session: `npm run build`, `npm run lint`,
+      `npm test` (124/124 passing — the pre-existing 123 unaltered, 1
+      new), and `npm run format` (clean on every file this session
+      touched; `docs/backlog.md` had a pre-existing Prettier violation
+      on `main` before this session's edits, reformatted incidentally
+      by this commit's own rewrite of it — not a change made to satisfy
+      this node's own criteria). This session also had a working AWS
+      SAM CLI available (not true of node P2-N009's or P2-N010's own
+      sessions) and ran `sam build` and `sam validate --lint` against
+      the fixed `template.yaml` directly — both succeeded, and the real
+      `sam build` artifact (`.aws-sam/build/McpFunction/lambda.mjs`,
+      not just `dist-lambda/lambda.mjs`) was independently confirmed to
+      load under a real ESM subprocess and answer a synthetic
+      `GET /health` event with `200`. This closes the two "no SAM CLI
+      available" follow-up items below for the build/validate step
+      specifically (not for a real `sam deploy`, which needs AWS
+      credentials this session did not have) — see those entries,
+      rewritten to record it, below.
+
+- [x] **`sam validate --lint` / `sam build` for the GitHub App wiring**
+      (node P2-N009 follow-up) — run this session (the node P2-N010
+      ESM-bundle-outage rework above), which had a working AWS SAM CLI:
+      both succeeded against the current `template.yaml`, including the
+      `GithubAppId` / `GithubAppInstallationId` /
+      `GithubAppPrivateKeySecretName` parameters and their environment
+      wiring. Not run: a real `sam deploy` (needs AWS credentials this
+      session did not have) and the owner action O3 prerequisites
+      `plan_read`'s own re-verification entry (Upcoming) still needs.
+
+- [x] **`sam validate --lint` / `sam build` for the `LeaseTable`
+      addition** (node P2-N010 follow-up) — run this session (the same
+      SAM CLI availability as the GitHub App wiring item above): both
+      succeeded, including the `LeaseTable` resource, `LEASE_TABLE_NAME`
+      environment wiring, and the `DynamoDBCrudPolicy` scoped to it, and
+      the new `BuildProperties.Banner` this session's own rework added.
+      Not run: a real `sam deploy` (needs AWS credentials this session
+      did not have).
+
 - [x] **Migrated to methodology v1.4.0** — 2026-08-31, following the
       coordinating repository
       ([majodali/project-orchestrator](https://github.com/majodali/project-orchestrator)
       PR #3) so the two repositories in this project do not declare
       different compliance targets. All four v1.4.0 amendments carry
-      migration-note *none* or *none mandatory*, so the pin bump and
+      migration-note _none_ or _none mandatory_, so the pin bump and
       the Binding block are the whole migration. Two of them touch
       this repository's future rather than its present: the prose
       rules P-001–P-006 bind new and edited prose from adoption, and
@@ -359,13 +465,6 @@ Stage` on `McpFunction` and `HttpApi`) rather than selecting the
       the deployed endpoint (the one criterion this node's local
       verification could not reach). Revisit the `template.yaml`
       `Timeout: 20` figure against the measurement.
-- [ ] **`sam validate --lint` / `sam build` for the GitHub App wiring**
-      (node P2-N009 follow-up) — this session had no AWS SAM CLI
-      available, so `template.yaml`'s new parameters and environment
-      wiring were checked only by parsing the YAML and reading the
-      rendered structure, not by SAM's own validator or a real
-      esbuild-bundle build (node P2-N008 had both). Run both once SAM
-      is available, the same way node P2-N008's rework did.
 - [ ] **Keep `test/fixtures/plan-register.sample.md` current, or stop
       needing to** (node P2-N009 follow-up) — the round-trip test
       fixture is a byte-for-byte copy of the coordinating repository's
@@ -382,13 +481,6 @@ Stage` on `McpFunction` and `HttpApi`) rather than selecting the
       the write path, since P2-N010's own tests
       (`test/planUpdateGitExercise.test.ts`) build a throwaway fixture
       register of their own instead.
-- [ ] **`sam validate --lint` / `sam build` for the `LeaseTable`
-      addition** (node P2-N010 follow-up) — this session again had no
-      AWS SAM CLI available (same gap as the P2-N009 follow-up above);
-      `template.yaml`'s new `LeaseTable` resource, `LEASE_TABLE_NAME`
-      environment wiring, and `DynamoDBCrudPolicy` were checked only by
-      parsing the YAML and reading the rendered structure. Run both
-      once SAM is available.
 - [ ] **Automate the vendored shared unit's drift check** (node P2-N010
       follow-up, RU-012) — `README.md`'s "The vendored register grammar
       unit, and its drift check" documents the manual
@@ -398,6 +490,30 @@ Stage` on `McpFunction` and `HttpApi`) rather than selecting the
       between manual runs. Natural fit once this repository gains CI
       (see the CI item above) and network access to the coordinating
       repository from that CI.
+- [ ] **The false-negative artifact-validation trap, generalized**
+      (found while building `test/lambdaBundle.test.ts`, node P2-N010
+      rework) — `node -e "import('...')"` against a built ESM bundle is
+      not the only environment that hides the CJS-dependency-under-ESM
+      failure this rework fixed: a plain `await import(bundlePath)`
+      from _inside a Vitest test_ was tried against the unfixed bundle
+      while building that test, and it did not throw either —
+      Vitest/Vite's own module runner is a second instance of the same
+      trap. `test/lambdaBundle.test.ts` avoids it by spawning a real
+      `node --input-type=module` subprocess instead, but nothing stops
+      a future test from writing the natural-looking, silently-wrong
+      `await import(...)` form directly. Worth either: documenting the
+      trap prominently enough that it is not rediscovered by outage (a
+      start — this Backlog entry, and the doc comment on
+      `test/lambdaBundle.test.ts` itself), or building a small shared
+      test helper that always spawns a real ESM subprocess for
+      built-artifact checks, so the correct form is the easy one. No
+      other committed check in this repository validates a built
+      artifact today (searched this session; `test/lambda.test.ts`
+      imports `src/lambda.ts` — TypeScript source, not a build output),
+      so nothing else needs fixing now — but the next Lambda-bundling
+      dependency this service adds could reintroduce this exact outage
+      if whoever adds it reaches for the natural-looking check instead
+      of the correct one.
 - [ ] **A full end-to-end write-path exercise against the deployed
       service** (node P2-N010 follow-up) — this session verified the
       write path locally only (an in-process Hono app, an
