@@ -390,6 +390,138 @@ headroom over either figure regardless.
 action O3 (Step 2) and a redeploy (Step 3) — recorded here as a
 Backlog item, not silently left blank.
 
+## CI deploy prerequisites: owner actions O7 and O8 (node P2-N016)
+
+Node P2-N012's child D (the `push`-triggered deploy-smoke-promote
+workflow, not yet built as of this section) invokes `scripts/deploy.sh`
+exactly as Step 3 above does, but from GitHub Actions rather than a
+human's shell. Two owner actions block that child from starting; this
+section is what clears them.
+
+### O7 — the deploy role's permissions and trust policy
+
+Apply the IAM policy in
+[`docs/deploy-role-permissions.md`](deploy-role-permissions.md) to
+`arn:aws:iam::<ACCOUNT_ID>:role/project-orchestrator-service-deploy`,
+and confirm (or correct) that role's trust policy against that
+document's "Does the OIDC trust policy need changing?" section. That
+document also names the `secretsmanager:GetSecretValue` grant this
+step needs on both `project-orchestrator-service/mcp-auth-token` (the
+smoke test's bearer token) and
+`project-orchestrator-service/github-app-private-key` (needed for
+`sam deploy` itself to resolve `template.yaml`'s dynamic reference,
+not only for the smoke test) — do not grant only the first and assume
+the second is covered by something else.
+
+### O8 — the deploy workflow's repository variables
+
+GitHub repository, organization, and environment **configuration
+variables** (the `vars` context) may not start with `GITHUB_`
+(GitHub's own naming rule — see "Where `GITHUB_` may and may not
+appear" below). `scripts/deploy.sh` requires three environment
+variables whose names do start with `GITHUB_`
+(`GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`,
+`GITHUB_APP_PRIVATE_KEY_SECRET_NAME` — see that script's own header
+comment). The fix is a naming layer, not a script change: the owner
+stores the three App-related values under different, unprefixed
+repository-variable names, and the deploy workflow's `env:` block maps
+each one back to the name `scripts/deploy.sh` actually requires. This
+keeps criterion I1 intact — the same script, the same required
+variable names, run by CI exactly as a human runs it.
+
+Create these five repository variables (repository **Settings** →
+**Secrets and variables** → **Actions** → **Variables** tab →
+**New repository variable**, in `majodali/project-orchestrator-service`).
+None of the five is a secret value — every one is a region, a stack
+label, a secret's _name_, or a GitHub App's public identifier, exactly
+as decision "O8" in the plan describes:
+
+| Repository variable name                     | Feeds `scripts/deploy.sh`'s          | Value                                                          |
+| -------------------------------------------- | ------------------------------------ | -------------------------------------------------------------- |
+| `AWS_REGION`                                 | `AWS_REGION`                         | the region chosen under O1                                     |
+| `AUTH_TOKEN_SECRET_NAME`                     | `AUTH_TOKEN_SECRET_NAME`             | `project-orchestrator-service/mcp-auth-token` (Step 1)         |
+| `SERVICE_GITHUB_APP_ID`                      | `GITHUB_APP_ID`                      | the App's numeric ID (Step 2)                                  |
+| `SERVICE_GITHUB_APP_INSTALLATION_ID`         | `GITHUB_APP_INSTALLATION_ID`         | the installation's numeric ID (Step 2)                         |
+| `SERVICE_GITHUB_APP_PRIVATE_KEY_SECRET_NAME` | `GITHUB_APP_PRIVATE_KEY_SECRET_NAME` | `project-orchestrator-service/github-app-private-key` (Step 2) |
+
+Only the three App-related names are renamed — `AWS_REGION` and
+`AUTH_TOKEN_SECRET_NAME` already satisfy GitHub's rule and are stored
+under the same names `scripts/deploy.sh` expects. The three chosen
+names (`SERVICE_GITHUB_APP_ID` and its two siblings) are stated once,
+here, so they are not renegotiated when child D is built: they do not
+start with `GITHUB_`, and the `SERVICE_` prefix keeps them
+identifiable as this repository's own App-integration values rather
+than a generic `APP_ID` that could collide with an unrelated variable
+later.
+
+**The exact `env:` mapping block** — this is the contract child D's
+deploy workflow implements, on whichever step invokes
+`scripts/deploy.sh`:
+
+```yaml
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  AUTH_TOKEN_SECRET_NAME: ${{ vars.AUTH_TOKEN_SECRET_NAME }}
+  GITHUB_APP_ID: ${{ vars.SERVICE_GITHUB_APP_ID }}
+  GITHUB_APP_INSTALLATION_ID: ${{ vars.SERVICE_GITHUB_APP_INSTALLATION_ID }}
+  GITHUB_APP_PRIVATE_KEY_SECRET_NAME: ${{ vars.SERVICE_GITHUB_APP_PRIVATE_KEY_SECRET_NAME }}
+```
+
+### Where `GITHUB_` may and may not appear
+
+GitHub's variables reference states two different rules, and they are
+easy to conflate:
+
+- **Configuration variables** (repository, organization, or
+  environment variables set under Settings → Variables — the `vars`
+  context) — "Naming conventions for configuration variables": _"Must
+  not start with the `GITHUB_` prefix."_ This is the rule the three
+  renamed variables above satisfy.
+- **Environment variables** (what a workflow step actually runs with,
+  the `env` context) — "Naming conventions for environment variables":
+  _"When you set an environment variable, you cannot use any of the
+  default environment variable names... If you attempt to override the
+  value of one of these default variables, the assignment is
+  ignored."_ This is narrower: it bans exactly the enumerated list of
+  GitHub's own defaults (`GITHUB_ACTION`, `GITHUB_ACTOR`,
+  `GITHUB_REF`, `GITHUB_SHA`, and so on, plus `RUNNER_*`), not every
+  name starting with `GITHUB_`. `GITHUB_APP_ID`,
+  `GITHUB_APP_INSTALLATION_ID`, and
+  `GITHUB_APP_PRIVATE_KEY_SECRET_NAME` are not on that list (checked
+  against the full table on 2026-09-01) — the `env:` mapping above,
+  which sets exactly these three names as environment variables for
+  the step that runs `scripts/deploy.sh`, is not itself the naming
+  violation; only storing them as _configuration variables_ under
+  those names would have been.
+
+**Residual risk.** If GitHub ever adds one of these three names to its
+own default-environment-variable list, the `env:` assignment above
+would be _ignored_, not rejected — the step would run with whichever
+value GitHub's own default carries for that name instead of the
+owner's intended one. Whether `scripts/deploy.sh` catches this depends
+on what that ignored assignment leaves behind: its guards are the bash
+`${VAR:?message}` form —
+
+```sh
+: "${GITHUB_APP_ID:?Set GITHUB_APP_ID to the GitHub App's numeric ID (owner action O3; see docs/runbook.md).}"
+```
+
+— which fails closed (non-zero exit, the stated message) when the
+variable is **unset or empty**, matching several of GitHub's existing
+defaults that are empty outside the event that sets them (e.g.
+`GITHUB_BASE_REF` is empty outside `pull_request`; this repository's
+deploy workflow triggers on `push`, so a future default with similar
+conditional-emptiness would still trip this guard). It does **not**
+fail closed if the colliding default happens to carry some other
+non-empty value in this workflow's context (as `GITHUB_SHA` or
+`GITHUB_REPOSITORY` always do) — the guard can tell "unset or empty"
+from "set," but not "set to what I expect" from "set to something
+else," and `deploy.sh` would run with that wrong value silently. This
+is a real, if currently hypothetical, gap — worth a Backlog note
+rather than a script change, since no such collision exists today and
+inventing defensive code against a name GitHub has not chosen yet is
+premature.
+
 ## Running cost
 
 Not yet measured — record the actual AWS Cost Explorer figure here
