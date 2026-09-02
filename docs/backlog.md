@@ -495,6 +495,23 @@ reserved keyword: token`. Root cause:
       coordinating repository in
       [docs/classification.md](classification.md) stays as it is.
 
+- [x] **Migrated to methodology 1.5.0** — 2026-09-02, following the
+      coordinating repository
+      ([majodali/project-orchestrator](https://github.com/majodali/project-orchestrator)
+      PR #5) so the two repositories in this project do not declare
+      different compliance targets. Five of the six v1.5.0 amendments
+      carry migration-note _none_. The sixth, the W-008 bootstrap
+      cache, carries the release's one action: `CLAUDE.md` now holds
+      the rule's prescribed reporting block verbatim, copied from
+      W-008's **Required bootstrap text** field and verified
+      byte-identical. Amendments touching this repository's future
+      rather than its present: W-008 now scopes report duties by
+      audience, so a delegated session reporting to the orchestrator
+      addresses the agent audience and omits the restatement and
+      novelty parts; and K-010's new converse holds that in an
+      `active` document a passage contradicting a recorded decision
+      is false rather than stale, and is corrected where it is found.
+
 ## Upcoming
 
 - [ ] **Degrade to git-only, and enlistment documentation** (chunk 1
