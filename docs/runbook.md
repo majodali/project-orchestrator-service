@@ -392,11 +392,13 @@ Backlog item, not silently left blank.
 
 ## CI deploy prerequisites: owner actions O7 and O8 (node P2-N016)
 
-Node P2-N012's child D (the `push`-triggered deploy-smoke-promote
-workflow, not yet built as of this section) invokes `scripts/deploy.sh`
-exactly as Step 3 above does, but from GitHub Actions rather than a
-human's shell. Two owner actions block that child from starting; this
-section is what clears them.
+Node P2-N012's child D — `.github/workflows/deploy.yml`, the
+`push`-triggered deploy-smoke-promote workflow — invokes
+`scripts/deploy.sh` exactly as Step 3 above does, but from GitHub
+Actions rather than a human's shell. Two owner actions clear the way
+for it to run at all; this section documents them (O9 and O10, the
+first actual run and making the checks required, are separate and
+still block the node's own `done`, not covered here).
 
 ### O7 — the deploy role's permissions and trust policy
 
@@ -429,20 +431,36 @@ each one back to the name `scripts/deploy.sh` actually requires. This
 keeps criterion I1 intact — the same script, the same required
 variable names, run by CI exactly as a human runs it.
 
-Create these five repository variables (repository **Settings** →
+Create these repository variables (repository **Settings** →
 **Secrets and variables** → **Actions** → **Variables** tab →
 **New repository variable**, in `majodali/project-orchestrator-service`).
-None of the five is a secret value — every one is a region, a stack
-label, a secret's _name_, or a GitHub App's public identifier, exactly
-as decision "O8" in the plan describes:
+None is a secret value — each is a region, a stack label, a secret's
+_name_, a GitHub App's public identifier, or an IAM role ARN (not a
+secret category — see the row's own note below), exactly as decision
+"O8" in the plan describes:
 
-| Repository variable name                     | Feeds `scripts/deploy.sh`'s          | Value                                                          |
-| -------------------------------------------- | ------------------------------------ | -------------------------------------------------------------- |
-| `AWS_REGION`                                 | `AWS_REGION`                         | the region chosen under O1                                     |
-| `AUTH_TOKEN_SECRET_NAME`                     | `AUTH_TOKEN_SECRET_NAME`             | `project-orchestrator-service/mcp-auth-token` (Step 1)         |
-| `SERVICE_GITHUB_APP_ID`                      | `GITHUB_APP_ID`                      | the App's numeric ID (Step 2)                                  |
-| `SERVICE_GITHUB_APP_INSTALLATION_ID`         | `GITHUB_APP_INSTALLATION_ID`         | the installation's numeric ID (Step 2)                         |
-| `SERVICE_GITHUB_APP_PRIVATE_KEY_SECRET_NAME` | `GITHUB_APP_PRIVATE_KEY_SECRET_NAME` | `project-orchestrator-service/github-app-private-key` (Step 2) |
+| Repository variable name                     | Feeds `scripts/deploy.sh`'s                                                                                                                          | Value                                                                                                 |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `AWS_REGION`                                 | `AWS_REGION`                                                                                                                                         | the region chosen under O1                                                                            |
+| `AUTH_TOKEN_SECRET_NAME`                     | `AUTH_TOKEN_SECRET_NAME`                                                                                                                             | `project-orchestrator-service/mcp-auth-token` (Step 1)                                                |
+| `SERVICE_GITHUB_APP_ID`                      | `GITHUB_APP_ID`                                                                                                                                      | the App's numeric ID (Step 2)                                                                         |
+| `SERVICE_GITHUB_APP_INSTALLATION_ID`         | `GITHUB_APP_INSTALLATION_ID`                                                                                                                         | the installation's numeric ID (Step 2)                                                                |
+| `SERVICE_GITHUB_APP_PRIVATE_KEY_SECRET_NAME` | `GITHUB_APP_PRIVATE_KEY_SECRET_NAME`                                                                                                                 | `project-orchestrator-service/github-app-private-key` (Step 2)                                        |
+| `AWS_DEPLOY_ROLE_ARN`                        | not fed to `scripts/deploy.sh` — read directly by `.github/workflows/deploy.yml` and `.github/workflows/oidc-preflight.yml`'s `role-to-assume` input | the deploy role's full ARN, `arn:aws:iam::<ACCOUNT_ID>:role/project-orchestrator-service-deploy` (O7) |
+
+> **Added 2026-09-02 (node P2-N016, task T034).** This section
+> originally listed five repository variables; `AWS_DEPLOY_ROLE_ARN`
+> is a sixth, found while building the two workflows this variable
+> table now feeds. Both need the deploy role's full ARN for
+> `aws-actions/configure-aws-credentials`, and S-001 forbids writing
+> the real AWS account number into any file a session authors — so
+> neither workflow can hardcode it. An ARN is not a secret _value_ in
+> the sense S-001 governs (the same category as the account-scoped
+> ARNs already written throughout `docs/deploy-role-permissions.md`),
+> so a repository variable, not an Actions secret, is the right home
+> for it — the same reasoning already applied to the other five. This
+> is an owner action outside the original O7–O10 list; create it
+> before running either workflow.
 
 Only the three App-related names are renamed — `AWS_REGION` and
 `AUTH_TOKEN_SECRET_NAME` already satisfy GitHub's rule and are stored
@@ -521,6 +539,106 @@ is a real, if currently hypothetical, gap — worth a Backlog note
 rather than a script change, since no such collision exists today and
 inventing defensive code against a name GitHub has not chosen yet is
 premature.
+
+## The deploy, smoke, and promote pipeline (node P2-N016)
+
+`.github/workflows/deploy.yml` runs `scripts/deploy.sh` exactly as
+Step 3 does — the deploy step itself is nothing this file does not
+already document. What the pipeline adds on top, beyond Step 3 alone
+(I8):
+
+1. An OIDC preflight (see "Running the OIDC preflight" below) before
+   anything else, so a broken trust policy fails the run clearly
+   instead of failing deploy in a way that looks like something else.
+2. Publishing a version and pointing the `preprod` alias at it,
+   instead of leaving that to a separate manual step.
+3. The three-check smoke test against the `preprod` Function URL (see
+   "Running the smoke test by hand" below).
+4. Promoting `live` — `aws lambda update-alias --name live
+--function-version <version>` — only if the smoke test passed, and
+   logging the version `live` pointed at before and after.
+
+The preprod Function URL and the pipeline's first observed end-to-end
+duration are recorded here once the first CI deploy (O9) has run:
+
+| Measurement                       | Value       | Measured |
+| --------------------------------- | ----------- | -------- |
+| Preprod Function URL              | not yet run | no       |
+| End-to-end pipeline duration (G6) | not yet run | no       |
+
+### Rollback
+
+Promotion is a single alias repoint, so rollback is the same command
+in reverse. `.github/workflows/deploy.yml`'s "Promote — repoint live"
+step logs the version `live` pointed at _before_ the repoint — read
+that value from the run's own log (Actions → the failed or
+since-regretted run → that step's output) and repoint back to it by
+hand:
+
+```sh
+aws lambda update-alias \
+  --region "$AWS_REGION" \
+  --function-name <McpFunctionName from the stack outputs> \
+  --name live \
+  --function-version <the "before" version logged by the promote step>
+```
+
+No redeploy, no `scripts/deploy.sh` run, and no CloudFormation change
+is needed or should be made for a bad promotion — a stack update is a
+different, larger action than an alias repoint, and this command alone
+already puts production back exactly where it was.
+
+### Smoke-test failure
+
+A red run at the "Smoke test — preprod Function URL" step means
+exactly one thing: one of the three checks in `scripts/smoke-test.sh`
+failed against `preprod`, and the run stopped there — the "Promote —
+repoint live" step never ran, so `live` and production are already
+untouched (G5). Nothing to roll back. The step's own log names which
+check failed (`SMOKE FAILURE (check N/3, ...)`) and, for checks 2 and
+3, prints the full MCP response that failed to match, which is usually
+enough to diagnose the defect directly. Fix the defect, merge the fix
+to `main` the ordinary way, and the next `push` runs the whole pipeline
+again from the top — there is no separate "retry just the smoke test
+in CI" action; the next real deploy is the retry.
+
+### Running the smoke test by hand
+
+`scripts/smoke-test.sh` is the same script the pipeline runs, runnable
+directly from a workstation against either endpoint (I8):
+
+```sh
+export SERVICE_URL="$PREPROD_ENDPOINT"   # or $ENDPOINT, for production
+export AWS_REGION=us-east-1              # the region from O1
+export AUTH_TOKEN_SECRET_NAME=project-orchestrator-service/mcp-auth-token
+./scripts/smoke-test.sh
+```
+
+Whatever AWS credentials are already configured in the shell are what
+`aws secretsmanager get-secret-value` uses to read the bearer token —
+the same credential the operator already has for any other `aws`
+command in this runbook, not something new to set up. Each of the
+three checks prints `OK` on success or `SMOKE FAILURE (check N/3, ...)`
+naming what did not match, and the script exits non-zero on the first
+failure.
+
+### Running the OIDC preflight
+
+`.github/workflows/oidc-preflight.yml` is `workflow_dispatch`-only —
+run it from the repository's **Actions** tab (select the workflow →
+**Run workflow**) or `gh workflow run oidc-preflight.yml`, before
+merging anything that would otherwise reach `.github/workflows/deploy.yml`
+for the first time, or any time the deploy role's trust policy
+changes. On success it prints the assumed role's ARN. On failure it
+prints the OIDC token's own claims (`sub`, `aud`, `repository`,
+`repository_id`, `repository_owner`, `repository_owner_id`, `ref`)
+next to this repository's expected `sub` — compare them
+character-for-character against
+`docs/deploy-role-permissions.md`'s "Does the OIDC trust policy need
+changing?" section, which is almost always where the actual fix
+belongs (the trust policy, not this workflow). The token itself is
+never printed, in either workflow — see that file's own comments for
+the mechanism, not just the intent.
 
 ## Running cost
 

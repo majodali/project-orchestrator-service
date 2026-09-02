@@ -1,0 +1,240 @@
+name: Deploy
+
+# The push-triggered deploy, smoke, and promote workflow (node
+# P2-N016, chunk 2 child D of majodali/project-orchestrator
+# docs/specs/p2-n012-deploy-from-ci-on-merge.md). Triggers on `push`
+# to `main` only — the pull-request checks that cannot deploy are a
+# separate file (.github/workflows/checks.yml, child B, node P2-N014)
+# by design; this file needs OIDC and holds it.
+#
+# Order: an OIDC preflight that must succeed before anything else
+# (the owner has been burned by a bare `sts:AssumeRoleWithWebIdentity`
+# denial before — see .github/workflows/oidc-preflight.yml, the
+# on-demand version of the same check, for why the claims dump on
+# failure exists); `scripts/deploy.sh`, the one deploy path (I1) and
+# nothing else runs `sam deploy`; publish a version and point
+# `preprod` at it; smoke-test the preprod Function URL
+# (scripts/smoke-test.sh, G3); promote `live` by a direct
+# `aws lambda update-alias` call only if the smoke test passed (G4),
+# leaving `live` untouched and the run red otherwise (G5).
+#
+# `concurrency` is a single group on `main` that does NOT cancel an
+# in-progress run — two quick merges must not interleave a publish
+# with a promotion.
+
+"on":
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+# EXPECTED_OIDC_SUBJECT is this repository's immutable subject claim
+# (owner ID 576567, repository ID 1347863895 — both public GitHub
+# identifiers, not secrets; see
+# docs/deploy-role-permissions.md's corrected trust-policy section for
+# the full derivation and citation). Used only to print a
+# human-comparable expected value next to the token's actual claims
+# when the preflight fails — never sent anywhere, never compared by
+# this workflow itself (AWS is the one system whose comparison
+# actually matters).
+env:
+  EXPECTED_OIDC_SUBJECT: "repo:majodali@576567/project-orchestrator-service@1347863895:ref:refs/heads/main"
+  STACK_NAME: project-orchestrator-service
+
+jobs:
+  deploy:
+    name: Deploy, smoke test, promote
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AUTH_TOKEN_SECRET_NAME: ${{ vars.AUTH_TOKEN_SECRET_NAME }}
+      GITHUB_APP_ID: ${{ vars.SERVICE_GITHUB_APP_ID }}
+      GITHUB_APP_INSTALLATION_ID: ${{ vars.SERVICE_GITHUB_APP_INSTALLATION_ID }}
+      GITHUB_APP_PRIVATE_KEY_SECRET_NAME: ${{ vars.SERVICE_GITHUB_APP_PRIVATE_KEY_SECRET_NAME }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set up AWS SAM CLI
+        uses: aws-actions/setup-sam@89ddb14d60e682855e3fea4be85b3c56485de310 # v3
+
+      # ---- OIDC preflight (I2) — must run, and pass, before anything
+      # else. `continue-on-error` on the assume-role step lets the
+      # diagnostic step below inspect *why* it failed instead of the
+      # job just stopping cold; the "fail the run" step at the end
+      # still turns the run red the same as any other failure would.
+      - name: OIDC preflight — assume the deploy role
+        id: assume-role
+        continue-on-error: true
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: OIDC preflight — confirm identity
+        if: steps.assume-role.outcome == 'success'
+        run: |
+          set -euo pipefail
+          echo "== OIDC preflight passed — assumed role =="
+          aws sts get-caller-identity --query Arn --output text
+
+      # ---- On failure: dump the token's own claims, never the token
+      # itself. Mechanism, not just intent — see the inline comments.
+      - name: OIDC preflight — diagnose a failed assumption
+        if: steps.assume-role.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          echo "== OIDC role assumption failed — decoding the token's own claims =="
+          echo "AWS's own error names no failing condition; this dump does."
+
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "No OIDC request token/URL available — this job needs 'permissions: id-token: write' (it has it; this would mean GitHub itself withheld it)." >&2
+            exit 1
+          fi
+
+          # curl's output goes straight into a shell variable — never
+          # to a file, never to an artifact. Passed to Node via an
+          # environment variable, not argv, so it never appears in a
+          # process listing either.
+          RESPONSE="$(curl -sS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")"
+
+          JWT="$(RESPONSE_JSON="$RESPONSE" node -e '
+            const r = JSON.parse(process.env.RESPONSE_JSON);
+            process.stdout.write(r.value || "");
+          ')"
+
+          if [ -z "$JWT" ]; then
+            echo "Could not obtain an OIDC token to diagnose (the token endpoint returned no \"value\")." >&2
+            exit 1
+          fi
+
+          # Mask immediately. The JWT is a live bearer credential for
+          # several minutes — everything from here on decodes it only
+          # in memory and prints only the seven named claims below,
+          # never the token itself.
+          echo "::add-mask::${JWT}"
+
+          CLAIMS_JSON="$(JWT="$JWT" node -e '
+            const parts = process.env.JWT.split(".");
+            const payload = Buffer.from(
+              parts[1].replace(/-/g, "+").replace(/_/g, "/"),
+              "base64",
+            ).toString("utf8");
+            const claims = JSON.parse(payload);
+            const wanted = ["sub", "aud", "repository", "repository_id", "repository_owner", "repository_owner_id", "ref"];
+            const out = {};
+            for (const key of wanted) out[key] = claims[key] ?? null;
+            process.stdout.write(JSON.stringify(out));
+          ')"
+
+          echo
+          echo "== Claims the token actually carried (the token itself is never printed) =="
+          CLAIMS_JSON="$CLAIMS_JSON" node -e '
+            const claims = JSON.parse(process.env.CLAIMS_JSON);
+            for (const [key, value] of Object.entries(claims)) {
+              console.log(`  ${key.padEnd(20)} ${value}`);
+            }
+          '
+
+          echo
+          echo "== Expected \"sub\" (this repository's immutable subject claim) =="
+          echo "  ${EXPECTED_OIDC_SUBJECT}"
+
+          echo
+          CLAIMS_JSON="$CLAIMS_JSON" node -e '
+            const claims = JSON.parse(process.env.CLAIMS_JSON);
+            const expected = process.env.EXPECTED_OIDC_SUBJECT;
+            if (claims.sub === expected) {
+              console.log("The token'"'"'s \"sub\" matches the expected subject above — the mismatch is in the trust policy, not the token. See docs/deploy-role-permissions.md.");
+            } else {
+              console.log("MISMATCH: the token'"'"'s \"sub\" does not equal the expected subject above. Compare them character-for-character — owner name, owner ID, repo name, repo ID, and ref all matter.");
+            }
+          '
+
+      - name: OIDC preflight — fail the run if assumption failed
+        if: steps.assume-role.outcome == 'failure'
+        run: |
+          echo "OIDC preflight failed — see the claims dump above, and docs/deploy-role-permissions.md's trust-policy section. Nothing was deployed." >&2
+          echo "Run .github/workflows/oidc-preflight.yml (workflow_dispatch) on demand to re-check this before merging anything further." >&2
+          exit 1
+
+      # ---- Deploy (I1) — the one deploy path. Nothing else in this
+      # workflow, or in this repository, invokes `sam deploy`.
+      - name: Deploy
+        run: ./scripts/deploy.sh
+
+      - name: Read stack outputs
+        id: stack-outputs
+        run: |
+          set -euo pipefail
+          FUNCTION_NAME="$(aws cloudformation describe-stacks \
+            --region "$AWS_REGION" --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='McpFunctionName'].OutputValue" \
+            --output text)"
+          PREPROD_ENDPOINT="$(aws cloudformation describe-stacks \
+            --region "$AWS_REGION" --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='PreprodEndpoint'].OutputValue" \
+            --output text)"
+          echo "function-name=${FUNCTION_NAME}" >> "$GITHUB_OUTPUT"
+          echo "preprod-endpoint=${PREPROD_ENDPOINT}" >> "$GITHUB_OUTPUT"
+
+      # ---- Point preprod at the new version.
+      - name: Point preprod at the new version
+        id: publish
+        env:
+          FUNCTION_NAME: ${{ steps.stack-outputs.outputs.function-name }}
+        run: |
+          set -euo pipefail
+          NEW_VERSION="$(aws lambda publish-version \
+            --region "$AWS_REGION" --function-name "$FUNCTION_NAME" \
+            --query Version --output text)"
+          echo "Published version: ${NEW_VERSION}"
+          aws lambda update-alias \
+            --region "$AWS_REGION" --function-name "$FUNCTION_NAME" \
+            --name preprod --function-version "$NEW_VERSION" >/dev/null
+          echo "preprod now points at version ${NEW_VERSION}."
+          echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+
+      # ---- Smoke test (G3) — three checks against the preprod
+      # Function URL. A non-zero exit here stops the run before the
+      # promote step below ever runs (G5) — `live` is untouched.
+      - name: Smoke test — preprod Function URL
+        env:
+          SERVICE_URL: ${{ steps.stack-outputs.outputs.preprod-endpoint }}
+        run: ./scripts/smoke-test.sh
+
+      # ---- Promote (G4) — an alias repoint and nothing else, and
+      # only reached if the smoke test above passed.
+      - name: Promote — repoint live
+        env:
+          FUNCTION_NAME: ${{ steps.stack-outputs.outputs.function-name }}
+          NEW_VERSION: ${{ steps.publish.outputs.version }}
+        run: |
+          set -euo pipefail
+          LIVE_BEFORE="$(aws lambda get-alias \
+            --region "$AWS_REGION" --function-name "$FUNCTION_NAME" \
+            --name live --query FunctionVersion --output text)"
+          echo "live currently points at version ${LIVE_BEFORE}."
+          aws lambda update-alias \
+            --region "$AWS_REGION" --function-name "$FUNCTION_NAME" \
+            --name live --function-version "$NEW_VERSION" >/dev/null
+          LIVE_AFTER="$(aws lambda get-alias \
+            --region "$AWS_REGION" --function-name "$FUNCTION_NAME" \
+            --name live --query FunctionVersion --output text)"
+          echo "live now points at version ${LIVE_AFTER} (promoted from ${LIVE_BEFORE})."
