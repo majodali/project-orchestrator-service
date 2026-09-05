@@ -495,16 +495,62 @@ reserved keyword: token`. Root cause:
       coordinating repository in
       [docs/classification.md](classification.md) stays as it is.
 
+- [x] **Pull-request checks that cannot deploy** (chunk 2 node
+      P2-N012 child B, node P2-N014) — `.github/workflows/checks.yml`,
+      the first workflow file in this repository. Triggers on the
+      plain pull-request event only (never a push to `main`, and never
+      the variant of the pull-request event that runs with
+      base-branch permissions and secrets against untrusted head
+      content); declares `permissions: contents: read` at the
+      workflow level with no job-level override and no OIDC token
+      permission anywhere in the file, so no job here can assume the
+      deploy role (criteria G1, I2). Four independent jobs, each its
+      own named check once branch protection requires it — see
+      `docs/runbook.md`, "Pull-request checks (branch protection,
+      O10)," for the exact names a repository admin selects: `Build`
+      (`npm run build`), `Lint` (`npm run lint`), `Test` (`npm test`),
+      and `SAM validate --lint` (via `aws-actions/setup-sam`). The
+      three third-party actions used (`actions/checkout`,
+      `actions/setup-node` — GitHub's own actions count as
+      third-party for this purpose — and `aws-actions/setup-sam`) are
+      pinned to full 40-character commit SHAs, each with the released
+      version in a trailing comment, resolved from each project's own
+      published tags at execute time (R14, I6). No npm dependency
+      added. Closes the `.aws-sam/**` lint-hygiene gap this child was
+      asked to check: `eslint.config.js` and `.gitignore` already
+      carried the `.aws-sam/**` / `.aws-sam/` exclusion (added
+      incidentally by the ESM-bundle-outage rework above, before this
+      node existed); the one remaining gap was `.prettierignore`,
+      which did not list it — `npm run format` already passed after a
+      `sam build` regardless, because Prettier's CLI follows
+      `.gitignore` by default, but the entry is now explicit rather
+      than resting on that fallback. Verified this session: `npm run
+build`, `npm run lint`, `npm test` (131/131 passing, unchanged),
+      and `npm run format`, each re-run after a real `sam build`
+      populated `.aws-sam/` to confirm the collision stays fixed;
+      `sam validate --lint` and `sam build` both run locally against
+      the unchanged `template.yaml` (this session had a working AWS
+      SAM CLI available) and succeeded. **Not run:** the workflow
+      itself — GitHub Actions does not execute on a branch without an
+      open pull request, and none was opened this session, so the
+      check names above and the workflow's first real run remain
+      unproven until then.
+
 ## Upcoming
 
 - [ ] **Degrade to git-only, and enlistment documentation** (chunk 1
       child E, node P2-N011) — the R12 exercise (dead endpoint and unset
       credential) and the enlistment runbook.
-- [ ] **CI for this repository** — `npm run build`, `npm test`,
-      `npm run lint`, and `npm run format` are run locally only as of this
-      entry; a CI workflow is out of scope for chunk 1 (see the
-      coordinating repository's Backlog, "CI for
-      project-orchestrator-service").
+- [ ] **Deploy-on-merge CI for this repository** (chunk 2 node
+      P2-N012 child D, not yet started) — pull-request checks
+      (`npm run build`, `npm run lint`, `npm test`, `sam validate
+--lint`) now run in CI on every pull request, landed as node
+      P2-N014 above; `npm run format` still runs locally only, and is
+      not one of child B's four required checks. Still upcoming: the
+      `push`-to-`main` workflow that publishes a Lambda version behind
+      the `preprod` alias, smoke-tests it, and promotes by repointing
+      `live` — see the coordinating repository's
+      `docs/specs/p2-n012-deploy-from-ci-on-merge.md`.
 - [ ] **Declare the multi-repo relationship formally** — replace this
       repository's prose statement of its coordinating repository (this
       Backlog entry and `docs/classification.md` § Coordinating
