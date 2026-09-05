@@ -137,3 +137,123 @@ describe("Lambda handler against an API Gateway v2 event", () => {
     expect(result.statusCode).toBe(404);
   });
 });
+
+/**
+ * Alias-aware lease-table selection, failing closed (node P2-N015) —
+ * end to end through the real exported `handler`, the exact
+ * `hono/aws-lambda` wrapper the deployed function runs, with a
+ * `LambdaContext` whose `invokedFunctionArn` carries a real qualifier
+ * suffix, per child A's finding
+ * (docs/findings/alias-assumptions.md, assumption 2). This is the
+ * "not a reimplementation" leg the task calls for — the pure-function
+ * tests in test/aliasLeaseTable.test.ts prove the parsing logic in
+ * isolation; these prove that logic is actually wired into the path a
+ * real Lambda invocation takes.
+ */
+function lambdaContextForQualifier(qualifier: string): LambdaContext {
+  return {
+    ...LAMBDA_CONTEXT,
+    invokedFunctionArn: `${LAMBDA_CONTEXT.invokedFunctionArn}:${qualifier}`,
+  };
+}
+
+async function callServiceIdentity(context: LambdaContext) {
+  const result = await handler(
+    v2Event(
+      "/mcp",
+      "POST",
+      {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        authorization: "Bearer test-token-123",
+      },
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "service_identity", arguments: {} },
+      }),
+    ),
+    context,
+  );
+  expect(result.statusCode).toBe(200);
+  const body = JSON.parse(result.body) as {
+    result: {
+      structuredContent: {
+        invokedQualifier?: string;
+        leaseTable?: string;
+      };
+    };
+  };
+  return body.result.structuredContent;
+}
+
+describe("Alias-aware lease-table selection, failing closed (node P2-N015)", () => {
+  beforeEach(() => {
+    process.env.MCP_AUTH_TOKEN = "test-token-123";
+    process.env.LEASE_TABLE_NAME = "prod-lease-table";
+    process.env.PREPROD_LEASE_TABLE_NAME = "preprod-lease-table";
+  });
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  it('resolves "live" to the production lease table', async () => {
+    const identity = await callServiceIdentity(
+      lambdaContextForQualifier("live"),
+    );
+    expect(identity.invokedQualifier).toBe("live");
+    expect(identity.leaseTable).toBe("prod-lease-table");
+  });
+
+  it('resolves "preprod" to the preprod lease table — a different table from "live", through the same deployed version', async () => {
+    const identity = await callServiceIdentity(
+      lambdaContextForQualifier("preprod"),
+    );
+    expect(identity.invokedQualifier).toBe("preprod");
+    expect(identity.leaseTable).toBe("preprod-lease-table");
+  });
+
+  it("refuses $LATEST — the unqualified invocation this handler answers when no alias is used at all", async () => {
+    const identity = await callServiceIdentity(
+      lambdaContextForQualifier("$LATEST"),
+    );
+    expect(identity.invokedQualifier).toBe("$LATEST");
+    expect(identity.leaseTable).toBeUndefined();
+  });
+
+  it("refuses an unrecognized alias name, naming exactly what it saw", async () => {
+    const identity = await callServiceIdentity(
+      lambdaContextForQualifier("canary"),
+    );
+    expect(identity.invokedQualifier).toBe("canary");
+    expect(identity.leaseTable).toBeUndefined();
+  });
+
+  it("plan_lease_acquire is refused end to end (not just service_identity's report) for an unrecognized qualifier", async () => {
+    const result = await handler(
+      v2Event(
+        "/mcp",
+        "POST",
+        {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+          authorization: "Bearer test-token-123",
+        },
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: {
+            name: "plan_lease_acquire",
+            arguments: { holder: "test" },
+          },
+        }),
+      ),
+      lambdaContextForQualifier("$LATEST"),
+    );
+    expect(result.statusCode).toBe(200);
+    expect(result.body).toContain("$LATEST");
+    expect(result.body).toContain("failing closed");
+  });
+});

@@ -67,7 +67,11 @@ function isConditionalCheckFailed(err: unknown): boolean {
 
 export class DynamoLeaseBackend implements LeaseBackend {
   constructor(
-    private readonly tableName: string,
+    // Public so callers (and tests, e.g. the alias-aware selection this
+    // supports — node P2-N015) can confirm which table an instance was
+    // built for without invoking it, the same way DynamoDBClient's own
+    // constructor does no I/O — only `.send()` calls the network.
+    public readonly tableName: string,
     private readonly client: DynamoSendClient,
   ) {}
 

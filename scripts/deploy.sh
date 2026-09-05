@@ -46,6 +46,38 @@ STAGE="${STAGE:-prod}"
 PROJECT_NAME="${PROJECT_NAME:-majodali/project-orchestrator}"
 SERVICE_COMMIT="$(git -C "$(dirname "${BASH_SOURCE[0]}")/.." rev-parse HEAD)"
 
+# node P2-N015 (I4) — read back `live`'s actual current FunctionVersion
+# before this ordinary deploy, and pass that same value back as the
+# LiveVersion parameter override, so this stack update declares no
+# change to it and CloudFormation leaves LiveAlias alone. This is the
+# mechanism docs/findings/alias-assumptions.md (assumption 5)
+# prescribes verbatim — see template.yaml's LiveVersion parameter for
+# the full reasoning. Two cases fall through to the template's own
+# default ($LATEST, harmless — see that parameter's description)
+# rather than failing this deploy: no stack exists yet (first-ever
+# deploy — describe-stacks errors), or the stack exists but `live` has
+# never been promoted (get-alias errors, e.g. before this node's first
+# deploy has run once). Only a real, already-promoted `live` changes
+# this from the default.
+LIVE_VERSION='$LATEST'
+EXISTING_FUNCTION_NAME="$(aws cloudformation describe-stacks \
+  --region "$AWS_REGION" \
+  --stack-name "$STACK_NAME" \
+  --query "Stacks[0].Outputs[?OutputKey=='McpFunctionName'].OutputValue" \
+  --output text 2>/dev/null || true)"
+if [ -n "$EXISTING_FUNCTION_NAME" ] && [ "$EXISTING_FUNCTION_NAME" != "None" ]; then
+  READ_BACK="$(aws lambda get-alias \
+    --region "$AWS_REGION" \
+    --function-name "$EXISTING_FUNCTION_NAME" \
+    --name live \
+    --query FunctionVersion \
+    --output text 2>/dev/null || true)"
+  if [ -n "$READ_BACK" ] && [ "$READ_BACK" != "None" ]; then
+    LIVE_VERSION="$READ_BACK"
+  fi
+fi
+echo "== live is currently at FunctionVersion=${LIVE_VERSION} — this deploy will not move it (I4) =="
+
 echo "== sam build (esbuild bundling src/lambda.ts) =="
 sam build
 
@@ -65,7 +97,8 @@ sam deploy \
     "ServiceCommit=${SERVICE_COMMIT}" \
     "GithubAppId=${GITHUB_APP_ID}" \
     "GithubAppInstallationId=${GITHUB_APP_INSTALLATION_ID}" \
-    "GithubAppPrivateKeySecretName=${GITHUB_APP_PRIVATE_KEY_SECRET_NAME}"
+    "GithubAppPrivateKeySecretName=${GITHUB_APP_PRIVATE_KEY_SECRET_NAME}" \
+    "LiveVersion=${LIVE_VERSION}"
 
 echo
 echo "== Endpoint =="

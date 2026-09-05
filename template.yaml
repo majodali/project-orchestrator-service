@@ -1,18 +1,20 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
+# CloudFormation caps the top-level Description at 1024 characters
+# (cfn-lint E1003), so the full account of *why* this template is
+# shaped the way it is lives in comments below and in
+# docs/runbook.md / the linked plans, not here.
 Description: >
-  project-orchestrator-service — chunk 1, node P2-N002 of
-  p2-n002-service-skeleton: one Lambda function behind an HTTP API,
-  serving MCP over streamable HTTP. `service_identity` (child B, node
-  P2-N008), `plan_read` (child C, node P2-N009, GitHub App credentials
-  below), and the advisory-lease write path — `plan_lease_acquire` /
-  `plan_update` / `plan_confirm` / `plan_lease_release` (child D, node
-  P2-N010) — are wired; its DynamoDB lease table (`LeaseTable` below)
-  is the one piece of plan-state storage this service holds — never
-  register content, only the lease (decision 7; I5). See
-  docs/runbook.md for the deploy procedure and
-  https://github.com/majodali/project-orchestrator/blob/main/docs/plans/p2-n002-service-skeleton.md
-  for why this template is shaped the way it is.
+  project-orchestrator-service: one Lambda function behind an HTTP
+  API, serving MCP over streamable HTTP — `service_identity`,
+  `plan_read`, and the advisory-lease write path (chunk 1). Node
+  P2-N015 (chunk 2) adds alias-aware lease-table selection: one
+  published version answers two Lambda aliases, `live` (production,
+  bound to the HTTP API) and `preprod` (its own Function URL) — see
+  LiveAlias, PreprodAlias, and src/planRegister/aliasLeaseTable.ts
+  below for how. See docs/runbook.md for the deploy procedure and
+  https://github.com/majodali/project-orchestrator/blob/main/docs/plans/p2-n012-deploy-from-ci-on-merge.md
+  for why.
 
 Parameters:
   Stage:
@@ -90,6 +92,51 @@ Parameters:
       resolved into the Lambda's environment via a CloudFormation
       dynamic reference at deploy time, so the key is never a literal
       in this template, in a parameter-overrides file, or in git.
+
+  # LiveVersion is the promotion mechanism's parameter, node P2-N015
+  # (I4) — the mechanism docs/findings/alias-assumptions.md
+  # (assumption 5) prescribes verbatim for pinning `live` across stack
+  # updates. Authoritative source of truth: the AWS alias's own,
+  # actual `FunctionVersion` — this parameter exists only so an
+  # ordinary deploy does not fight it, never the other way around.
+  # `scripts/deploy.sh` reads that real value back via
+  # `aws lambda get-alias --name live` before every `sam deploy` and
+  # passes it back as this override, so an ordinary stack update
+  # declares no change and CloudFormation leaves LiveAlias alone.
+  # Promotion itself is a direct `aws lambda update-alias --name live`
+  # call (child D, node P2-N016), outside CloudFormation — the next
+  # ordinary deploy reads that new value back in. Defaults to
+  # `$LATEST` (a valid FunctionVersion value) only for a stack that
+  # has never had a version promoted to `live` yet — exactly what
+  # production already serves before this node ships, so the default
+  # changes nothing for a first deploy.
+  LiveVersion:
+    Type: String
+    Default: "$LATEST"
+    AllowedPattern: '(\$LATEST|[0-9]+)'
+    Description: >
+      The Lambda version promoted to `live` (node P2-N015, I4). Read
+      back and passed through unchanged by scripts/deploy.sh on every
+      ordinary deploy; promoted only by a direct
+      `aws lambda update-alias` call, never a stack update. See the
+      comment above this parameter for the full mechanism.
+
+  # PreprodVersion (node P2-N015): unlike LiveVersion above, this needs
+  # no read-back protection — `preprod` is *supposed* to move on every
+  # deploy. A new version is published and `preprod` repointed at it
+  # as part of child D's deploy-and-smoke-test sequence
+  # (`aws lambda publish-version` + `aws lambda update-alias --name
+  # preprod`, outside CloudFormation — the same reason neither alias
+  # uses SAM's `AutoPublishAlias`, see LiveAlias's own comment).
+  PreprodVersion:
+    Type: String
+    Default: "$LATEST"
+    AllowedPattern: '(\$LATEST|[0-9]+)'
+    Description: >
+      The Lambda version `preprod` currently points at (node P2-N015).
+      Repointed directly by child D's deploy-and-smoke sequence on
+      every deploy; needs no read-back protection. See the comment
+      above this parameter for why.
 
 Globals:
   Function:
@@ -171,29 +218,42 @@ Resources:
           GITHUB_APP_INSTALLATION_ID: !Ref GithubAppInstallationId
           GITHUB_APP_PRIVATE_KEY: !Sub "{{resolve:secretsmanager:${GithubAppPrivateKeySecretName}:SecretString}}"
           # The write path (chunk 1 child D, node P2-N010) — the
-          # advisory write lease's only storage. No plan-state content
-          # is ever written here; see LeaseTable below.
+          # advisory write lease's only storage when invoked
+          # unqualified (local dev, tests) or via the `live` alias
+          # (node P2-N015 — see src/planRegister/aliasLeaseTable.ts).
+          # Never register content, only the lease; see LeaseTable
+          # below.
           LEASE_TABLE_NAME: !Ref LeaseTable
+          # node P2-N015: the `preprod` alias's own lease table — see
+          # PreprodLeaseTable below. Read only through the qualifier
+          # read (src/planRegister/aliasLeaseTable.ts); never touched
+          # when this process has no invoked qualifier at all (I7).
+          PREPROD_LEASE_TABLE_NAME: !Ref PreprodLeaseTable
       Policies:
-        # Scoped exactly to LeaseTable — no other DynamoDB table this
-        # function's role can touch. src/planRegister/dynamoLeaseBackend.ts
-        # only ever calls GetItem/PutItem/DeleteItem, all of which this
-        # SAM policy template covers.
+        # Scoped exactly to LeaseTable and PreprodLeaseTable — no other
+        # DynamoDB table this function's role can touch.
+        # src/planRegister/dynamoLeaseBackend.ts only ever calls
+        # GetItem/PutItem/DeleteItem, all of which this SAM policy
+        # template covers. One function, one execution role, serving
+        # both aliases (environment variables are per-version, not
+        # per-alias — docs/findings/alias-assumptions.md, assumption
+        # 1) — so the role needs both tables' worth of access; the
+        # qualifier read at request time (I3) is what keeps a `preprod`
+        # invocation from ever touching LeaseTable and vice versa, not
+        # a narrower IAM grant (IAM here cannot see which alias
+        # invoked it).
         - DynamoDBCrudPolicy:
             TableName: !Ref LeaseTable
-      Events:
-        McpAny:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref HttpApi
-            Path: /mcp
-            Method: ANY
-        HealthCheck:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref HttpApi
-            Path: /health
-            Method: GET
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PreprodLeaseTable
+      # No Events: here (node P2-N015) — SAM's `HttpApi` event-source
+      # sugar always binds to the function's own unqualified ARN
+      # ($LATEST), which is exactly the untested-code-served-on-every-
+      # deploy failure mode "deploy, then promote" exists to prevent
+      # (p2-n012 plan, "The preprod alias and the version that serves
+      # it"). The production integration is bound explicitly to
+      # LiveAlias below (McpIntegration / McpRoute / HealthRoute /
+      # LiveInvokePermission) instead.
       Tags:
         Stage: !Ref Stage
 
@@ -225,6 +285,93 @@ Resources:
         - Key: Stage
           Value: !Ref Stage
 
+  PreprodLeaseTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      # node P2-N015 — the `preprod` alias's own lease table, the same
+      # shape as LeaseTable above (matching key schema, deliberately:
+      # both are the same DynamoLeaseBackend code, just pointed at
+      # different tables by the qualifier read). Permanent, not
+      # created per run — the same "one fixed lease item, not one
+      # table per project or per node" scope decision LeaseTable's own
+      # comment states, and the same reason: contention handling is
+      # chunk 4, not this node's to anticipate.
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Stage
+          Value: !Ref Stage
+
+  LiveAlias:
+    Type: AWS::Lambda::Alias
+    Properties:
+      FunctionName: !Ref McpFunction
+      Name: live
+      FunctionVersion: !Ref LiveVersion
+    # Deliberately a plain AWS::Lambda::Alias, not SAM's
+    # AutoPublishAlias sugar (node P2-N015, I4 — this is child A's
+    # riskiest finding made concrete). AutoPublishAlias publishes a new
+    # version and repoints its alias to it on *every* code-changing
+    # deploy (AWS's own gradual-deployment guide, which uses an alias
+    # literally named "live" in its example) — which would defeat
+    # "deploy, then promote" the very first time CI ran an ordinary
+    # deploy. FunctionVersion here comes from the LiveVersion parameter
+    # instead, which scripts/deploy.sh reads back from the alias's own
+    # current state before every ordinary deploy (see that parameter's
+    # description) so the declared value never actually changes on an
+    # ordinary deploy and CloudFormation leaves this resource alone.
+    # Promotion is a direct `aws lambda update-alias --name live` call
+    # (child D), never a stack update.
+
+  PreprodAlias:
+    Type: AWS::Lambda::Alias
+    Properties:
+      FunctionName: !Ref McpFunction
+      Name: preprod
+      FunctionVersion: !Ref PreprodVersion
+    # Also not AutoPublishAlias, for the same reason LiveAlias isn't —
+    # see PreprodVersion's own parameter description for why preprod,
+    # unlike live, needs no read-back protection: it is supposed to
+    # move on every deploy, and child D does that directly.
+
+  PreprodFunctionUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !Ref McpFunction
+      Qualifier: preprod
+      # NONE, not AWS_IAM: this endpoint carries the same
+      # application-level bearer-token auth the production HTTP API
+      # does (src/auth.ts's requireBearerToken, checked on every /mcp
+      # call regardless of transport) — the plan's own words, "The URL
+      # carries the same bearer auth the production endpoint does."
+      # Nothing behind this URL is reachable without that token.
+      AuthType: NONE
+    # Must reference the literal alias name "preprod" here, matching
+    # PreprodAlias.Properties.Name above — Qualifier takes the alias
+    # *name*, not a !Ref (which would resolve to the alias's ARN, the
+    # wrong shape for this property; docs.aws.amazon.com's own
+    # AWS::Lambda::Url reference: "Qualifier — The alias name.").
+
+  PreprodFunctionUrlInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      # Scoped to the preprod alias specifically (not the bare
+      # function / $LATEST) — the qualified ARN this permission is
+      # attached to is exactly what makes preprod's Function URL the
+      # only externally reachable path to that alias (I3).
+      FunctionName: !Ref PreprodAlias
+      Action: lambda:InvokeFunctionUrl
+      Principal: "*"
+      FunctionUrlAuthType: NONE
+
   HttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
@@ -245,20 +392,81 @@ Resources:
       # endpoint URL is what the runbook records and what .mcp.json
       # enlists against.
 
+  # node P2-N015 — the production integration, route, and invoke
+  # permission are declared explicitly (raw AWS::ApiGatewayV2::* /
+  # AWS::Lambda::Permission) rather than through McpFunction's
+  # `Events:`, because that is the only way to bind the integration to
+  # LiveAlias specifically (I4; docs/findings/alias-assumptions.md,
+  # assumption 4 — "Passing !Ref LiveAlias ... as the IntegrationUri's
+  # function reference ... binds the integration to that alias
+  # specifically"). This is the *only* HTTP API integration this
+  # template declares, and it is qualified — I3.
+  McpIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Ref LiveAlias
+      IntegrationMethod: POST
+      PayloadFormatVersion: "2.0"
+
+  McpRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "ANY /mcp"
+      Target: !Sub "integrations/${McpIntegration}"
+
+  HealthRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "GET /health"
+      Target: !Sub "integrations/${McpIntegration}"
+
+  LiveInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      # Scoped to LiveAlias, not the bare function — API Gateway can
+      # only invoke the `live`-qualified ARN this permission names
+      # (I3: the production integration resolves to `live` and
+      # nothing else is reachable through it).
+      FunctionName: !Ref LiveAlias
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/*"
+
 Outputs:
   Endpoint:
     Description: >
-      The base URL to enlist against. The MCP endpoint is
-      `<Endpoint>/mcp`; the unauthenticated liveness check is
-      `<Endpoint>/health`. No stage segment (the HTTP API's stage is
-      fixed to `$default`; see the HttpApi resource above). Recorded
-      in docs/runbook.md after the first deploy (O2).
+      The base URL to enlist against — production, served by `live`
+      (node P2-N015). The MCP endpoint is `<Endpoint>/mcp`; the
+      unauthenticated liveness check is `<Endpoint>/health`. No stage
+      segment (the HTTP API's stage is fixed to `$default`; see the
+      HttpApi resource above). Recorded in docs/runbook.md after the
+      first deploy (O2).
     Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  PreprodEndpoint:
+    Description: >
+      The `preprod` alias's Function URL (node P2-N015) — what child
+      D's smoke test calls, and what a human re-runs the smoke script
+      against by hand (docs/runbook.md). No stage segment; the MCP
+      endpoint is `<PreprodEndpoint>mcp` (a Function URL's own trailing
+      slash — check the actual value before concatenating).
+    Value: !GetAtt PreprodFunctionUrl.FunctionUrl
   McpFunctionName:
     Description: The deployed Lambda function's name (for `aws logs tail`, etc.).
     Value: !Ref McpFunction
   LeaseTableName:
     Description: >
-      The advisory write-lease table's name (for `aws dynamodb
-      get-item`, etc., if a lease ever needs inspecting by hand).
+      The production (`live`) advisory write-lease table's name (for
+      `aws dynamodb get-item`, etc., if a lease ever needs inspecting
+      by hand).
     Value: !Ref LeaseTable
+  PreprodLeaseTableName:
+    Description: >
+      The `preprod` advisory write-lease table's name (node P2-N015) —
+      what G3's two-tables-one-observation check reads directly to
+      confirm a preprod-invoked lease acquire did not land in the
+      production table.
+    Value: !Ref PreprodLeaseTable
