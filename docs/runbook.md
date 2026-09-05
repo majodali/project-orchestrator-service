@@ -608,3 +608,38 @@ failing closed...`** (node P2-N015) — this call was invoked through
   `service_identity`'s `invokedQualifier` / `leaseTable` fields (also
   node P2-N015) report exactly what qualifier a given call was seen
   with, which is the fastest way to confirm which case you are in.
+
+## Pull-request checks (branch protection, O10)
+
+`.github/workflows/checks.yml` (node P2-N014, chunk 2 child B of the
+deploy-from-CI-on-merge node) runs four independent checks on every
+pull request. The workflow triggers on the plain pull-request event
+only, declares `permissions: contents: read` at the workflow level
+with no job-level override, and requests no OIDC token permission
+anywhere in the file — no job in it can assume the deploy role
+(criterion G1). The deploy credentials and the merge-triggered deploy
+workflow live in a separate file (child D), by design.
+
+Make each of these four checks required in this repository's branch
+protection rule for `main` (**Settings → Branches → Branch protection
+rules → main → Require status checks to pass before merging**), so
+O10 is a selection from this exact list rather than a guess:
+
+- `Build`
+- `Lint`
+- `Test`
+- `SAM validate --lint`
+
+These are the workflow's job `name:` values verbatim
+(`.github/workflows/checks.yml`), which is what GitHub's branch
+protection check-name picker shows once the workflow has run at least
+once against this repository — GitHub does not offer a check name to
+require until it has produced one real run.
+
+**Not yet proven:** the workflow has not yet run on GitHub (it exists
+only on a not-yet-opened pull request as of this writing), so the
+exact display strings above are the job names as declared, not yet
+confirmed against a live Checks tab. Confirm by opening the first pull
+request that carries this workflow, waiting for the four checks to
+appear, and cross-checking their names against this list before
+ticking them in branch protection.

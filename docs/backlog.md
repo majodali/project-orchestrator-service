@@ -604,17 +604,62 @@ reserved keyword: token`. Root cause:
       reasoning and the proved/unproven split.
 
 - [x] **Deploy prerequisites cleared: the deploy role's IAM policy and the `GITHUB_`-variable naming fix** (chunk 2 child D prep, node P2-N016, task T033) — the two owner actions that were blocking child D on contact with reality (O7's permissions being sized only for the promote step and never for `sam build && sam deploy`; O8's three required variable names starting with `GITHUB_`, which GitHub's repository-variable naming rule forbids) are now both documented and closed out, with no change to `scripts/deploy.sh` or `template.yaml`. `docs/deploy-role-permissions.md` is new: a complete IAM policy, derived resource by resource from `template.yaml` and cross-checked against the AWS SAM developer guide and the AWS Service Authorization Reference (both read and cited 2026-09-01), covering `sam deploy --resolve-s3 --capabilities CAPABILITY_IAM` end to end — including the second, SAM-managed CloudFormation stack `--resolve-s3` creates for its artifact bucket, which is easy to miss — plus the promote/smoke grants child D will need (`lambda:PublishVersion`/`UpdateAlias`/`GetAlias`, `secretsmanager:GetSecretValue` on both secrets `template.yaml` dynamically resolves, not only the one O7's plan text names). Every action that cannot be scoped to a specific resource ARN is named and cited rather than granted silently (`cloudformation:GetTemplateSummary` and all four `apigateway:POST`/`GET`/`PATCH`/`DELETE` authoring actions — the Service Authorization Reference's own "Resource types" table for Amazon API Gateway Management V2 is empty). The target OIDC trust policy is included for the owner to compare the live one against (I2 is owner-attested; no dispatched session holds AWS credentials to read it directly). `docs/runbook.md` gained a new "CI deploy prerequisites: owner actions O7 and O8" section: confirmed, against GitHub's own variables reference read 2026-09-01, that the `GITHUB_` prefix ban applies to configuration variables (the `vars` context) and not to environment variables generally — only to the specific, enumerated list of GitHub's own defaults, which the three `GITHUB_APP_*` names are not on — so the fix needed no `scripts/deploy.sh` change: three repository variables are stored under new, unprefixed names (`SERVICE_GITHUB_APP_ID`/`SERVICE_GITHUB_APP_INSTALLATION_ID`/`SERVICE_GITHUB_APP_PRIVATE_KEY_SECRET_NAME`, chosen and stated once) and an `env:` mapping block, given verbatim as the contract for child D to implement, translates them back to the names the script requires. Confirmed from `scripts/deploy.sh`'s own `${VAR:?message}` guards that it fails closed on an unset-or-empty value; recorded as a residual risk, not a defect, that it cannot distinguish "set to something unexpected" from "set correctly" if GitHub ever adds one of these three names to its own defaults list. No `.md` file outside `docs/deploy-role-permissions.md`, `docs/runbook.md`, and this Backlog was touched, and neither `scripts/deploy.sh` nor `template.yaml` changed.
+- [x] **Pull-request checks that cannot deploy** (chunk 2 node
+      P2-N012 child B, node P2-N014) — `.github/workflows/checks.yml`,
+      the first workflow file in this repository. Triggers on the
+      plain pull-request event only (never a push to `main`, and never
+      the variant of the pull-request event that runs with
+      base-branch permissions and secrets against untrusted head
+      content); declares `permissions: contents: read` at the
+      workflow level with no job-level override and no OIDC token
+      permission anywhere in the file, so no job here can assume the
+      deploy role (criteria G1, I2). Four independent jobs, each its
+      own named check once branch protection requires it — see
+      `docs/runbook.md`, "Pull-request checks (branch protection,
+      O10)," for the exact names a repository admin selects: `Build`
+      (`npm run build`), `Lint` (`npm run lint`), `Test` (`npm test`),
+      and `SAM validate --lint` (via `aws-actions/setup-sam`). The
+      three third-party actions used (`actions/checkout`,
+      `actions/setup-node` — GitHub's own actions count as
+      third-party for this purpose — and `aws-actions/setup-sam`) are
+      pinned to full 40-character commit SHAs, each with the released
+      version in a trailing comment, resolved from each project's own
+      published tags at execute time (R14, I6). No npm dependency
+      added. Closes the `.aws-sam/**` lint-hygiene gap this child was
+      asked to check: `eslint.config.js` and `.gitignore` already
+      carried the `.aws-sam/**` / `.aws-sam/` exclusion (added
+      incidentally by the ESM-bundle-outage rework above, before this
+      node existed); the one remaining gap was `.prettierignore`,
+      which did not list it — `npm run format` already passed after a
+      `sam build` regardless, because Prettier's CLI follows
+      `.gitignore` by default, but the entry is now explicit rather
+      than resting on that fallback. Verified this session: `npm run
+build`, `npm run lint`, `npm test` (131/131 passing, unchanged),
+      and `npm run format`, each re-run after a real `sam build`
+      populated `.aws-sam/` to confirm the collision stays fixed;
+      `sam validate --lint` and `sam build` both run locally against
+      the unchanged `template.yaml` (this session had a working AWS
+      SAM CLI available) and succeeded. **Not run:** the workflow
+      itself — GitHub Actions does not execute on a branch without an
+      open pull request, and none was opened this session, so the
+      check names above and the workflow's first real run remain
+      unproven until then.
 
 ## Upcoming
 
 - [ ] **Degrade to git-only, and enlistment documentation** (chunk 1
       child E, node P2-N011) — the R12 exercise (dead endpoint and unset
       credential) and the enlistment runbook.
-- [ ] **CI for this repository** — `npm run build`, `npm test`,
-      `npm run lint`, and `npm run format` are run locally only as of this
-      entry; a CI workflow is out of scope for chunk 1 (see the
-      coordinating repository's Backlog, "CI for
-      project-orchestrator-service").
+- [ ] **Deploy-on-merge CI for this repository** (chunk 2 node
+      P2-N012 child D, not yet started) — pull-request checks
+      (`npm run build`, `npm run lint`, `npm test`, `sam validate
+--lint`) now run in CI on every pull request, landed as node
+      P2-N014 above; `npm run format` still runs locally only, and is
+      not one of child B's four required checks. Still upcoming: the
+      `push`-to-`main` workflow that publishes a Lambda version behind
+      the `preprod` alias, smoke-tests it, and promotes by repointing
+      `live` — see the coordinating repository's
+      `docs/specs/p2-n012-deploy-from-ci-on-merge.md`.
 - [ ] **Declare the multi-repo relationship formally** — replace this
       repository's prose statement of its coordinating repository (this
       Backlog entry and `docs/classification.md` § Coordinating
