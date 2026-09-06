@@ -52,13 +52,30 @@ SERVICE_COMMIT="$(git -C "$(dirname "${BASH_SOURCE[0]}")/.." rev-parse HEAD)"
 # change to it and CloudFormation leaves LiveAlias alone. This is the
 # mechanism docs/findings/alias-assumptions.md (assumption 5)
 # prescribes verbatim — see template.yaml's LiveVersion parameter for
-# the full reasoning. Two cases fall through to the template's own
-# default ($LATEST, harmless — see that parameter's description)
-# rather than failing this deploy: no stack exists yet (first-ever
-# deploy — describe-stacks errors), or the stack exists but `live` has
-# never been promoted (get-alias errors, e.g. before this node's first
-# deploy has run once). Only a real, already-promoted `live` changes
-# this from the default.
+# the full reasoning.
+#
+# node P2-N016 (T036) rework — this read-back protects an invariant
+# ("`live` never points at `$LATEST`") that has to already hold before
+# it can do any protecting: if `live` is actually at `$LATEST` (a
+# mutable qualifier), reading it back and passing it straight through
+# does not "declare no change" in any way that matters — `live` starts
+# serving whatever `sam deploy` just uploaded the instant the function
+# code updates, before this script's own smoke test ever runs. That is
+# exactly the outage this task fixes (docs/runbook.md's K-011
+# correction has the full account). So only one case now falls through
+# silently to `$LATEST`: no stack exists yet at all (first-ever
+# deploy — describe-stacks itself errors, `EXISTING_FUNCTION_NAME`
+# stays empty). Once a stack exists, `live` (an `AWS::Lambda::Alias`
+# resource created in that same stack) always exists too, so
+# `get-alias --name live` succeeding is the ordinary case and failing
+# is itself an anomaly — both a successful read-back of `$LATEST` and
+# an outright `get-alias` failure now refuse to deploy rather than
+# guess, per the "fail closed" requirement (I4). See
+# docs/runbook.md's "One-time owner bootstrap" section for the exact
+# commands to pin `live` away from `$LATEST` once, by hand, before the
+# next deploy — this script cannot do that for the owner (it does not
+# hold the read-write moment a human choosing what "tested" means
+# requires).
 LIVE_VERSION='$LATEST'
 EXISTING_FUNCTION_NAME="$(aws cloudformation describe-stacks \
   --region "$AWS_REGION" \
@@ -66,15 +83,39 @@ EXISTING_FUNCTION_NAME="$(aws cloudformation describe-stacks \
   --query "Stacks[0].Outputs[?OutputKey=='McpFunctionName'].OutputValue" \
   --output text 2>/dev/null || true)"
 if [ -n "$EXISTING_FUNCTION_NAME" ] && [ "$EXISTING_FUNCTION_NAME" != "None" ]; then
-  READ_BACK="$(aws lambda get-alias \
+  if ! READ_BACK="$(aws lambda get-alias \
     --region "$AWS_REGION" \
     --function-name "$EXISTING_FUNCTION_NAME" \
     --name live \
     --query FunctionVersion \
-    --output text 2>/dev/null || true)"
-  if [ -n "$READ_BACK" ] && [ "$READ_BACK" != "None" ]; then
-    LIVE_VERSION="$READ_BACK"
+    --output text)"; then
+    echo "== REFUSING TO DEPLOY (node P2-N016, I4 — fail closed) ==" >&2
+    echo "Stack '$STACK_NAME' already exists (function: $EXISTING_FUNCTION_NAME)," >&2
+    echo "but 'aws lambda get-alias --name live' failed (see its own error above)." >&2
+    echo "This script cannot confirm 'live' is safely pinned away from \$LATEST," >&2
+    echo "so it will not deploy. Investigate by hand (aws lambda get-alias" >&2
+    echo "--function-name '$EXISTING_FUNCTION_NAME' --name live) before retrying." >&2
+    exit 1
   fi
+  if [ "$READ_BACK" = '$LATEST' ]; then
+    echo "== REFUSING TO DEPLOY (node P2-N016, I4 — fail closed) ==" >&2
+    echo "'live' is currently pinned to \$LATEST on stack '$STACK_NAME'" >&2
+    echo "(function: $EXISTING_FUNCTION_NAME). \$LATEST is mutable, so this" >&2
+    echo "deploy would move production the instant 'sam deploy' updates the" >&2
+    echo "function's code — before any smoke test runs. See docs/runbook.md's" >&2
+    echo "\"One-time owner bootstrap\" section; the short version, run once by" >&2
+    echo "hand before retrying this script:" >&2
+    echo "  NEW_VERSION=\$(aws lambda publish-version --region '$AWS_REGION' \\" >&2
+    echo "    --function-name '$EXISTING_FUNCTION_NAME' --query Version --output text)" >&2
+    echo "  aws lambda update-alias --region '$AWS_REGION' \\" >&2
+    echo "    --function-name '$EXISTING_FUNCTION_NAME' --name live \\" >&2
+    echo "    --function-version \"\$NEW_VERSION\"" >&2
+    echo "Then confirm with: aws lambda get-alias --region '$AWS_REGION' \\" >&2
+    echo "  --function-name '$EXISTING_FUNCTION_NAME' --name live --query FunctionVersion" >&2
+    echo "— it must print a plain number, not \$LATEST, before this script is re-run." >&2
+    exit 1
+  fi
+  LIVE_VERSION="$READ_BACK"
 fi
 echo "== live is currently at FunctionVersion=${LIVE_VERSION} — this deploy will not move it (I4) =="
 
