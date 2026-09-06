@@ -78,6 +78,24 @@ echo "== Check 1/3: GET /health returns 200 =="
 HEALTH_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' "${BASE_URL}/health")"
 if [ "$HEALTH_STATUS" != "200" ]; then
   echo "SMOKE FAILURE (check 1/3, /health): GET ${BASE_URL}/health returned ${HEALTH_STATUS}, expected 200." >&2
+  # node P2-N016 (T036) — this exact failure (a 403 on preprod's own
+  # /health) was Lambda's own function-URL authorization layer, not
+  # the application (src/httpApp.ts never authenticates /health):
+  # confirmed by the response carrying an `x-amzn-ErrorType` header
+  # and Lambda's function-URL troubleshooting link, not the app's own
+  # JSON error shape. Diagnostic only — never changes this check's
+  # pass/fail outcome, just makes that signature visible on this run's
+  # own log instead of requiring a second, by-hand `curl -i`.
+  if [ "$HEALTH_STATUS" = "403" ]; then
+    HEALTH_HEADERS="$(curl -sS -o /dev/null -D - "${BASE_URL}/health" || true)"
+    if printf '%s' "$HEALTH_HEADERS" | grep -qi '^x-amzn-errortype:'; then
+      echo "This 403 carries Lambda's own 'x-amzn-ErrorType' header — Lambda's" >&2
+      echo "function-URL authorization layer refused the request before it ever" >&2
+      echo "reached the application, not an application-level 403. See" >&2
+      echo "docs/runbook.md's Troubleshooting entry for this exact signature." >&2
+      printf '%s\n' "$HEALTH_HEADERS" | grep -i '^x-amzn-errortype:' >&2
+    fi
+  fi
   exit 1
 fi
 echo "OK — /health returned 200."

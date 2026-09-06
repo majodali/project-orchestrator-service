@@ -105,21 +105,44 @@ Parameters:
   # declares no change and CloudFormation leaves LiveAlias alone.
   # Promotion itself is a direct `aws lambda update-alias --name live`
   # call (child D, node P2-N016), outside CloudFormation — the next
-  # ordinary deploy reads that new value back in. Defaults to
-  # `$LATEST` (a valid FunctionVersion value) only for a stack that
-  # has never had a version promoted to `live` yet — exactly what
-  # production already serves before this node ships, so the default
-  # changes nothing for a first deploy.
+  # ordinary deploy reads that new value back in.
+  #
+  # node P2-N016 (T036) rework — **no `Default` here anymore.** This
+  # parameter used to default to `$LATEST`, reasoned (wrongly) to be
+  # "harmless" because it matched what a stack with no version ever
+  # promoted was already serving. That reasoning missed that
+  # `scripts/deploy.sh` — not this template — is what makes a real
+  # deploy's read-back safe, and the template's own `Default` is only
+  # ever consulted when something *bypasses* that script: a `sam
+  # deploy` run by hand without `--parameter-overrides LiveVersion=...`
+  # (`sam deploy`, unlike a plain `update-stack`, applies a missing
+  # parameter's template `Default`, not the stack's previous value).
+  # With a `$LATEST` default, that bypass would have quietly reset
+  # `live` to whatever `$LATEST` happens to be at that moment — the
+  # exact production-serves-untested-code defect this rework fixes,
+  # reintroduced one level up, in the one place meant to guard against
+  # it. Removing the `Default` makes `LiveVersion` a required
+  # parameter: an ordinary `sam deploy` invoked outside
+  # `scripts/deploy.sh` now fails outright ("Parameters: [LiveVersion]
+  # must have values") instead of silently repointing production.
+  # `scripts/deploy.sh` is unaffected — it already passes
+  # `LiveVersion=...` explicitly on every invocation, including the
+  # literal `$LATEST` string for a stack that does not exist yet (see
+  # that script's own comment); `AllowedPattern` below still admits
+  # `$LATEST` for exactly that first-deploy case, and only that script
+  # is meant to supply it.
   LiveVersion:
     Type: String
-    Default: "$LATEST"
     AllowedPattern: '(\$LATEST|[0-9]+)'
     Description: >
-      The Lambda version promoted to `live` (node P2-N015, I4). Read
-      back and passed through unchanged by scripts/deploy.sh on every
-      ordinary deploy; promoted only by a direct
-      `aws lambda update-alias` call, never a stack update. See the
-      comment above this parameter for the full mechanism.
+      The Lambda version promoted to `live` (node P2-N015, I4). No
+      default (node P2-N016) — always supplied explicitly by
+      scripts/deploy.sh, which read back `live`'s real, currently
+      deployed `FunctionVersion` and passes it through unchanged on
+      every ordinary deploy; promoted only by a direct `aws lambda
+      update-alias` call, never a stack update. See the comment above
+      this parameter for the full mechanism and why this has no
+      `Default`.
 
   # PreprodVersion (node P2-N015): unlike LiveVersion above, this needs
   # no read-back protection — `preprod` is *supposed* to move on every
@@ -371,6 +394,62 @@ Resources:
       Action: lambda:InvokeFunctionUrl
       Principal: "*"
       FunctionUrlAuthType: NONE
+
+  # node P2-N016 (T036) — defect 1: the smoke test's first check, a
+  # plain unauthenticated GET to this Function URL's own /health,
+  # returned Lambda's own 403 (`x-amzn-ErrorType: AccessDeniedException`
+  # in the response, confirmed with curl against the real preprod
+  # endpoint — not `src/httpApp.ts`, which never authenticates
+  # `/health`). AWS's function-URL auth documentation
+  # (https://docs.aws.amazon.com/lambda/latest/dg/urls-auth.html, read
+  # 2026-09-06): "Starting in October 2025, new function URLs will
+  # require both lambda:InvokeFunctionUrl and lambda:InvokeFunction
+  # permissions," and, for AuthType NONE specifically, "your function
+  # must have a resource-based policy that allows
+  # lambda:InvokeFunctionUrl and lambda:InvokeFunction. ... If you're
+  # using the AWS CLI, AWS CloudFormation, or the Lambda API directly,
+  # you must add the policy yourself." The permission above only ever
+  # granted the first of those two actions — this stack is exactly the
+  # "using AWS CloudFormation" case the quote calls out, so nothing
+  # auto-created the second.
+  #
+  # AWS's own documented default resource-based policy for a
+  # console/SAM-created NONE-auth function URL (same page, "Using the
+  # NONE auth type") is two statements: `lambda:InvokeFunctionUrl`
+  # gated on `lambda:FunctionUrlAuthType: NONE` (the statement above),
+  # and a *second* statement granting `lambda:InvokeFunction` gated on
+  # the `lambda:InvokedViaFunctionUrl` boolean context key — not
+  # `FunctionUrlAuthType` again. The permission below reproduces that
+  # second statement verbatim.
+  #
+  # On whether that reproduction is actually sufficient: this was
+  # written assuming `AWS::Lambda::Permission` had no CloudFormation
+  # property for `lambda:InvokedViaFunctionUrl` and would need to
+  # settle for the weaker `FunctionUrlAuthType` condition on both
+  # statements instead. That assumption was checked, and was wrong —
+  # the CloudFormation Resource and Property Types Reference
+  # (https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-lambda-permission.html,
+  # read 2026-09-06) documents `InvokedViaFunctionUrl` (Boolean) as a
+  # first-class property of this resource, producing exactly the
+  # `lambda:InvokedViaFunctionUrl` condition AWS's own default policy
+  # uses. So the statement below is not an approximation of AWS's
+  # documented default policy — it is that policy, expressed with the
+  # property built for it. This is believed sufficient because it
+  # matches, statement-for-statement and condition-for-condition, what
+  # the console/SAM auto-creates for a NONE-auth function URL, which
+  # is the thing the Lambda documentation says a CloudFormation-managed
+  # function must reproduce by hand. What remains unproven (see the
+  # deploy-time / real-run split in this task's report) is only that
+  # AWS's runtime authorization actually accepts this — no session
+  # dispatched to build this has AWS credentials to invoke the real
+  # preprod Function URL and confirm the 403 is gone.
+  PreprodFunctionUrlInvokeFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PreprodAlias
+      Action: lambda:InvokeFunction
+      Principal: "*"
+      InvokedViaFunctionUrl: true
 
   HttpApi:
     Type: AWS::Serverless::HttpApi

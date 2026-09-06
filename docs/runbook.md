@@ -123,21 +123,92 @@ the endpoint has no stage segment" below).
 
 `$ENDPOINT` now resolves through the `live` Lambda alias, not the
 function's bare `$LATEST` — see "Why `live` is a plain alias, and why
-`scripts/deploy.sh` reads it back" below. Nothing about this step
-changes for you: `scripts/deploy.sh` reads `live`'s current
-`FunctionVersion` back from AWS before every deploy and passes it
-through automatically, so an ordinary deploy leaves `live` exactly
-where it was (a first-ever deploy of this node's `template.yaml`
-bootstraps both `live` and `preprod` to `$LATEST`, identical to what
-production served before this node — nothing regresses). A second,
-permanent Lambda alias, `preprod`, is also provisioned, with its own
-Function URL (`PreprodEndpoint` in the stack outputs) and its own
-DynamoDB table (`PreprodLeaseTable`) — this is what child D's CI
-pipeline (node P2-N016) deploys and smoke-tests against before
-promoting `live`. Promotion itself — repointing `live` to a tested
-version — is not part of this script; it is a direct
+`scripts/deploy.sh` reads it back" below. `scripts/deploy.sh` reads
+`live`'s current `FunctionVersion` back from AWS before every deploy
+and passes it through automatically, so an ordinary deploy leaves
+`live` exactly where it was — **provided `live` is already pinned to a
+real version, not `$LATEST`.** A first-ever deploy of this node's
+`template.yaml` still bootstraps both `live` and `preprod` to
+`$LATEST`; see the correction immediately below and "One-time owner
+bootstrap" for what that state actually requires before the next
+deploy. A second, permanent Lambda alias, `preprod`, is also
+provisioned, with its own Function URL (`PreprodEndpoint` in the stack
+outputs) and its own DynamoDB table (`PreprodLeaseTable`) — this is
+what child D's CI pipeline (node P2-N016) deploys and smoke-tests
+against before promoting `live`. Promotion itself — repointing `live`
+to a tested version — is not part of this script; it is a direct
 `aws lambda update-alias` call child D's pipeline makes, never a
 stack update.
+
+> **Corrected 2026-09-06 (node P2-N016, task T036, K-011).** This
+> section, and "Why `live` is a plain alias..." below, originally
+> called a first deploy's `$LATEST` bootstrap for both aliases
+> "identical to what production served before this node — nothing
+> regresses" and harmless. **That reasoning was wrong.** It is harmless
+> only on a deploy where the code does not change. `$LATEST` is
+> _mutable_ — while `live` is pinned to it, every ordinary `sam deploy`
+> begins serving whatever code that deploy just uploaded the instant
+> the function updates, before any smoke test or promotion has run.
+> The first real run of this pipeline hit exactly this: the smoke test
+> failed (see the 403 troubleshooting entry below), the promote step
+> correctly never ran, and production served the untested merge
+> anyway — `service_identity` on the production endpoint reported
+> `main`'s head, the very commit that triggered the run.
+> `scripts/deploy.sh`'s read-back was never broken; it protects an
+> invariant ("`live` never points at `$LATEST`") that does not hold
+> while `live` is actually pinned there. `scripts/deploy.sh` now
+> refuses to deploy — loudly, before invoking `sam` at all — if it
+> finds an existing stack's `live` still at `$LATEST`, rather than
+> proceed. See "One-time owner bootstrap" immediately below for the
+> exact commands to get out of that state, once, by hand.
+
+### One-time owner bootstrap — pin `live` away from `$LATEST` (K-011, node P2-N016)
+
+**Run this once, by hand, before the next deploy.** From node P2-N016
+onward, `scripts/deploy.sh` refuses to deploy an existing stack whose
+`live` alias is still at `$LATEST` (see the correction above) — this
+is what gets a stack that already exists out of that state, without
+changing what code is currently running (it only pins the alias that
+already serves it):
+
+```sh
+export AWS_REGION=<REGION>                       # the region deployed to (O1)
+STACK_NAME=project-orchestrator-service          # or whatever STACK_NAME the deploy used
+
+FUNCTION_NAME="$(aws cloudformation describe-stacks \
+  --region "$AWS_REGION" --stack-name "$STACK_NAME" \
+  --query "Stacks[0].Outputs[?OutputKey=='McpFunctionName'].OutputValue" \
+  --output text)"
+echo "$FUNCTION_NAME"
+
+# Confirm the starting state — expect "$LATEST" here:
+aws lambda get-alias --region "$AWS_REGION" \
+  --function-name "$FUNCTION_NAME" --name live --query FunctionVersion --output text
+
+NEW_VERSION="$(aws lambda publish-version \
+  --region "$AWS_REGION" --function-name "$FUNCTION_NAME" \
+  --query Version --output text)"
+echo "Published version: $NEW_VERSION"           # a plain number, e.g. "3" — never $LATEST
+
+aws lambda update-alias --region "$AWS_REGION" \
+  --function-name "$FUNCTION_NAME" --name live \
+  --function-version "$NEW_VERSION"
+
+# Confirm — expect that same plain number back, not $LATEST:
+aws lambda get-alias --region "$AWS_REGION" \
+  --function-name "$FUNCTION_NAME" --name live --query FunctionVersion --output text
+```
+
+No `<ACCOUNT_ID>` appears anywhere above, deliberately (S-001/S-002):
+every command names the function by its short name, read from the
+stack's own `McpFunctionName` output, never by ARN.
+
+**What you should see afterward:** the final `get-alias` call prints a
+plain integer, not `$LATEST`. The next `scripts/deploy.sh` run's own
+"`live is currently at FunctionVersion=...`" line should print that
+same number and proceed, instead of refusing. `preprod` is untouched
+by this bootstrap — node P2-N016's own pipeline repoints it on every
+deploy regardless, so it needs no equivalent one-time step.
 
 ### Why `live` is a plain alias, and why `scripts/deploy.sh` reads it back
 
@@ -149,17 +220,20 @@ the instant an ordinary `sam deploy` ran — exactly the failure mode
 "deploy, then merge to preprod, then promote" exists to prevent (see
 `docs/findings/alias-assumptions.md`, assumption 5, sourced to AWS's
 own gradual-deployment documentation). Instead, `LiveAlias`'s
-`FunctionVersion` comes from a `LiveVersion` template parameter, and
-`scripts/deploy.sh` reads `live`'s real, currently-deployed
-`FunctionVersion` back from AWS (`aws lambda get-alias --name live`)
-before every `sam build && sam deploy` and passes that same value back
-as the parameter override — so an ordinary deploy declares no change
-to it and CloudFormation leaves the alias alone, regardless of what
-code changed elsewhere in the template. **Do not pass an explicit
-`LiveVersion` override when running this script by hand** — that
-would defeat the read-back and risk resetting `live`. Promotion is
-always a direct `aws lambda update-alias --name live` call outside
-this script.
+`FunctionVersion` comes from a `LiveVersion` template parameter (no
+`Default` as of node P2-N016 — see that parameter's own comment in
+`template.yaml` for why), and `scripts/deploy.sh` reads `live`'s real,
+currently-deployed `FunctionVersion` back from AWS
+(`aws lambda get-alias --name live`) before every
+`sam build && sam deploy` and passes that same value back as the
+parameter override — so an ordinary deploy declares no change to it
+and CloudFormation leaves the alias alone, regardless of what code
+changed elsewhere in the template, **provided that value is a real
+version and not `$LATEST`** (node P2-N016 — see the correction and
+one-time bootstrap above). **Do not pass an explicit `LiveVersion`
+override when running this script by hand** — that would defeat the
+read-back and risk resetting `live`. Promotion is always a direct
+`aws lambda update-alias --name live` call outside this script.
 
 ### Why the bundle carries an esbuild banner
 
@@ -659,6 +733,20 @@ design sketch expects cents per month at this volume).
   that, a newly added CommonJS dependency has reintroduced it and
   `test/lambdaBundle.test.ts` should already have failed locally before
   this was ever deployed.
+- **`sam deploy` (locally or in CI) fails before ever touching a stack
+  resource, with `... is not authorized to perform:
+cloudformation:CreateChangeSet on resource:
+arn:aws:cloudformation:<REGION>:aws:transform/Serverless-2016-10-31
+because no identity-based policy allows the
+cloudformation:CreateChangeSet action`** — the deploying principal's
+  policy is missing `cloudformation:CreateChangeSet` on the
+  `Serverless-2016-10-31` transform itself: a resource `template.yaml`'s
+  `Transform:` line invokes but never declares, so a policy derived by
+  reading `Resources:` alone will not include it. See
+  [`docs/deploy-role-permissions.md`](deploy-role-permissions.md)'s
+  `CloudFormationSamTransform` statement (and its K-011 note) for the
+  fix and why this was missed the first time; apply that statement to
+  the deploying principal's policy if it is not already there.
 - **`/health` never answers** — check `sam deploy`'s output for stack
   failure events (`aws cloudformation describe-stack-events`); the
   most common cause is the `AuthTokenSecretName` (or, once Step 2 is
@@ -726,6 +814,39 @@ failing closed...`** (node P2-N015) — this call was invoked through
   `service_identity`'s `invokedQualifier` / `leaseTable` fields (also
   node P2-N015) report exactly what qualifier a given call was seen
   with, which is the fastest way to confirm which case you are in.
+- **The preprod Function URL's `/health` (or any route) returns 403,
+  with an `x-amzn-ErrorType` response header and a Lambda
+  function-URL-troubleshooting link in the body** (node P2-N016,
+  T036, defect 1) — this is Lambda's own authorization layer refusing
+  the request before it ever reaches the application; `src/httpApp.ts`
+  never authenticates `/health`, and the app's own errors are plain
+  JSON, not this shape. `scripts/smoke-test.sh`'s check 1/3 now prints
+  this same header when it sees a 403, so a smoke-test failure log
+  already carries the signature. Root cause: AWS's function-URL
+  resource-based policy, for a `NONE`-auth URL created directly via
+  CloudFormation (not the console or plain SAM sugar), needs **two**
+  separate permission statements —
+  `lambda:InvokeFunctionUrl` and `lambda:InvokeFunction` — and
+  `template.yaml` originally granted only the first
+  (`PreprodFunctionUrlInvokePermission`). Fixed by adding
+  `PreprodFunctionUrlInvokeFunctionPermission`, granting
+  `lambda:InvokeFunction` gated on the `lambda:InvokedViaFunctionUrl`
+  condition key, matching AWS's own documented default policy for this
+  auth type (see that resource's own comment in `template.yaml` for
+  the citations and the verified property support). If this recurs
+  after a `template.yaml` change, check both
+  `PreprodFunctionUrlInvokePermission` and
+  `PreprodFunctionUrlInvokeFunctionPermission` are still present and
+  both still scoped to `!Ref PreprodAlias`.
+- **`scripts/deploy.sh` refuses to deploy, printing `REFUSING TO
+DEPLOY` and naming `live`'s current state** (node P2-N016, T036,
+  defect 2) — this is the fail-closed guard working as designed, not a
+  defect. Either `live` is still pinned to `$LATEST` on a stack that
+  already exists (run the "One-time owner bootstrap" above, then
+  retry), or `aws lambda get-alias --name live` itself failed (check
+  AWS credentials/permissions and that the stack's `LiveAlias`
+  resource actually exists — `aws cloudformation describe-stack-resources`
+  — before retrying). Nothing was deployed in either case.
 
 ## Pull-request checks (branch protection, O10)
 

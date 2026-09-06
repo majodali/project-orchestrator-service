@@ -94,7 +94,11 @@ Read this before applying it, so the blast radius is visible:
 Apply this as the deploy role's own permissions policy (not its trust
 policy — see the separate section below). Replace `<ACCOUNT_ID>` and
 `<REGION>` with real values; do not commit the filled-in version to
-any git history (S-001).
+any git history (S-001). One exception to that placeholder rule:
+`CloudFormationSamTransform`'s `Resource` keeps a literal `aws` in the
+account position and a literal `*` in the region position — see that
+statement's own entry below for why neither is a placeholder to fill
+in.
 
 ```json
 {
@@ -141,6 +145,12 @@ any git history (S-001).
         "cloudformation:DeleteChangeSet"
       ],
       "Resource": "arn:aws:cloudformation:<REGION>:<ACCOUNT_ID>:stack/aws-sam-cli-managed-default/*"
+    },
+    {
+      "Sid": "CloudFormationSamTransform",
+      "Effect": "Allow",
+      "Action": "cloudformation:CreateChangeSet",
+      "Resource": "arn:aws:cloudformation:*:aws:transform/Serverless-2016-10-31"
     },
     {
       "Sid": "CloudFormationTemplateSummaryBeforeAnyStackExists",
@@ -345,6 +355,83 @@ directly quoted. The action list mirrors `CloudFormationServiceStack`
 exactly because AWS does not publish the SAM CLI's internal call
 sequence for this stack; granting parity is the honest choice over
 guessing a narrower subset.
+
+### `CloudFormationSamTransform` — a gap this document had, found in production
+
+> **Added 2026-09-06 (node P2-N016, task T035, K-011).** This policy
+> did not grant `cloudformation:CreateChangeSet` on the
+> `Serverless-2016-10-31` transform until the first real CI deploy
+> ran and failed with:
+>
+> ```
+> User: arn:aws:sts::<ACCOUNT_ID>:assumed-role/project-orchestrator-service-deploy/GitHubActions
+> is not authorized to perform: cloudformation:CreateChangeSet on resource:
+> arn:aws:cloudformation:<REGION>:aws:transform/Serverless-2016-10-31
+> because no identity-based policy allows the cloudformation:CreateChangeSet action
+> ```
+>
+> This document previously presented itself as a complete derivation
+> ("derived from reading \[`scripts/deploy.sh` and `template.yaml`\],
+> resource by resource" — see the top of this file); it was not, and a
+> reader who applied the earlier version needs to know precisely what
+> was missing and why, not just that it is now fixed.
+>
+> The cause is distinct from every other gap this document already
+> flags (`SamManagedArtifactBucket`'s unverified action list, the
+> naming caveat's "might" hedge, `SecretsForDeployTimeResolutionAndSmokeToken`'s
+> widening beyond O7's literal text) — each of those considered a real
+> resource and reasoned about incomplete AWS documentation for it. The
+> transform was never considered at all, because "resource by
+> resource" means resource by `Resources:` block entry, and the
+> transform is not one: `template.yaml` names it exactly once, in
+> `Transform: AWS::Serverless-2016-10-31` on line 2, above
+> `Resources:` entirely. That line does not declare a resource — it
+> tells CloudFormation which macro to run _against_ the template
+> before any resource in it is created, and CloudFormation apparently
+> treats running that macro as an action requiring authorization on
+> the macro itself, as a resource of its own, separately from every
+> resource the macro's output declares. A derivation walking the
+> `Resources:` block, however carefully, has no line to visit for
+> that.
+>
+> CloudFormation's own macros documentation confirms the transform is
+> a thing CloudFormation itself hosts and mediates: "the
+> `AWS::Include` and `AWS::Serverless` transforms, which are macros
+> hosted by CloudFormation"
+> (<https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/template-macros.html>,
+> read 2026-09-06). But that sentence does not itself state the
+> permission requirement — it is offered here as context, not as the
+> source of the grant. I checked for the requirement itself in the two
+> places this document already cites for exactly this kind of
+> question and found it in neither: the AWS Service Authorization
+> Reference's own actions table for `cloudformation:CreateChangeSet`
+> (already cited above) lists only `stack*` as its resource type, no
+> `transform`; and `transform` does not appear anywhere in that
+> service's "Resource types defined by AWS CloudFormation" table at
+> all, nor anywhere on the SAM developer guide's permissions page
+> (also already cited above). The requirement is real — the error text
+> above names the exact action and the exact resource ARN CloudFormation
+> checked it against — but nothing in AWS's own reference documentation
+> states it in advance. This statement is added on that runtime
+> evidence, flagged honestly as such, not presented as sourced the way
+> the rest of this policy is.
+>
+> The `Resource` value is also the one place in this file that
+> deliberately breaks the `<ACCOUNT_ID>`/`<REGION>` placeholder
+> convention used everywhere else, and both departures are
+> load-bearing, not typos to "fix":
+>
+> - **`aws` in the account position** is CloudFormation's own literal
+>   for a resource AWS owns rather than the caller's account — the
+>   transform is AWS's, not this deploy role's account's, so there is
+>   no account ID to substitute here.
+> - **`*` in the region position** is the region wildcard the owner
+>   applied deliberately when fixing this in the live policy: the
+>   transform ARN is regional (the error above shows it literally,
+>   `arn:aws:cloudformation:<REGION>:aws:transform/...`), and pinning
+>   it to this stack's current `<REGION>` would only reproduce this
+>   exact outage the next time this stack, or any future one, deploys
+>   to a different region.
 
 ### `CloudFormationTemplateSummaryBeforeAnyStackExists` and `ApiGatewayV2AuthoringHasNoResourceLevelPermissions` — the two genuine `Resource: "*"` cases
 
