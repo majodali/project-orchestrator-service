@@ -733,6 +733,20 @@ design sketch expects cents per month at this volume).
   that, a newly added CommonJS dependency has reintroduced it and
   `test/lambdaBundle.test.ts` should already have failed locally before
   this was ever deployed.
+- **`sam deploy` (locally or in CI) fails before ever touching a stack
+  resource, with `... is not authorized to perform:
+cloudformation:CreateChangeSet on resource:
+arn:aws:cloudformation:<REGION>:aws:transform/Serverless-2016-10-31
+because no identity-based policy allows the
+cloudformation:CreateChangeSet action`** — the deploying principal's
+  policy is missing `cloudformation:CreateChangeSet` on the
+  `Serverless-2016-10-31` transform itself: a resource `template.yaml`'s
+  `Transform:` line invokes but never declares, so a policy derived by
+  reading `Resources:` alone will not include it. See
+  [`docs/deploy-role-permissions.md`](deploy-role-permissions.md)'s
+  `CloudFormationSamTransform` statement (and its K-011 note) for the
+  fix and why this was missed the first time; apply that statement to
+  the deploying principal's policy if it is not already there.
 - **`/health` never answers** — check `sam deploy`'s output for stack
   failure events (`aws cloudformation describe-stack-events`); the
   most common cause is the `AuthTokenSecretName` (or, once Step 2 is
