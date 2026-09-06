@@ -494,6 +494,25 @@ explicit `RoleName`.
 
 ## Does the OIDC trust policy need changing? (the I2 clause)
 
+> **Corrected 2026-09-02 (node P2-N016, task T034, K-011).** This
+> section originally reasoned that `majodali/project-orchestrator-service`
+> predated GitHub's immutable-subject-claims cutoff (stated here, at
+> the time, as 2026-08-27) and so needed only the plain `sub` form
+> below. **That reasoning was wrong.** The repository was created
+> **2026-08-26**, which is _after_ the cutoff, **2026-07-15**, not
+> before it — this repository uses immutable subject claims
+> **mandatorily**, not optionally, and the plain form was never a
+> correct target for it. The JSON and the sourced reasoning below are
+> now the immutable form; nothing else in this document changed. If
+> the owner applied the original plain-form JSON at O7, the trust
+> policy needs correcting to the form below, or every OIDC assumption
+> will keep failing with the bare `sts:AssumeRoleWithWebIdentity`
+> denial that names no failing condition —
+> `.github/workflows/oidc-preflight.yml` (node P2-N016) exists to
+> make that mismatch visible on demand, and
+> `.github/workflows/deploy.yml`'s own first step does the same
+> automatically on a broken merge.
+
 **This session cannot read the deploy role's actual trust policy** —
 no dispatched session holds AWS credentials (see K-011 in the
 specification's _How verification runs_ section), which is why I2
@@ -516,7 +535,7 @@ the repository alone and not to any ref.
       "Condition": {
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "repo:majodali/project-orchestrator-service:ref:refs/heads/main"
+          "token.actions.githubusercontent.com:sub": "repo:majodali@576567/project-orchestrator-service@1347863895:ref:refs/heads/main"
         }
       }
     }
@@ -525,25 +544,29 @@ the repository alone and not to any ref.
 ```
 
 Source: GitHub's "Security hardening your deployments — OIDC in AWS"
-guide, which gives this exact `Condition` shape (`aud` +
-`token.actions.githubusercontent.com:sub` scoped to
-`repo:<org>/<repo>:ref:refs/heads/<branch>`) and states plainly that
-IAM "recommends that users evaluate the [`sub`] condition key... to
-limit which GitHub actions are able to assume the role." The same
-page carries one nuance worth the owner's attention: _"For
-repositories created after July 15, 2026, or that have opted in to
-immutable subject claims, the `sub` claim includes immutable owner and
-repository IDs"_ — a different format,
-`repo:majodali@<ownerID>/project-orchestrator-service@<repoID>:ref:refs/heads/main`.
-`majodali/project-orchestrator-service` was created 2026-08-27
-(before that date), so the plain form above should be correct unless
-the owner has separately opted the repository into immutable claims —
-worth a one-line confirmation at O7 rather than an assumption either
-way.
+guide (<https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws>,
+read again 2026-09-02), which gives the `Condition` shape (`aud` +
+`token.actions.githubusercontent.com:sub`) and states plainly that IAM
+"recommends that users evaluate the [`sub`] condition key... to limit
+which GitHub actions are able to assume the role." That page documents
+two subject-claim syntaxes and states which repositories use which:
+the mutable form, `repo:OWNER/REPO:ref:refs/heads/BRANCH`, for
+repositories that predate GitHub's immutable-subject-claims cutoff and
+have not opted in; and the **immutable** form, literally
+`repo:OWNER@OWNER-ID/REPO@REPO-ID:ref:refs/heads/BRANCH`, for
+repositories created after **July 15, 2026** or that have opted in.
+`majodali/project-orchestrator-service` was created **2026-08-26** —
+after that cutoff — so it uses the immutable form **mandatorily**, not
+by opt-in, which is what the JSON above now carries. Owner ID `576567`
+and repository ID `1347863895` are confirmed from the GitHub API and
+are public identifiers, not secrets (S-001 governs secret _values_,
+not these) — written literally here rather than as a placeholder,
+because a placeholder would defeat the point of a document the owner
+pastes from directly.
 
-If the role's current trust policy already matches this (or its
-immutable-claims equivalent) and the `sub` condition is present, no
+If the role's current trust policy already matches the JSON above, no
 change is needed and O7's trust-policy clause is simply confirmed as
-already correct. If it trusts a broader subject (any ref, any
-repository, or carries no `sub` condition at all), it needs changing
-to this before child D can rely on I2.
+already correct. If it trusts the old mutable-form subject, any
+broader subject (any ref, any repository), or carries no `sub`
+condition at all, it needs changing to the JSON above before child D
+can rely on I2.

@@ -11,9 +11,13 @@
 - **S-level**: S1
 - **Type**: backend-service
 - **Target**: serverless-aws
-- **Workflow**: none declared (⇒ deployed is false) — set once a
-  deploy workflow exists (chunk 1 child B, owner action O2 of the
-  [orchestration-service plan](https://github.com/majodali/project-orchestrator/blob/main/docs/plans/orchestration-service.md))
+- **Workflow**: `stages: development → preprod → live; live = live;
+backlog default: checked ⇒ live, unchecked ⇒ development` — work
+  is in `development` until it merges to `main`. Merging publishes a
+  Lambda version behind the `preprod` alias and smoke-tests it;
+  passing promotes it by repointing the `live` alias, which is
+  production. An entry whose version failed the smoke test and was
+  not promoted carries an explicit `stage: preprod` marker.
 - **Family**: methodology (member) — lead:
   [majodali/methodology](https://github.com/majodali/methodology)
 
@@ -26,6 +30,15 @@ S1 is forced by this service's internet exposure and held secrets
 (a GitHub App private key, a client bearer token) once later children
 land; C1 matches the judgment load of a small, owner-supervised
 service.
+
+The **Workflow** field above replaces `none declared` as of
+2026-09-02 (node P2-N016, chunk 2 child D, task T034), per decision 1
+of the
+[deploy-from-CI-on-merge plan](https://github.com/majodali/project-orchestrator/blob/main/docs/plans/p2-n012-deploy-from-ci-on-merge.md),
+adopted 2026-09-01 and copied here verbatim — the stage names are the
+`preprod` / `live` Lambda alias names `template.yaml` and
+`.github/workflows/deploy.yml` actually deploy, so `deployed` is now
+derivable rather than falsely absent.
 
 ## Coordinating repository
 
