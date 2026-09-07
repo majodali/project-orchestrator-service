@@ -13,6 +13,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import { getServiceIdentity } from "./serviceInfo.js";
+import type { InvokedQualifierInfo } from "./serviceInfo.js";
 import { registerPlanReadTool } from "./planReadTool.js";
 import { registerPlanWriteTools } from "./planWriteTools.js";
 import type { RegisterFetcher } from "./planRegister/registerFetcher.js";
@@ -29,6 +30,23 @@ const identityOutputShape = {
   project: z
     .string()
     .describe("The coordinating repository this deployment is configured for."),
+  invokedQualifier: z
+    .string()
+    .optional()
+    .describe(
+      'The Lambda alias this request was invoked through ("live" / "preprod"), ' +
+        "or the qualifier a fail-closed refusal saw. Absent when this process is not " +
+        "running under Lambda at all (local dev server, test suite) — node P2-N015.",
+    ),
+  leaseTable: z
+    .string()
+    .optional()
+    .describe(
+      "The lease table name invokedQualifier resolved to. Absent when " +
+        "invokedQualifier is absent, or when the qualifier was refused " +
+        "(fail-closed — no table was resolved). Never an ARN or account " +
+        "identifier.",
+    ),
 } as const;
 
 const identityOutputSchema = z.object(identityOutputShape);
@@ -44,12 +62,23 @@ export interface CreateMcpServerOptions {
   /**
    * Overrides the write path's lease backend — test-only (and used by
    * a local `npm run dev` session with no DynamoDB configured, via
-   * src/planRegister/inMemoryLeaseBackend.ts). Production call sites
-   * omit this and get the real, DynamoDB-backed backend built lazily
-   * from environment configuration
-   * (src/planRegister/defaultLeaseBackend.ts).
+   * src/planRegister/inMemoryLeaseBackend.ts), **or** the real
+   * alias-aware backend src/httpApp.ts builds for a genuine Lambda
+   * invocation (node P2-N015 — see
+   * src/planRegister/defaultLeaseBackend.ts's `LazyAliasLeaseBackend`).
+   * Production call sites with no Lambda context (should not occur
+   * outside Lambda) omit this and get the real, DynamoDB-backed
+   * backend built lazily from `LEASE_TABLE_NAME`
+   * (src/planRegister/defaultLeaseBackend.ts's `getDefaultLeaseBackend`).
    */
   planLeaseBackend?: LeaseBackend;
+  /**
+   * The invoked Lambda qualifier and the lease table it resolved to
+   * (or `undefined` for both when it was refused) — forwarded
+   * verbatim into `service_identity`'s response (node P2-N015, G3/G4).
+   * `undefined` when this process is not running under Lambda at all.
+   */
+  lambdaAliasInfo?: InvokedQualifierInfo;
 }
 
 /**
@@ -77,7 +106,7 @@ export function createMcpServer(
       outputSchema: identityOutputShape,
     },
     () => {
-      const identity = getServiceIdentity();
+      const identity = getServiceIdentity(process.env, options.lambdaAliasInfo);
       // Validated against outputSchema by the SDK before it leaves the
       // process; parsing here as well only to get a fully-typed value
       // for the structuredContent field.

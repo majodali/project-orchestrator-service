@@ -119,6 +119,122 @@ below call `$ENDPOINT`.
 `https://…execute-api…amazonaws.com` URL — no stage segment (see "Why
 the endpoint has no stage segment" below).
 
+### Alias-aware lease-table selection (node P2-N015)
+
+`$ENDPOINT` now resolves through the `live` Lambda alias, not the
+function's bare `$LATEST` — see "Why `live` is a plain alias, and why
+`scripts/deploy.sh` reads it back" below. `scripts/deploy.sh` reads
+`live`'s current `FunctionVersion` back from AWS before every deploy
+and passes it through automatically, so an ordinary deploy leaves
+`live` exactly where it was — **provided `live` is already pinned to a
+real version, not `$LATEST`.** A first-ever deploy of this node's
+`template.yaml` still bootstraps both `live` and `preprod` to
+`$LATEST`; see the correction immediately below and "One-time owner
+bootstrap" for what that state actually requires before the next
+deploy. A second, permanent Lambda alias, `preprod`, is also
+provisioned, with its own Function URL (`PreprodEndpoint` in the stack
+outputs) and its own DynamoDB table (`PreprodLeaseTable`) — this is
+what child D's CI pipeline (node P2-N016) deploys and smoke-tests
+against before promoting `live`. Promotion itself — repointing `live`
+to a tested version — is not part of this script; it is a direct
+`aws lambda update-alias` call child D's pipeline makes, never a
+stack update.
+
+> **Corrected 2026-09-06 (node P2-N016, task T036, K-011).** This
+> section, and "Why `live` is a plain alias..." below, originally
+> called a first deploy's `$LATEST` bootstrap for both aliases
+> "identical to what production served before this node — nothing
+> regresses" and harmless. **That reasoning was wrong.** It is harmless
+> only on a deploy where the code does not change. `$LATEST` is
+> _mutable_ — while `live` is pinned to it, every ordinary `sam deploy`
+> begins serving whatever code that deploy just uploaded the instant
+> the function updates, before any smoke test or promotion has run.
+> The first real run of this pipeline hit exactly this: the smoke test
+> failed (see the 403 troubleshooting entry below), the promote step
+> correctly never ran, and production served the untested merge
+> anyway — `service_identity` on the production endpoint reported
+> `main`'s head, the very commit that triggered the run.
+> `scripts/deploy.sh`'s read-back was never broken; it protects an
+> invariant ("`live` never points at `$LATEST`") that does not hold
+> while `live` is actually pinned there. `scripts/deploy.sh` now
+> refuses to deploy — loudly, before invoking `sam` at all — if it
+> finds an existing stack's `live` still at `$LATEST`, rather than
+> proceed. See "One-time owner bootstrap" immediately below for the
+> exact commands to get out of that state, once, by hand.
+
+### One-time owner bootstrap — pin `live` away from `$LATEST` (K-011, node P2-N016)
+
+**Run this once, by hand, before the next deploy.** From node P2-N016
+onward, `scripts/deploy.sh` refuses to deploy an existing stack whose
+`live` alias is still at `$LATEST` (see the correction above) — this
+is what gets a stack that already exists out of that state, without
+changing what code is currently running (it only pins the alias that
+already serves it):
+
+```sh
+export AWS_REGION=<REGION>                       # the region deployed to (O1)
+STACK_NAME=project-orchestrator-service          # or whatever STACK_NAME the deploy used
+
+FUNCTION_NAME="$(aws cloudformation describe-stacks \
+  --region "$AWS_REGION" --stack-name "$STACK_NAME" \
+  --query "Stacks[0].Outputs[?OutputKey=='McpFunctionName'].OutputValue" \
+  --output text)"
+echo "$FUNCTION_NAME"
+
+# Confirm the starting state — expect "$LATEST" here:
+aws lambda get-alias --region "$AWS_REGION" \
+  --function-name "$FUNCTION_NAME" --name live --query FunctionVersion --output text
+
+NEW_VERSION="$(aws lambda publish-version \
+  --region "$AWS_REGION" --function-name "$FUNCTION_NAME" \
+  --query Version --output text)"
+echo "Published version: $NEW_VERSION"           # a plain number, e.g. "3" — never $LATEST
+
+aws lambda update-alias --region "$AWS_REGION" \
+  --function-name "$FUNCTION_NAME" --name live \
+  --function-version "$NEW_VERSION"
+
+# Confirm — expect that same plain number back, not $LATEST:
+aws lambda get-alias --region "$AWS_REGION" \
+  --function-name "$FUNCTION_NAME" --name live --query FunctionVersion --output text
+```
+
+No `<ACCOUNT_ID>` appears anywhere above, deliberately (S-001/S-002):
+every command names the function by its short name, read from the
+stack's own `McpFunctionName` output, never by ARN.
+
+**What you should see afterward:** the final `get-alias` call prints a
+plain integer, not `$LATEST`. The next `scripts/deploy.sh` run's own
+"`live is currently at FunctionVersion=...`" line should print that
+same number and proceed, instead of refusing. `preprod` is untouched
+by this bootstrap — node P2-N016's own pipeline repoints it on every
+deploy regardless, so it needs no equivalent one-time step.
+
+### Why `live` is a plain alias, and why `scripts/deploy.sh` reads it back
+
+`template.yaml`'s `LiveAlias` is a plain `AWS::Lambda::Alias`, not
+SAM's `AutoPublishAlias` sugar: `AutoPublishAlias` republishes and
+repoints its alias to the newly deployed code on **every**
+code-changing deploy, which would serve untested code to production
+the instant an ordinary `sam deploy` ran — exactly the failure mode
+"deploy, then merge to preprod, then promote" exists to prevent (see
+`docs/findings/alias-assumptions.md`, assumption 5, sourced to AWS's
+own gradual-deployment documentation). Instead, `LiveAlias`'s
+`FunctionVersion` comes from a `LiveVersion` template parameter (no
+`Default` as of node P2-N016 — see that parameter's own comment in
+`template.yaml` for why), and `scripts/deploy.sh` reads `live`'s real,
+currently-deployed `FunctionVersion` back from AWS
+(`aws lambda get-alias --name live`) before every
+`sam build && sam deploy` and passes that same value back as the
+parameter override — so an ordinary deploy declares no change to it
+and CloudFormation leaves the alias alone, regardless of what code
+changed elsewhere in the template, **provided that value is a real
+version and not `$LATEST`** (node P2-N016 — see the correction and
+one-time bootstrap above). **Do not pass an explicit `LiveVersion`
+override when running this script by hand** — that would defeat the
+read-back and risk resetting `live`. Promotion is always a direct
+`aws lambda update-alias --name live` call outside this script.
+
 ### Why the bundle carries an esbuild banner
 
 `template.yaml`'s `BuildProperties.Banner` (and `package.json`'s
@@ -348,6 +464,325 @@ headroom over either figure regardless.
 action O3 (Step 2) and a redeploy (Step 3) — recorded here as a
 Backlog item, not silently left blank.
 
+## CI deploy prerequisites: owner actions O7 and O8 (node P2-N016)
+
+Node P2-N012's child D — `.github/workflows/deploy.yml`, the
+`push`-triggered deploy-smoke-promote workflow — invokes
+`scripts/deploy.sh` exactly as Step 3 above does, but from GitHub
+Actions rather than a human's shell. Two owner actions clear the way
+for it to run at all; this section documents them (O9 and O10, the
+first actual run and making the checks required, are separate and
+still block the node's own `done`, not covered here).
+
+### O7 — the deploy role's permissions and trust policy
+
+Apply the IAM policy in
+[`docs/deploy-role-permissions.md`](deploy-role-permissions.md) to
+`arn:aws:iam::<ACCOUNT_ID>:role/project-orchestrator-service-deploy`,
+and confirm (or correct) that role's trust policy against that
+document's "Does the OIDC trust policy need changing?" section. That
+document also names the `secretsmanager:GetSecretValue` grant this
+step needs on both `project-orchestrator-service/mcp-auth-token` (the
+smoke test's bearer token) and
+`project-orchestrator-service/github-app-private-key` (needed for
+`sam deploy` itself to resolve `template.yaml`'s dynamic reference,
+not only for the smoke test) — do not grant only the first and assume
+the second is covered by something else.
+
+### O8 — the deploy workflow's repository variables
+
+GitHub repository, organization, and environment **configuration
+variables** (the `vars` context) may not start with `GITHUB_`
+(GitHub's own naming rule — see "Where `GITHUB_` may and may not
+appear" below). `scripts/deploy.sh` requires three environment
+variables whose names do start with `GITHUB_`
+(`GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`,
+`GITHUB_APP_PRIVATE_KEY_SECRET_NAME` — see that script's own header
+comment). The fix is a naming layer, not a script change: the owner
+stores the three App-related values under different, unprefixed
+repository-variable names, and the deploy workflow's `env:` block maps
+each one back to the name `scripts/deploy.sh` actually requires. This
+keeps criterion I1 intact — the same script, the same required
+variable names, run by CI exactly as a human runs it.
+
+Create these repository variables (repository **Settings** →
+**Secrets and variables** → **Actions** → **Variables** tab →
+**New repository variable**, in `majodali/project-orchestrator-service`).
+None is a secret value — each is a region, a stack label, a secret's
+_name_, a GitHub App's public identifier, or an IAM role ARN (not a
+secret category — see the row's own note below), exactly as decision
+"O8" in the plan describes:
+
+| Repository variable name                     | Feeds `scripts/deploy.sh`'s                                                                                                                          | Value                                                                                                 |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `AWS_REGION`                                 | `AWS_REGION`                                                                                                                                         | the region chosen under O1                                                                            |
+| `AUTH_TOKEN_SECRET_NAME`                     | `AUTH_TOKEN_SECRET_NAME`                                                                                                                             | `project-orchestrator-service/mcp-auth-token` (Step 1)                                                |
+| `SERVICE_GITHUB_APP_ID`                      | `GITHUB_APP_ID`                                                                                                                                      | the App's numeric ID (Step 2)                                                                         |
+| `SERVICE_GITHUB_APP_INSTALLATION_ID`         | `GITHUB_APP_INSTALLATION_ID`                                                                                                                         | the installation's numeric ID (Step 2)                                                                |
+| `SERVICE_GITHUB_APP_PRIVATE_KEY_SECRET_NAME` | `GITHUB_APP_PRIVATE_KEY_SECRET_NAME`                                                                                                                 | `project-orchestrator-service/github-app-private-key` (Step 2)                                        |
+| `AWS_DEPLOY_ROLE_ARN`                        | not fed to `scripts/deploy.sh` — read directly by `.github/workflows/deploy.yml` and `.github/workflows/oidc-preflight.yml`'s `role-to-assume` input | the deploy role's full ARN, `arn:aws:iam::<ACCOUNT_ID>:role/project-orchestrator-service-deploy` (O7) |
+
+> **Added 2026-09-02 (node P2-N016, task T034).** This section
+> originally listed five repository variables; `AWS_DEPLOY_ROLE_ARN`
+> is a sixth, found while building the two workflows this variable
+> table now feeds. Both need the deploy role's full ARN for
+> `aws-actions/configure-aws-credentials`, and S-001 forbids writing
+> the real AWS account number into any file a session authors — so
+> neither workflow can hardcode it. An ARN is not a secret _value_ in
+> the sense S-001 governs (the same category as the account-scoped
+> ARNs already written throughout `docs/deploy-role-permissions.md`),
+> so a repository variable, not an Actions secret, is the right home
+> for it — the same reasoning already applied to the other five. This
+> is an owner action outside the original O7–O10 list; create it
+> before running either workflow.
+
+Only the three App-related names are renamed — `AWS_REGION` and
+`AUTH_TOKEN_SECRET_NAME` already satisfy GitHub's rule and are stored
+under the same names `scripts/deploy.sh` expects. The three chosen
+names (`SERVICE_GITHUB_APP_ID` and its two siblings) are stated once,
+here, so they are not renegotiated when child D is built: they do not
+start with `GITHUB_`, and the `SERVICE_` prefix keeps them
+identifiable as this repository's own App-integration values rather
+than a generic `APP_ID` that could collide with an unrelated variable
+later.
+
+**The exact `env:` mapping block** — this is the contract child D's
+deploy workflow implements, on whichever step invokes
+`scripts/deploy.sh`:
+
+```yaml
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  AUTH_TOKEN_SECRET_NAME: ${{ vars.AUTH_TOKEN_SECRET_NAME }}
+  GITHUB_APP_ID: ${{ vars.SERVICE_GITHUB_APP_ID }}
+  GITHUB_APP_INSTALLATION_ID: ${{ vars.SERVICE_GITHUB_APP_INSTALLATION_ID }}
+  GITHUB_APP_PRIVATE_KEY_SECRET_NAME: ${{ vars.SERVICE_GITHUB_APP_PRIVATE_KEY_SECRET_NAME }}
+```
+
+### Where `GITHUB_` may and may not appear
+
+GitHub's variables reference states two different rules, and they are
+easy to conflate:
+
+- **Configuration variables** (repository, organization, or
+  environment variables set under Settings → Variables — the `vars`
+  context) — "Naming conventions for configuration variables": _"Must
+  not start with the `GITHUB_` prefix."_ This is the rule the three
+  renamed variables above satisfy.
+- **Environment variables** (what a workflow step actually runs with,
+  the `env` context) — "Naming conventions for environment variables":
+  _"When you set an environment variable, you cannot use any of the
+  default environment variable names... If you attempt to override the
+  value of one of these default variables, the assignment is
+  ignored."_ This is narrower: it bans exactly the enumerated list of
+  GitHub's own defaults (`GITHUB_ACTION`, `GITHUB_ACTOR`,
+  `GITHUB_REF`, `GITHUB_SHA`, and so on, plus `RUNNER_*`), not every
+  name starting with `GITHUB_`. `GITHUB_APP_ID`,
+  `GITHUB_APP_INSTALLATION_ID`, and
+  `GITHUB_APP_PRIVATE_KEY_SECRET_NAME` are not on that list (checked
+  against the full table on 2026-09-01) — the `env:` mapping above,
+  which sets exactly these three names as environment variables for
+  the step that runs `scripts/deploy.sh`, is not itself the naming
+  violation; only storing them as _configuration variables_ under
+  those names would have been.
+
+**Residual risk.** If GitHub ever adds one of these three names to its
+own default-environment-variable list, the `env:` assignment above
+would be _ignored_, not rejected — the step would run with whichever
+value GitHub's own default carries for that name instead of the
+owner's intended one. Whether `scripts/deploy.sh` catches this depends
+on what that ignored assignment leaves behind: its guards are the bash
+`${VAR:?message}` form —
+
+```sh
+: "${GITHUB_APP_ID:?Set GITHUB_APP_ID to the GitHub App's numeric ID (owner action O3; see docs/runbook.md).}"
+```
+
+— which fails closed (non-zero exit, the stated message) when the
+variable is **unset or empty**, matching several of GitHub's existing
+defaults that are empty outside the event that sets them (e.g.
+`GITHUB_BASE_REF` is empty outside `pull_request`; this repository's
+deploy workflow triggers on `push`, so a future default with similar
+conditional-emptiness would still trip this guard). It does **not**
+fail closed if the colliding default happens to carry some other
+non-empty value in this workflow's context (as `GITHUB_SHA` or
+`GITHUB_REPOSITORY` always do) — the guard can tell "unset or empty"
+from "set," but not "set to what I expect" from "set to something
+else," and `deploy.sh` would run with that wrong value silently. This
+is a real, if currently hypothetical, gap — worth a Backlog note
+rather than a script change, since no such collision exists today and
+inventing defensive code against a name GitHub has not chosen yet is
+premature.
+
+## The deploy, smoke, and promote pipeline (node P2-N016)
+
+`.github/workflows/deploy.yml` runs `scripts/deploy.sh` exactly as
+Step 3 does — the deploy step itself is nothing this file does not
+already document. What the pipeline adds on top, beyond Step 3 alone
+(I8):
+
+1. An OIDC preflight (see "Running the OIDC preflight" below) before
+   anything else, so a broken trust policy fails the run clearly
+   instead of failing deploy in a way that looks like something else.
+2. Publishing a version and pointing the `preprod` alias at it,
+   instead of leaving that to a separate manual step.
+3. The three-check smoke test against the `preprod` Function URL (see
+   "Running the smoke test by hand" below).
+4. Promoting `live` — `aws lambda update-alias --name live
+--function-version <version>` — only if the smoke test passed, and
+   logging the version `live` pointed at before and after.
+
+The preprod Function URL and the pipeline's first observed end-to-end
+duration, from the first green run (**G6**):
+
+| Measurement                       | Value                                                                  | Measured                                                                            |
+| --------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Preprod Function URL              | `https://7bs53qofvgs7frwn64wd5u6egq0zkybx.lambda-url.us-west-2.on.aws` | run `34045920168` (commit `dc38cdd`)                                                |
+| End-to-end pipeline duration (G6) | 1m40s (14 steps)                                                       | run `34045920168`, started `2026-09-06T16:35:10Z`, completed `2026-09-06T16:36:50Z` |
+
+That run's smoke test passed all three checks against the preprod
+Function URL above, and its "Promote — repoint live" step logged the
+before/after alias repoint this table exists to record — the evidence
+that **I4** (production only ever moves by way of a logged,
+successful-smoke-test-gated alias repoint, never a silent redeploy)
+held on this run:
+
+```
+live currently points at version 1.
+live now points at version 2 (promoted from 1).
+```
+
+### G5 demonstration outcome (node P2-N016, task T037)
+
+Branch `p2-n016-g5-deliberate-smoke-failure` changes one line of
+`scripts/smoke-test.sh`'s check 1 so it expects a status code preprod's
+`/health` will never return, deliberately failing the smoke test.
+Decision 7 requires that this failure actually be exercised — merged,
+run, observed red, then reverted — rather than deploying a knowingly
+broken version. The plan, once the owner merges that branch and this
+one (in that order — this branch's revert is a no-op for the reason
+given below, so no further action is needed to restore
+`scripts/smoke-test.sh` after the demonstration run):
+
+1. Merge `p2-n016-g5-deliberate-smoke-failure` to `main` and watch the
+   resulting `push`-triggered run.
+2. Confirm it goes red at "Smoke test — preprod Function URL", check
+   1/3, and that "Promote — repoint live" never runs (`live` untouched).
+3. Merge `p2-n016-g6-recorded-numbers` (this branch) to `main`, which
+   restores `scripts/smoke-test.sh` to its correct, three-check
+   form — a no-op merge for that file, since this branch was cut from
+   `main` directly and never carried branch 1's change — and lands
+   this record.
+
+**Outcome, 2026-09-06 — performed, not reasoned about.** Run
+[34066948302](https://github.com/majodali/project-orchestrator-service/actions/runs/34066948302)
+on `main` at `2f655ea`, `push`-triggered by the merge of
+`p2-n016-g5-deliberate-smoke-failure`. Read back from the Actions API
+and the production endpoint, not from anyone's report:
+
+- **The run is red.** Conclusion `failure`, 1m29s.
+- **It failed where it was meant to.** Step 13, "Smoke test — preprod
+  Function URL", conclusion `failure`, printing:
+
+  > SMOKE FAILURE (check 1/3, /health): GET
+  > https://7bs53qofvgs7frwn64wd5u6egq0zkybx.lambda-url.us-west-2.on.aws/health
+  > returned 200, expected 204 — DELIBERATE: node P2-N016 criterion G5,
+  > task T037.
+
+  Check 1 of 3, so no lease was ever acquired against the preprod
+  table during the demonstration.
+
+- **Promotion never happened.** Step 14, "Promote — repoint live",
+  conclusion `skipped`. The steps share one job, so a non-zero exit
+  from the smoke test stops the job before promotion is reached —
+  `live` was not merely left unchanged, the command was never run.
+- **Production was untouched.** `service_identity` through the
+  production endpoint still reports commit `dc38cdd` — the previous
+  promotion — while `main` had already moved to `2f655ea`. The deploy
+  step succeeded and `preprod` moved; production did not.
+
+The contrast worth keeping. Run 1 of this pipeline (`34010964352`)
+also failed at smoke check 1, with a real 403, and looked like this
+demonstration. It was not: production had already moved during that
+run, because `live` was pinned to the mutable `$LATEST`. It showed
+"red means red" without showing "and production is untouched". The
+difference between that run and this one is the whole of criterion
+**I4**.
+
+### Rollback
+
+Promotion is a single alias repoint, so rollback is the same command
+in reverse. `.github/workflows/deploy.yml`'s "Promote — repoint live"
+step logs the version `live` pointed at _before_ the repoint — read
+that value from the run's own log (Actions → the failed or
+since-regretted run → that step's output) and repoint back to it by
+hand:
+
+```sh
+aws lambda update-alias \
+  --region "$AWS_REGION" \
+  --function-name <McpFunctionName from the stack outputs> \
+  --name live \
+  --function-version <the "before" version logged by the promote step>
+```
+
+No redeploy, no `scripts/deploy.sh` run, and no CloudFormation change
+is needed or should be made for a bad promotion — a stack update is a
+different, larger action than an alias repoint, and this command alone
+already puts production back exactly where it was.
+
+### Smoke-test failure
+
+A red run at the "Smoke test — preprod Function URL" step means
+exactly one thing: one of the three checks in `scripts/smoke-test.sh`
+failed against `preprod`, and the run stopped there — the "Promote —
+repoint live" step never ran, so `live` and production are already
+untouched (G5). Nothing to roll back. The step's own log names which
+check failed (`SMOKE FAILURE (check N/3, ...)`) and, for checks 2 and
+3, prints the full MCP response that failed to match, which is usually
+enough to diagnose the defect directly. Fix the defect, merge the fix
+to `main` the ordinary way, and the next `push` runs the whole pipeline
+again from the top — there is no separate "retry just the smoke test
+in CI" action; the next real deploy is the retry.
+
+### Running the smoke test by hand
+
+`scripts/smoke-test.sh` is the same script the pipeline runs, runnable
+directly from a workstation against either endpoint (I8):
+
+```sh
+export SERVICE_URL="$PREPROD_ENDPOINT"   # or $ENDPOINT, for production
+export AWS_REGION=us-east-1              # the region from O1
+export AUTH_TOKEN_SECRET_NAME=project-orchestrator-service/mcp-auth-token
+./scripts/smoke-test.sh
+```
+
+Whatever AWS credentials are already configured in the shell are what
+`aws secretsmanager get-secret-value` uses to read the bearer token —
+the same credential the operator already has for any other `aws`
+command in this runbook, not something new to set up. Each of the
+three checks prints `OK` on success or `SMOKE FAILURE (check N/3, ...)`
+naming what did not match, and the script exits non-zero on the first
+failure.
+
+### Running the OIDC preflight
+
+`.github/workflows/oidc-preflight.yml` is `workflow_dispatch`-only —
+run it from the repository's **Actions** tab (select the workflow →
+**Run workflow**) or `gh workflow run oidc-preflight.yml`, before
+merging anything that would otherwise reach `.github/workflows/deploy.yml`
+for the first time, or any time the deploy role's trust policy
+changes. On success it prints the assumed role's ARN. On failure it
+prints the OIDC token's own claims (`sub`, `aud`, `repository`,
+`repository_id`, `repository_owner`, `repository_owner_id`, `ref`)
+next to this repository's expected `sub` — compare them
+character-for-character against
+`docs/deploy-role-permissions.md`'s "Does the OIDC trust policy need
+changing?" section, which is almost always where the actual fix
+belongs (the trust policy, not this workflow). The token itself is
+never printed, in either workflow — see that file's own comments for
+the mechanism, not just the intent.
+
 ## Running cost
 
 Not yet measured — record the actual AWS Cost Explorer figure here
@@ -367,6 +802,20 @@ design sketch expects cents per month at this volume).
   that, a newly added CommonJS dependency has reintroduced it and
   `test/lambdaBundle.test.ts` should already have failed locally before
   this was ever deployed.
+- **`sam deploy` (locally or in CI) fails before ever touching a stack
+  resource, with `... is not authorized to perform:
+cloudformation:CreateChangeSet on resource:
+arn:aws:cloudformation:<REGION>:aws:transform/Serverless-2016-10-31
+because no identity-based policy allows the
+cloudformation:CreateChangeSet action`** — the deploying principal's
+  policy is missing `cloudformation:CreateChangeSet` on the
+  `Serverless-2016-10-31` transform itself: a resource `template.yaml`'s
+  `Transform:` line invokes but never declares, so a policy derived by
+  reading `Resources:` alone will not include it. See
+  [`docs/deploy-role-permissions.md`](deploy-role-permissions.md)'s
+  `CloudFormationSamTransform` statement (and its K-011 note) for the
+  fix and why this was missed the first time; apply that statement to
+  the deploying principal's policy if it is not already there.
 - **`/health` never answers** — check `sam deploy`'s output for stack
   failure events (`aws cloudformation describe-stack-events`); the
   most common cause is the `AuthTokenSecretName` (or, once Step 2 is
@@ -415,3 +864,90 @@ keyword; reserved keyword: <name>`** — a real production defect
   real DynamoDB table.
 - **Local surface works, web surface does not** — this is O5, not a
   deploy defect; see Step 7.
+- **A write-path tool (`plan_lease_acquire` etc.) returns `could not
+reach the write-lease store: refusing to select a lease table: the
+invoked Lambda qualifier "..." is neither "live" nor "preprod" —
+failing closed...`** (node P2-N015) — this call was invoked through
+  something other than the `live` or `preprod` alias (`$LATEST`
+  included). It should not be reachable from either the production
+  endpoint (bound to `live`) or the preprod Function URL (bound to
+  `preprod`) — if you see this against `$ENDPOINT` or
+  `$PREPROD_ENDPOINT` specifically, the template's alias binding has
+  drifted from what is deployed (check
+  `template.yaml`'s `McpIntegration`/`LiveInvokePermission` still
+  target `LiveAlias`, and `PreprodFunctionUrl` still carries
+  `Qualifier: preprod`); if you see it while invoking the function
+  directly by ARN or version number (e.g. via `aws lambda invoke`),
+  this is the fail-closed rule working exactly as designed, not a
+  defect — invoke through one of the two aliases instead.
+  `service_identity`'s `invokedQualifier` / `leaseTable` fields (also
+  node P2-N015) report exactly what qualifier a given call was seen
+  with, which is the fastest way to confirm which case you are in.
+- **The preprod Function URL's `/health` (or any route) returns 403,
+  with an `x-amzn-ErrorType` response header and a Lambda
+  function-URL-troubleshooting link in the body** (node P2-N016,
+  T036, defect 1) — this is Lambda's own authorization layer refusing
+  the request before it ever reaches the application; `src/httpApp.ts`
+  never authenticates `/health`, and the app's own errors are plain
+  JSON, not this shape. `scripts/smoke-test.sh`'s check 1/3 now prints
+  this same header when it sees a 403, so a smoke-test failure log
+  already carries the signature. Root cause: AWS's function-URL
+  resource-based policy, for a `NONE`-auth URL created directly via
+  CloudFormation (not the console or plain SAM sugar), needs **two**
+  separate permission statements —
+  `lambda:InvokeFunctionUrl` and `lambda:InvokeFunction` — and
+  `template.yaml` originally granted only the first
+  (`PreprodFunctionUrlInvokePermission`). Fixed by adding
+  `PreprodFunctionUrlInvokeFunctionPermission`, granting
+  `lambda:InvokeFunction` gated on the `lambda:InvokedViaFunctionUrl`
+  condition key, matching AWS's own documented default policy for this
+  auth type (see that resource's own comment in `template.yaml` for
+  the citations and the verified property support). If this recurs
+  after a `template.yaml` change, check both
+  `PreprodFunctionUrlInvokePermission` and
+  `PreprodFunctionUrlInvokeFunctionPermission` are still present and
+  both still scoped to `!Ref PreprodAlias`.
+- **`scripts/deploy.sh` refuses to deploy, printing `REFUSING TO
+DEPLOY` and naming `live`'s current state** (node P2-N016, T036,
+  defect 2) — this is the fail-closed guard working as designed, not a
+  defect. Either `live` is still pinned to `$LATEST` on a stack that
+  already exists (run the "One-time owner bootstrap" above, then
+  retry), or `aws lambda get-alias --name live` itself failed (check
+  AWS credentials/permissions and that the stack's `LiveAlias`
+  resource actually exists — `aws cloudformation describe-stack-resources`
+  — before retrying). Nothing was deployed in either case.
+
+## Pull-request checks (branch protection, O10)
+
+`.github/workflows/checks.yml` (node P2-N014, chunk 2 child B of the
+deploy-from-CI-on-merge node) runs four independent checks on every
+pull request. The workflow triggers on the plain pull-request event
+only, declares `permissions: contents: read` at the workflow level
+with no job-level override, and requests no OIDC token permission
+anywhere in the file — no job in it can assume the deploy role
+(criterion G1). The deploy credentials and the merge-triggered deploy
+workflow live in a separate file (child D), by design.
+
+Make each of these four checks required in this repository's branch
+protection rule for `main` (**Settings → Branches → Branch protection
+rules → main → Require status checks to pass before merging**), so
+O10 is a selection from this exact list rather than a guess:
+
+- `Build`
+- `Lint`
+- `Test`
+- `SAM validate --lint`
+
+These are the workflow's job `name:` values verbatim
+(`.github/workflows/checks.yml`), which is what GitHub's branch
+protection check-name picker shows once the workflow has run at least
+once against this repository — GitHub does not offer a check name to
+require until it has produced one real run.
+
+**Not yet proven:** the workflow has not yet run on GitHub (it exists
+only on a not-yet-opened pull request as of this writing), so the
+exact display strings above are the job names as declared, not yet
+confirmed against a live Checks tab. Confirm by opening the first pull
+request that carries this workflow, waiting for the four checks to
+appear, and cross-checking their names against this list before
+ticking them in branch protection.

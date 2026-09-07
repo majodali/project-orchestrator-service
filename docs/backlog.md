@@ -511,17 +511,185 @@ reserved keyword: token`. Root cause:
       novelty parts; and K-010's new converse holds that in an
       `active` document a passage contradicting a recorded decision
       is false rather than stale, and is corrected where it is found.
+- [x] **Alias-aware lease-table selection, failing closed** (chunk 2,
+      node P2-N015, child C of
+      [deploy from CI on merge](https://github.com/majodali/project-orchestrator/blob/main/docs/specs/p2-n012-deploy-from-ci-on-merge.md)) —
+      **stage: development** (docs/classification.md's Workflow
+      declaration, P1: this commit is not yet merged to `main`, so it
+      has not gone through the pipeline's publish/smoke/promote cycle
+      at all — the "checked ⇒ live" default does not hold for it yet;
+      update this marker once it merges and node P2-N016's pipeline
+      promotes it, or leave it as `preprod` if that promotion fails) —
+      one published Lambda version now answers two aliases, `live`
+      (production) and `preprod`; the handler reads its own invoked
+      qualifier from the Lambda context
+      (`c.env.lambdaContext.invokedFunctionArn`, via `hono/aws-lambda`
+      — the field and path child A's finding,
+      `docs/findings/alias-assumptions.md`, names) and resolves the
+      lease table from it: `live` → `LEASE_TABLE_NAME`, `preprod` →
+      the new `PREPROD_LEASE_TABLE_NAME`. Any other qualifier —
+      `$LATEST` included, and an unqualified invocation — is refused,
+      naming the qualifier it saw
+      (`src/planRegister/aliasLeaseTable.ts`,
+      `UnrecognizedLambdaQualifierError`). Fail-closed is scoped to
+      Lambda by construction, not by an environment check: the
+      resolution only runs when `src/httpApp.ts` finds a Lambda
+      context on the request; the local dev server and every test
+      never populate that field, so they keep resolving
+      `LEASE_TABLE_NAME` through the pre-existing, unchanged
+      `getDefaultLeaseBackend` (I7 — the existing 131-test corpus
+      passes unaltered; no test was rewritten). `service_identity`
+      reports the invoked qualifier and the resolved lease table name
+      (never an ARN or account identifier, S-001) — absent entirely
+      (not `null`) when there is no Lambda context or when the
+      qualifier was refused with no table resolved, which is what
+      keeps the pre-existing four-field `toEqual` assertion on
+      `service_identity`'s output in `test/httpApp.test.ts` passing
+      unchanged even though the response shape grew two optional
+      fields.
+      `template.yaml`: `PreprodLeaseTable` (a second, permanent
+      DynamoDB table, matching `LeaseTable`'s key schema and TTL
+      configuration exactly); `LiveAlias` and `PreprodAlias`, both
+      plain `AWS::Lambda::Alias` resources — deliberately **not**
+      SAM's `AutoPublishAlias` sugar, which republishes and repoints
+      its alias on every code-changing deploy and would defeat
+      "deploy, then promote" the first time CI ran (child A's finding,
+      assumption 5, sourced to AWS's own gradual-deployment
+      documentation, which uses an alias literally named `live` in its
+      own example of this exact trap). `LiveAlias.FunctionVersion`
+      comes from a new `LiveVersion` parameter that
+      `scripts/deploy.sh` reads back from the alias's real current
+      state (`aws lambda get-alias --name live`) before every ordinary
+      deploy and passes back unchanged, so CloudFormation sees no
+      declared change and never touches the alias (I4) — promotion is
+      a direct `aws lambda update-alias` call, outside CloudFormation,
+      left to child D. `PreprodAlias.FunctionVersion` (a new
+      `PreprodVersion` parameter) needs no such protection, since
+      `preprod` is supposed to move on every deploy and child D
+      repoints it directly as part of the deploy-and-smoke sequence.
+      `PreprodFunctionUrl` (`AWS::Lambda::Url`, `Qualifier: preprod`,
+      `AuthType: NONE` — the same application-level bearer-token auth
+      the production endpoint carries, not IAM auth) plus the
+      `AWS::Lambda::Permission` public-invoke grant it needs. The
+      production HTTP API integration, route, and invoke permission
+      are now declared explicitly (`AWS::ApiGatewayV2::Integration` /
+      `Route` / `AWS::Lambda::Permission`) rather than through SAM's
+      `Events:` sugar on `McpFunction` — sugar has no way to bind to
+      an alias, and `IntegrationUri: !Ref LiveAlias` is what actually
+      binds production traffic to `live` (I3 — the template exposes no
+      third externally reachable path and no unqualified one; the two
+      aliases' Function URL / HTTP API integration are the only
+      routes). `McpFunction`'s execution role gained a second
+      `DynamoDBCrudPolicy`, scoped to `PreprodLeaseTable` — one
+      function serves both aliases, so its role needs both tables'
+      worth of access; the qualifier read at request time, not a
+      narrower IAM grant, is what keeps a `preprod` invocation from
+      ever touching the production table. The
+      `secretsmanager:GetSecretValue` grant the smoke test needs
+      (plan, "The smoke test, and where its token comes from") is
+      **not** added here: it belongs to the deploy role's own
+      permissions, which this stack does not define and which O7
+      already names as an owner attestation — see this task's report
+      (T032) for the reasoning.
+      No npm dependency added (R14). Tests:
+      `test/aliasLeaseTable.test.ts` (pure-function coverage of the
+      qualifier parse/resolve, every qualifier shape);
+      `test/defaultLeaseBackend.aliasAware.test.ts` (the lazy backend
+      and its cache, offline — constructing a real `DynamoDBClient`
+      does no I/O, but no test here ever calls `.send()`);
+      `test/httpApp.test.ts` and `test/lambda.test.ts` gained new
+      blocks driving the _real_ handler wiring — the actual Hono app
+      via `c.env` and the actual exported Lambda `handler` with a
+      realistic `LambdaContext`, respectively — rather than calling
+      the parsing helper directly with a string, per this task's own
+      warning about checks that prove nothing about the deployed path.
+      Each new assertion was proven able to fail: disabling the
+      fail-closed refusal, and separately widening the Lambda-scoping
+      to apply with no Lambda context at all, were each tried and
+      watched break every dependent new test **and** the pre-existing
+      `service_identity` shape test, then reverted; see T032's report
+      for the exact failure messages. 167/167 tests passing (131
+      pre-existing, unaltered; 36 new).
+      Verified this session: `npm run build`, `npm run lint`,
+      `npm test`, `npm run format`, `sam validate --lint`, and
+      `sam build` (a working AWS SAM CLI was available this session) —
+      all clean; the built bundle was also independently loaded under
+      a real ESM subprocess and its `handler` export confirmed
+      callable. **Not verified**, needing the owner's deploy (child D,
+      node P2-N016, and O1/O2/O7): the alias binding actually holding
+      in a real account, the Function URL's real event shape reaching
+      `hono/aws-lambda` unmodified, and — the property this whole
+      child exists to establish — that a second, template-changing
+      deploy leaves `live` at whatever version was last promoted
+      rather than resetting it (I4). See task T032's report for the
+      full account, including the `scripts/deploy.sh` read-back
+      reasoning and the proved/unproven split.
+
+- [x] **Deploy prerequisites cleared: the deploy role's IAM policy and the `GITHUB_`-variable naming fix** (chunk 2 child D prep, node P2-N016, task T033) — the two owner actions that were blocking child D on contact with reality (O7's permissions being sized only for the promote step and never for `sam build && sam deploy`; O8's three required variable names starting with `GITHUB_`, which GitHub's repository-variable naming rule forbids) are now both documented and closed out, with no change to `scripts/deploy.sh` or `template.yaml`. `docs/deploy-role-permissions.md` is new: a complete IAM policy, derived resource by resource from `template.yaml` and cross-checked against the AWS SAM developer guide and the AWS Service Authorization Reference (both read and cited 2026-09-01), covering `sam deploy --resolve-s3 --capabilities CAPABILITY_IAM` end to end — including the second, SAM-managed CloudFormation stack `--resolve-s3` creates for its artifact bucket, which is easy to miss — plus the promote/smoke grants child D will need (`lambda:PublishVersion`/`UpdateAlias`/`GetAlias`, `secretsmanager:GetSecretValue` on both secrets `template.yaml` dynamically resolves, not only the one O7's plan text names). Every action that cannot be scoped to a specific resource ARN is named and cited rather than granted silently (`cloudformation:GetTemplateSummary` and all four `apigateway:POST`/`GET`/`PATCH`/`DELETE` authoring actions — the Service Authorization Reference's own "Resource types" table for Amazon API Gateway Management V2 is empty). The target OIDC trust policy is included for the owner to compare the live one against (I2 is owner-attested; no dispatched session holds AWS credentials to read it directly). `docs/runbook.md` gained a new "CI deploy prerequisites: owner actions O7 and O8" section: confirmed, against GitHub's own variables reference read 2026-09-01, that the `GITHUB_` prefix ban applies to configuration variables (the `vars` context) and not to environment variables generally — only to the specific, enumerated list of GitHub's own defaults, which the three `GITHUB_APP_*` names are not on — so the fix needed no `scripts/deploy.sh` change: three repository variables are stored under new, unprefixed names (`SERVICE_GITHUB_APP_ID`/`SERVICE_GITHUB_APP_INSTALLATION_ID`/`SERVICE_GITHUB_APP_PRIVATE_KEY_SECRET_NAME`, chosen and stated once) and an `env:` mapping block, given verbatim as the contract for child D to implement, translates them back to the names the script requires. Confirmed from `scripts/deploy.sh`'s own `${VAR:?message}` guards that it fails closed on an unset-or-empty value; recorded as a residual risk, not a defect, that it cannot distinguish "set to something unexpected" from "set correctly" if GitHub ever adds one of these three names to its own defaults list. No `.md` file outside `docs/deploy-role-permissions.md`, `docs/runbook.md`, and this Backlog was touched, and neither `scripts/deploy.sh` nor `template.yaml` changed.
+- [x] **Pull-request checks that cannot deploy** (chunk 2 node
+      P2-N012 child B, node P2-N014) — `.github/workflows/checks.yml`,
+      the first workflow file in this repository. Triggers on the
+      plain pull-request event only (never a push to `main`, and never
+      the variant of the pull-request event that runs with
+      base-branch permissions and secrets against untrusted head
+      content); declares `permissions: contents: read` at the
+      workflow level with no job-level override and no OIDC token
+      permission anywhere in the file, so no job here can assume the
+      deploy role (criteria G1, I2). Four independent jobs, each its
+      own named check once branch protection requires it — see
+      `docs/runbook.md`, "Pull-request checks (branch protection,
+      O10)," for the exact names a repository admin selects: `Build`
+      (`npm run build`), `Lint` (`npm run lint`), `Test` (`npm test`),
+      and `SAM validate --lint` (via `aws-actions/setup-sam`). The
+      three third-party actions used (`actions/checkout`,
+      `actions/setup-node` — GitHub's own actions count as
+      third-party for this purpose — and `aws-actions/setup-sam`) are
+      pinned to full 40-character commit SHAs, each with the released
+      version in a trailing comment, resolved from each project's own
+      published tags at execute time (R14, I6). No npm dependency
+      added. Closes the `.aws-sam/**` lint-hygiene gap this child was
+      asked to check: `eslint.config.js` and `.gitignore` already
+      carried the `.aws-sam/**` / `.aws-sam/` exclusion (added
+      incidentally by the ESM-bundle-outage rework above, before this
+      node existed); the one remaining gap was `.prettierignore`,
+      which did not list it — `npm run format` already passed after a
+      `sam build` regardless, because Prettier's CLI follows
+      `.gitignore` by default, but the entry is now explicit rather
+      than resting on that fallback. Verified this session: `npm run
+build`, `npm run lint`, `npm test` (131/131 passing, unchanged),
+      and `npm run format`, each re-run after a real `sam build`
+      populated `.aws-sam/` to confirm the collision stays fixed;
+      `sam validate --lint` and `sam build` both run locally against
+      the unchanged `template.yaml` (this session had a working AWS
+      SAM CLI available) and succeeded. **Not run:** the workflow
+      itself — GitHub Actions does not execute on a branch without an
+      open pull request, and none was opened this session, so the
+      check names above and the workflow's first real run remain
+      unproven until then.
+
+- [x] **The `push`-triggered deploy, smoke, and promote workflow, and the on-demand OIDC preflight** (chunk 2 child D, node P2-N016, task T034) — **stage: development** (docs/classification.md's Workflow declaration, P1: this commit is not yet merged to `main`). `.github/workflows/deploy.yml`: triggers on `push` to `main` only, `permissions: id-token: write, contents: read` and nothing wider, `concurrency: {group: deploy-main, cancel-in-progress: false}` so two quick merges cannot interleave a publish with a promotion. Steps, in order, all in one job: an OIDC preflight (`aws-actions/configure-aws-credentials`, then `aws sts get-caller-identity`) that must pass before anything else runs; `./scripts/deploy.sh` — the one deploy path (I1), invoked with the five repository variables mapped into the environment names it requires exactly as `docs/runbook.md`'s O8 contract specifies, and nothing else in this repository ever calls `sam deploy`; `aws lambda publish-version` + `aws lambda update-alias --name preprod`, logging the published version; `scripts/smoke-test.sh` against the preprod Function URL; and, only reached if that step exits 0, `aws lambda update-alias --name live --function-version <published version>`, logging the version `live` pointed at before and after (G4's evidence). A failed smoke test exits non-zero and nothing after it runs — `live` is left exactly where it was, the run is red, and no separate rollback step exists because none is needed (G5). `.github/workflows/oidc-preflight.yml`: `workflow_dispatch` only, so the owner can run it before merging anything; assumes the deploy role and prints the assumed ARN on success. On failure — in both workflows — the token's own claims (`sub`, `aud`, `repository`, `repository_id`, `repository_owner`, `repository_owner_id`, `ref`) are decoded and printed next to this repository's expected immutable `sub` (owner ID `576567`, repository ID `1347863895` — public identifiers, not secrets), so a trust-policy mismatch is visible on one screen instead of AWS's bare, condition-blind denial. The token itself is never printed: requested with `curl` straight into a shell variable (never a file, never an artifact), decoded via Node fed only through environment variables (never a command-line argument, so it never appears in a process listing), and masked with `::add-mask::` immediately after extraction, before any further command runs. `scripts/smoke-test.sh` (new): three checks against a given Function URL, normalizing either `$ENDPOINT` (no trailing slash) or `$PREPROD_ENDPOINT` (a Function URL's own trailing slash) — `GET /health` returns 200; `tools/list` carries all six tools; a full `plan_lease_acquire`/`plan_lease_release` cycle. Each failure prints `SMOKE FAILURE` naming the check and exits 1. The bearer token is read from Secrets Manager at run time via the AWS CLI (`aws secretsmanager get-secret-value`) and masked the same way the OIDC token is — no new Actions secret (I6). No npm dependency added anywhere (R14): `curl`, the AWS CLI (already a prerequisite), and Node's own built-ins only — confirmed against the real tool schemas in `src/planWriteTools.ts` (`structuredContent.token`, `structuredContent.released === true`) and exercised against the real `tools/list` response from a live local server this session, not merely assumed. `docs/deploy-role-permissions.md`: the trust-policy section's `sub` was wrong — it reasoned this repository predates GitHub's immutable-subject-claims cutoff (2026-07-15) and so needed only the plain form; the repository was actually created 2026-08-26, _after_ that cutoff, so immutable claims are mandatory. Corrected to the immutable form, cited to GitHub's OIDC-in-AWS guide (re-read 2026-09-02) and its two-syntax distinction, with the original reasoning marked wrong and dated rather than silently overwritten (K-011) — a reader who already applied the old plain-form JSON at O7 needs to know it changed and why. `docs/classification.md`: `Workflow: none declared` replaced with decision 1's text, copied verbatim from the p2-n012 plan. Checked this Backlog against that declaration's default rule (`checked ⇒ live, unchecked ⇒ development`, P1) and found one entry that disagreed with certainty a session can establish (not yet merged to `main`, checkable from git, rather than guessed from AWS state no session can read): node P2-N015's entry above now carries an explicit `stage: development` marker; T033's and this entry's own docs-only-or-CI-only changes carry no deployable Lambda version at all, so the rule does not apply to them and neither needed a marker. `docs/runbook.md` gained: a rollback procedure (repoint `live` back with the same `aws lambda update-alias` command the promote step uses, given the prior version number from the workflow run's own logged "before" value); a smoke-test-failure procedure (what a red run means, that `live` is already untouched, and how to re-run `scripts/smoke-test.sh` by hand against either URL); how to run the OIDC preflight workflow (`workflow_dispatch`, from the Actions tab or `gh workflow run`); and the sixth O8 repository variable, `AWS_DEPLOY_ROLE_ARN` (see the Upcoming item above — an owner action outside the original O7–O10 list, found while building this workflow, not executed silently). Every human action `docs/runbook.md` now names for this pipeline is one of O7–O10 plus the one addition just named; none was found to be missing from that list otherwise. Validated this session: both workflow files parse as YAML; every embedded shell block passes `bash -n`; every embedded Node snippet was extracted and run against synthetic and real (local-server-sourced) JSON, including a synthetic JWT carrying this repository's real expected claims, and produced the exact "MATCH"/claims-table output described above; `scripts/smoke-test.sh` passes `bash -n` and its Node snippets were likewise exercised against real response shapes from a locally run `npm run dev` instance and against the pre-existing test suite's own assertions (`test/httpApp.test.ts`); `npm run lint`, `npm run format`, and `npm test` (167/167, unchanged) all pass. **Not verified, and cannot be from any dispatched session (no session holds AWS credentials — K-011)**: literally everything about the pipeline's behavior against real AWS — whether OIDC assumption actually succeeds, whether the deploy step's `sam deploy` invocation succeeds against the real stack, whether the smoke test's three checks actually pass against a real preprod Function URL, whether the promote step's alias repoint actually reaches production, the pipeline's own end-to-end duration (G6), and the OIDC preflight's actual output in either the success or failure case. This is the first CI deploy itself (O9) and is the gate demonstration the owner watches, not something this task could perform.
+- [x] **G6: record the first green run's numbers, and the G5 demonstration outcome (node P2-N016, task T037)** — `docs/runbook.md`'s "The deploy, smoke, and promote pipeline" table now carries the real values from the first green run, `34045920168` (commit `dc38cdd`, 14 steps, `2026-09-06T16:35:10Z`–`2026-09-06T16:36:50Z`, 1m40s wall clock): the preprod Function URL (`https://7bs53qofvgs7frwn64wd5u6egq0zkybx.lambda-url.us-west-2.on.aws`) and the end-to-end duration, plus a quote of the promote step's before/after log line (`live currently points at version 1.` / `live now points at version 2 (promoted from 1).`) as the recorded evidence that I4 held on this run. Added a new "G5 demonstration outcome" section naming the merge order this task's other branch depends on (`p2-n016-g5-deliberate-smoke-failure` first, this branch second — this branch's own `scripts/smoke-test.sh` needs no revert commit, since it was cut directly from `main` and never carried that branch's one-line change; confirmed identical to `main`'s copy) and a clearly marked placeholder for the demonstration run's actual outcome, left for the owner to fill in once that run has happened rather than invented here. No script, template, or workflow file touched on this branch. `npm test` (171/171) and `npm run format` pass.
+
+- [x] **Fix: CI's first deploy blocked on `cloudformation:CreateChangeSet` on the SAM transform (docs-only, node P2-N016, task T035, K-011)** — the first CI deploy (O9) failed before touching any stack resource: `AccessDenied` on `cloudformation:CreateChangeSet` against `arn:aws:cloudformation:<REGION>:aws:transform/Serverless-2016-10-31`, the `Serverless-2016-10-31` transform `template.yaml`'s `Transform:` line invokes. `docs/deploy-role-permissions.md`'s policy never granted it because its stated method — derived "resource by resource" from `template.yaml`'s `Resources:` block — never visits the transform: it is named once, above `Resources:` entirely, and processes the template into the resources that get declared rather than being declared itself, a different cause from the document's other flagged gaps (which each considered a real resource and reasoned about incomplete AWS documentation for it). Added a new `CloudFormationSamTransform` statement granting `cloudformation:CreateChangeSet` on `arn:aws:cloudformation:*:aws:transform/Serverless-2016-10-31` — a literal `aws` account position (CloudFormation's own ARN for a transform it owns, not this account's) and a literal region wildcard (the ARN is regional; the owner applied the wildcard deliberately so a future region change cannot reproduce this outage) — both exceptions to this document's usual `<ACCOUNT_ID>`/`<REGION>` placeholder convention, called out so neither is "corrected" back to a placeholder later. Checked both the AWS Service Authorization Reference's CloudFormation actions/resource-type tables and the SAM developer guide's permissions page (both already cited in this document) for the requirement in advance and found it in neither — the grant rests on the runtime error's own evidence, flagged as such rather than presented as sourced the way the rest of the policy is. The gap is marked and dated in `docs/deploy-role-permissions.md` (K-011) rather than silently patched. `docs/runbook.md` gained a Troubleshooting entry matching this exact error text to the fix. Checked the rest of the policy for the same class of gap — a fresh read of `template.yaml` for any other resource that participates in a deploy without being a declared `Resources:` entry — and found none: every other resource a deploy touches (the two DynamoDB tables, the two Lambda aliases, the Function URL and its invoke permissions, the HTTP API and its integration/routes, the two secrets' dynamic references, `McpFunction`'s implicit execution role) is either a declared resource already covered or one of the document's own already-flagged separate cases (the SAM-managed artifact-bucket stack, `GetTemplateSummary`, and the API Gateway Management V2 authoring actions); no other permission was added. No `scripts/deploy.sh` or `template.yaml` change.
+- [x] **Two defects from the first real pipeline run: the preprod Function URL's 403, and `live` unsafely pinnable to `$LATEST`** (chunk 2 child D rework, node P2-N016, task T036) — **stage: development** (docs/classification.md's Workflow declaration, P1: this commit is not yet merged to `main`). Defect 1 (403 on preprod's `/health`, `x-amzn-ErrorType: AccessDeniedException` — Lambda's own authorization layer, not the app): `template.yaml`'s `PreprodFunctionUrlInvokePermission` granted only `lambda:InvokeFunctionUrl`; AWS's function-URL auth documentation (read 2026-09-06) states a `NONE`-auth URL created via CloudFormation directly (not console/plain-SAM-sugar) needs a second, separate resource-policy statement granting `lambda:InvokeFunction`, gated on the `lambda:InvokedViaFunctionUrl` context key, not `lambda:FunctionUrlAuthType` again — added as a new `PreprodFunctionUrlInvokeFunctionPermission` resource, both statements scoped to `!Ref PreprodAlias`. An assumption behind this task's own brief — that `AWS::Lambda::Permission` has no CloudFormation property for `lambda:InvokedViaFunctionUrl` — was checked against the live CloudFormation Resource and Property Types Reference (read 2026-09-06) and found wrong: `InvokedViaFunctionUrl` (Boolean) is a first-class property, so the added statement reproduces AWS's own documented default NONE-auth policy exactly, not an approximation of it (`sam validate --lint` accepts the property; a real Function URL call is what only a live run can confirm). Defect 2 (production served the untested merge that triggered the run; the smoke test failed and the promote step never ran, but `live` moved anyway): root cause was `live` bootstrapped to `$LATEST`, a mutable qualifier — `scripts/deploy.sh`'s read-back correctly declared no _template_ change, but `live` began serving newly deployed code the instant `sam deploy` updated the function, before any smoke test ran. Fix: `scripts/deploy.sh` now refuses to deploy (before invoking `sam` at all) whenever an already-existing stack's `live` alias is found at `$LATEST`, or when reading it back fails outright — the only case still falling through to `$LATEST` is a genuinely new stack (`describe-stacks` itself errors); four new tests (`test/deployScriptLivePinning.test.ts`, real fake-`aws`/fake-`sam` executables on `PATH`, no AWS credentials involved) cover all four states. `template.yaml`'s `LiveVersion` parameter lost its `Default: "$LATEST"` — that default was reasoned harmless on the theory that it matched what a stack with nothing ever promoted was already serving, which missed that the default is only ever consulted when something bypasses `scripts/deploy.sh` (a bare `sam deploy` without `--parameter-overrides LiveVersion=...`), which is exactly the accidental-production-deploy path defect 2 is about, one layer up; `AllowedPattern` still admits `$LATEST` because `scripts/deploy.sh` itself must still be able to pass it explicitly for a genuine first-ever deploy. `docs/runbook.md`'s claim that a first deploy's `$LATEST` bootstrap is harmless was wrong and is now marked and dated rather than silently rewritten (K-011), with a new "One-time owner bootstrap" section giving the exact `publish-version`/`update-alias` commands (region and function-name placeholders only — no account ID needed, so none appears, per S-001/S-002) for the owner to run once, by hand, before the next deploy, plus two new Troubleshooting entries for the 403 signature and the fail-closed refusal. `scripts/smoke-test.sh`'s check 1 now also prints the `x-amzn-ErrorType` header on a 403, diagnostic only, no change to its pass/fail logic. Swept `template.yaml`, both workflow files, and `scripts/smoke-test.sh` for the same class of defect (a mutable qualifier, default, or unpinned reference letting an ordinary deploy silently change what production serves) and found nothing else: `preprod`/`PreprodVersion` is deliberately mutable and stays that way (task instruction, unchanged); every GitHub Actions `uses:` line in both workflow files already pins a full commit SHA, not a floating tag; the production HTTP API integration is already bound explicitly to `LiveAlias`, not `McpFunction`'s bare `Events:` sugar (node P2-N015's own prior finding). Validated this session: `npm run build`, `npm run lint`, `npm run format`, `npm test` (171/171 — 167 prior plus 4 new), `bash -n` on both changed scripts, `sam validate --lint`, and a real (uncredentialed) `sam build` all pass; both workflow files still parse as YAML (neither was edited — reviewed and found to need no change, since `scripts/deploy.sh`'s own non-zero exit already stops `.github/workflows/deploy.yml`'s job before publish/smoke/promote). **Not verified, and cannot be from any dispatched session (no AWS credentials — K-011)**: whether the corrected Function URL permission actually clears the real 403; whether `scripts/deploy.sh`'s refusal actually fires against a real stack whose `live` is really at `$LATEST`; whether a template `Default`-less `LiveVersion` actually produces CloudFormation's "must have values" error on a bare `sam deploy` (standard, well-documented CloudFormation behavior for a `String` parameter with no `Default`, but unproven here); and the owner's one-time bootstrap has not been run against the real stack.
+
+- [x] **G5 demonstration: a deliberately failing smoke check, once (node P2-N016, task T037)** — one line changed in `scripts/smoke-test.sh`'s check 1 (`if [ "$HEALTH_STATUS" != "200" ]` → `!= "204"`, carrying an inline comment naming this branch, task T037, and "REVERT IMMEDIATELY"), so check 1 fails deterministically against the real preprod `/health` (which returns 200, never 204) before checks 2 or 3 ever run — no lease is acquired against the preprod table during this demonstration, and the service, the template, and the deploy sequence are all untouched; the property under test is decision 7's requirement that a failing smoke check goes red and is reverted rather than promoting a knowingly broken version (G5), not the service itself. Proved locally, without AWS: `bash -n scripts/smoke-test.sh` passes; against a local `npm run dev` instance (with a fake `aws` executable placed on `PATH` standing in only for the one `secretsmanager get-secret-value` call the script makes before check 1 — no real AWS credentials are available in this environment) the modified script fails at check 1/3 exactly as expected and exits before check 2/3 or check 3/3 ever runs, while the unmodified script (`origin/main`'s copy, run side by side against the same local server) passes both check 1/3 and check 2/3. Check 3/3 could not be proved to pass locally either way — the local dev server has no `LEASE_TABLE_NAME` and so no real DynamoDB-backed lease to acquire, a limitation of this environment unrelated to this branch's one-line change, and true of the unmodified script run the same way. `npm test` (171/171, unchanged) and `npm run format` both pass; no TypeScript, template, or workflow file touched. This branch is deliberately left unreverted — the revert (a no-op here, since it branches from `main`, which never had this change), the recorded numbers (G6), and the record of this demonstration's actual (red) run once the owner triggers it are node P2-N016 task T037's second branch, `p2-n016-g6-recorded-numbers`.
 
 ## Upcoming
 
 - [ ] **Degrade to git-only, and enlistment documentation** (chunk 1
       child E, node P2-N011) — the R12 exercise (dead endpoint and unset
       credential) and the enlistment runbook.
-- [ ] **CI for this repository** — `npm run build`, `npm test`,
-      `npm run lint`, and `npm run format` are run locally only as of this
-      entry; a CI workflow is out of scope for chunk 1 (see the
-      coordinating repository's Backlog, "CI for
-      project-orchestrator-service").
+- [ ] **Deploy-on-merge CI for this repository** (chunk 2 node
+      P2-N012 child D, not yet started) — pull-request checks
+      (`npm run build`, `npm run lint`, `npm test`, `sam validate
+--lint`) now run in CI on every pull request, landed as node
+      P2-N014 above; `npm run format` still runs locally only, and is
+      not one of child B's four required checks. Still upcoming: the
+      `push`-to-`main` workflow that publishes a Lambda version behind
+      the `preprod` alias, smoke-tests it, and promotes by repointing
+      `live` — see the coordinating repository's
+      `docs/specs/p2-n012-deploy-from-ci-on-merge.md`.
 - [ ] **Declare the multi-repo relationship formally** — replace this
       repository's prose statement of its coordinating repository (this
       Backlog entry and `docs/classification.md` § Coordinating
@@ -602,3 +770,4 @@ reserved keyword: token`. Root cause:
       `plan_confirm` successfully but hit the lease-release reserved-word
       defect above; a redeploy carrying that fix (this repository's
       `main`/this branch, once merged) is needed before re-attempting.
+- [ ] **A repository variable for the deploy role's ARN** (found while building node P2-N016, task T034) — `.github/workflows/deploy.yml` and `.github/workflows/oidc-preflight.yml` both need the deploy role's full ARN (`arn:aws:iam::<ACCOUNT_ID>:role/project-orchestrator-service-deploy`) for `aws-actions/configure-aws-credentials`'s `role-to-assume` input, and S-001 forbids this session writing the real account ID into any file it authors — so neither workflow can hardcode it. O8's original five-variable list (`docs/runbook.md`'s "CI deploy prerequisites" section, T033) did not include it. Both workflows now read it from a sixth repository variable, `AWS_DEPLOY_ROLE_ARN` (documented in `docs/runbook.md`'s O8 table, added this session) — **an owner action outside the original O7–O10 list**: create that variable (Settings → Secrets and variables → Actions → Variables) holding the real ARN before either workflow can run. Not a secret value (an IAM role ARN, the same category as the account-scoped ARNs already named throughout `docs/deploy-role-permissions.md`), so a repository variable, not an Actions secret, is the right home for it — the same reasoning O8 already applies to the other five.

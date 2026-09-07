@@ -1,0 +1,140 @@
+name: OIDC preflight
+
+# An on-demand check of the deploy role's OIDC trust, run before
+# merging anything that would otherwise reach
+# .github/workflows/deploy.yml (node P2-N016, chunk 2 child D). AWS's
+# own failure here is a bare `Not authorized to perform
+# sts:AssumeRoleWithWebIdentity` that names no failing condition, so a
+# `sub` mismatch between the trust policy and what GitHub's token
+# actually carries is otherwise invisible. This workflow makes it
+# visible: on failure, it decodes the token's own claims and prints
+# them next to the `sub` the trust policy is expected to require —
+# never the token itself. `.github/workflows/deploy.yml` runs the
+# identical check as its own first step, and dumps the same claims on
+# failure there, so a broken merge diagnoses itself without a second
+# trip here.
+#
+# `workflow_dispatch` only — this is a check the owner runs by hand,
+# not a trigger on any push or pull request.
+
+"on":
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  # This repository's immutable subject claim (owner ID 576567,
+  # repository ID 1347863895 — public GitHub identifiers, not
+  # secrets; see docs/deploy-role-permissions.md's corrected
+  # trust-policy section for the citation and derivation). Printed
+  # only for a human to compare against the token's actual `sub`;
+  # never sent anywhere and never compared by this workflow itself.
+  EXPECTED_OIDC_SUBJECT: "repo:majodali@576567/project-orchestrator-service@1347863895:ref:refs/heads/main"
+
+jobs:
+  preflight:
+    name: Assume the deploy role and confirm identity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assume the deploy role
+        id: assume-role
+        continue-on-error: true
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Confirm identity
+        if: steps.assume-role.outcome == 'success'
+        run: |
+          set -euo pipefail
+          echo "== OIDC preflight passed — assumed role =="
+          aws sts get-caller-identity --query Arn --output text
+
+      # ---- On failure: dump the token's own claims, never the token
+      # itself.
+      #
+      # Mechanism that keeps the token out of the log: the token is
+      # requested with `curl` and captured directly into a shell
+      # variable (never written to `-o <file>`, never uploaded as an
+      # artifact); it is handed to Node only via an environment
+      # variable, never a command-line argument, so it never appears
+      # in a process listing either; `::add-mask::` is applied to it
+      # immediately after extraction, before any further command runs,
+      # so GitHub's own log redaction covers it from that point on;
+      # and no `set -x` (or equivalent command echoing) is used in
+      # this or the token-decoding step, so the token is never a
+      # by-product of shell tracing. Only the seven named claims,
+      # decoded from the token's payload segment in memory, are ever
+      # printed.
+      - name: Diagnose a failed assumption
+        if: steps.assume-role.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          echo "== OIDC role assumption failed — decoding the token's own claims =="
+          echo "AWS's own error names no failing condition; this dump does."
+
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "No OIDC request token/URL available — this job needs 'permissions: id-token: write' (it has it; this would mean GitHub itself withheld it)." >&2
+            exit 1
+          fi
+
+          RESPONSE="$(curl -sS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")"
+
+          JWT="$(RESPONSE_JSON="$RESPONSE" node -e '
+            const r = JSON.parse(process.env.RESPONSE_JSON);
+            process.stdout.write(r.value || "");
+          ')"
+
+          if [ -z "$JWT" ]; then
+            echo "Could not obtain an OIDC token to diagnose (the token endpoint returned no \"value\")." >&2
+            exit 1
+          fi
+
+          echo "::add-mask::${JWT}"
+
+          CLAIMS_JSON="$(JWT="$JWT" node -e '
+            const parts = process.env.JWT.split(".");
+            const payload = Buffer.from(
+              parts[1].replace(/-/g, "+").replace(/_/g, "/"),
+              "base64",
+            ).toString("utf8");
+            const claims = JSON.parse(payload);
+            const wanted = ["sub", "aud", "repository", "repository_id", "repository_owner", "repository_owner_id", "ref"];
+            const out = {};
+            for (const key of wanted) out[key] = claims[key] ?? null;
+            process.stdout.write(JSON.stringify(out));
+          ')"
+
+          echo
+          echo "== Claims the token actually carried (the token itself is never printed) =="
+          CLAIMS_JSON="$CLAIMS_JSON" node -e '
+            const claims = JSON.parse(process.env.CLAIMS_JSON);
+            for (const [key, value] of Object.entries(claims)) {
+              console.log(`  ${key.padEnd(20)} ${value}`);
+            }
+          '
+
+          echo
+          echo "== Expected \"sub\" (this repository's immutable subject claim) =="
+          echo "  ${EXPECTED_OIDC_SUBJECT}"
+
+          echo
+          CLAIMS_JSON="$CLAIMS_JSON" node -e '
+            const claims = JSON.parse(process.env.CLAIMS_JSON);
+            const expected = process.env.EXPECTED_OIDC_SUBJECT;
+            if (claims.sub === expected) {
+              console.log("The token'"'"'s \"sub\" matches the expected subject above — the mismatch is in the trust policy, not the token. See docs/deploy-role-permissions.md.");
+            } else {
+              console.log("MISMATCH: the token'"'"'s \"sub\" does not equal the expected subject above. Compare them character-for-character — owner name, owner ID, repo name, repo ID, and ref all matter.");
+            }
+          '
+
+      - name: Fail the run if assumption failed
+        if: steps.assume-role.outcome == 'failure'
+        run: |
+          echo "OIDC preflight failed — see the claims dump above, and docs/deploy-role-permissions.md's trust-policy section." >&2
+          exit 1

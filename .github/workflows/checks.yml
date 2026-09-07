@@ -1,0 +1,83 @@
+name: Checks
+
+# Pull-request checks that cannot deploy (node P2-N014, chunk 2 child
+# B of the deploy-from-CI-on-merge node, majodali/project-orchestrator
+# docs/specs/p2-n012-deploy-from-ci-on-merge.md). Deliberately
+# triggered on the plain, checkout-safe pull-request event below only
+# — never on a push to the base branch, and never on the variant of
+# the pull-request event that runs with base-branch permissions and
+# secrets against untrusted head content. This file also requests no
+# OIDC token permission at all, so no job here can assume the deploy
+# role (criteria G1, I2). See docs/runbook.md, "Pull-request checks
+# (branch protection)" for the exact check names an admin selects in
+# branch protection (O10).
+#
+# Deploy credentials and the `push`-triggered deploy workflow are a
+# separate file (child D, node P2-N016) by design (the plan's
+# "Credentials and the two workflows"): this file needs none of them.
+
+"on":
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: npm run build
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Test
+        run: npm test
+
+  sam-validate-lint:
+    name: SAM validate --lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Set up AWS SAM CLI
+        uses: aws-actions/setup-sam@89ddb14d60e682855e3fea4be85b3c56485de310 # v3
+      - name: sam validate --lint
+        run: sam validate --lint
