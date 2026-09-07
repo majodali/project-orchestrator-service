@@ -76,8 +76,8 @@ mcp_call() {
 echo
 echo "== Check 1/3: GET /health returns 200 =="
 HEALTH_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' "${BASE_URL}/health")"
-if [ "$HEALTH_STATUS" != "204" ]; then  # P2-N016 G5 demonstration (T037): deliberately wrong expected status — /health actually returns 200 — so check 1/3 fails before any lease is acquired; REVERT IMMEDIATELY once this run goes red.
-  echo "SMOKE FAILURE (check 1/3, /health): GET ${BASE_URL}/health returned ${HEALTH_STATUS}, expected 204 — DELIBERATE: node P2-N016 criterion G5, task T037. /health correctly returns 200; this assertion is temporarily false to prove a red smoke test leaves \`live\` where it is. Revert immediately." >&2
+if [ "$HEALTH_STATUS" != "200" ]; then
+  echo "SMOKE FAILURE (check 1/3, /health): GET ${BASE_URL}/health returned ${HEALTH_STATUS}, expected 200." >&2
   # node P2-N016 (T036) — this exact failure (a 403 on preprod's own
   # /health) was Lambda's own function-URL authorization layer, not
   # the application (src/httpApp.ts never authenticates /health):
