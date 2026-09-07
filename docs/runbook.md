@@ -633,12 +633,81 @@ already document. What the pipeline adds on top, beyond Step 3 alone
    logging the version `live` pointed at before and after.
 
 The preprod Function URL and the pipeline's first observed end-to-end
-duration are recorded here once the first CI deploy (O9) has run:
+duration, from the first green run (**G6**):
 
-| Measurement                       | Value       | Measured |
-| --------------------------------- | ----------- | -------- |
-| Preprod Function URL              | not yet run | no       |
-| End-to-end pipeline duration (G6) | not yet run | no       |
+| Measurement                       | Value                                                                  | Measured                                                                            |
+| --------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Preprod Function URL              | `https://7bs53qofvgs7frwn64wd5u6egq0zkybx.lambda-url.us-west-2.on.aws` | run `34045920168` (commit `dc38cdd`)                                                |
+| End-to-end pipeline duration (G6) | 1m40s (14 steps)                                                       | run `34045920168`, started `2026-09-06T16:35:10Z`, completed `2026-09-06T16:36:50Z` |
+
+That run's smoke test passed all three checks against the preprod
+Function URL above, and its "Promote — repoint live" step logged the
+before/after alias repoint this table exists to record — the evidence
+that **I4** (production only ever moves by way of a logged,
+successful-smoke-test-gated alias repoint, never a silent redeploy)
+held on this run:
+
+```
+live currently points at version 1.
+live now points at version 2 (promoted from 1).
+```
+
+### G5 demonstration outcome (node P2-N016, task T037)
+
+Branch `p2-n016-g5-deliberate-smoke-failure` changes one line of
+`scripts/smoke-test.sh`'s check 1 so it expects a status code preprod's
+`/health` will never return, deliberately failing the smoke test.
+Decision 7 requires that this failure actually be exercised — merged,
+run, observed red, then reverted — rather than deploying a knowingly
+broken version. The plan, once the owner merges that branch and this
+one (in that order — this branch's revert is a no-op for the reason
+given below, so no further action is needed to restore
+`scripts/smoke-test.sh` after the demonstration run):
+
+1. Merge `p2-n016-g5-deliberate-smoke-failure` to `main` and watch the
+   resulting `push`-triggered run.
+2. Confirm it goes red at "Smoke test — preprod Function URL", check
+   1/3, and that "Promote — repoint live" never runs (`live` untouched).
+3. Merge `p2-n016-g6-recorded-numbers` (this branch) to `main`, which
+   restores `scripts/smoke-test.sh` to its correct, three-check
+   form — a no-op merge for that file, since this branch was cut from
+   `main` directly and never carried branch 1's change — and lands
+   this record.
+
+**Outcome, 2026-09-06 — performed, not reasoned about.** Run
+[34066948302](https://github.com/majodali/project-orchestrator-service/actions/runs/34066948302)
+on `main` at `2f655ea`, `push`-triggered by the merge of
+`p2-n016-g5-deliberate-smoke-failure`. Read back from the Actions API
+and the production endpoint, not from anyone's report:
+
+- **The run is red.** Conclusion `failure`, 1m29s.
+- **It failed where it was meant to.** Step 13, "Smoke test — preprod
+  Function URL", conclusion `failure`, printing:
+
+  > SMOKE FAILURE (check 1/3, /health): GET
+  > https://7bs53qofvgs7frwn64wd5u6egq0zkybx.lambda-url.us-west-2.on.aws/health
+  > returned 200, expected 204 — DELIBERATE: node P2-N016 criterion G5,
+  > task T037.
+
+  Check 1 of 3, so no lease was ever acquired against the preprod
+  table during the demonstration.
+
+- **Promotion never happened.** Step 14, "Promote — repoint live",
+  conclusion `skipped`. The steps share one job, so a non-zero exit
+  from the smoke test stops the job before promotion is reached —
+  `live` was not merely left unchanged, the command was never run.
+- **Production was untouched.** `service_identity` through the
+  production endpoint still reports commit `dc38cdd` — the previous
+  promotion — while `main` had already moved to `2f655ea`. The deploy
+  step succeeded and `preprod` moved; production did not.
+
+The contrast worth keeping. Run 1 of this pipeline (`34010964352`)
+also failed at smoke check 1, with a real 403, and looked like this
+demonstration. It was not: production had already moved during that
+run, because `live` was pinned to the mutable `$LATEST`. It showed
+"red means red" without showing "and production is untouched". The
+difference between that run and this one is the whole of criterion
+**I4**.
 
 ### Rollback
 
