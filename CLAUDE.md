@@ -12,16 +12,21 @@ Deviations: none
 
 ## Reporting and writing — cached from W-008; do not edit here
 
-Reports to the human owner carry three parts, in this order:
+Reports to the human owner carry four parts, in this order:
 
 1. **Asks** — the decisions and actions requested of the reader.
 2. **What is already covered** — the parts of the deliverable that
    encode decisions the conversation already settled.
 3. **What changed** — the parts that are new, each with a named
    pointer into the deliverable and what to review there.
+4. **Terms introduced** — each term the report or its deliverable
+   uses with a meaning that neither the methodology vocabulary nor
+   the project's vocabulary defines, with one sentence giving its
+   meaning. The asks request its ratification or striking.
 
-State an empty part; never drop it: "No asks", "We already covered
-everything in the document", "The content is all new".
+State an empty part; never drop it. In the parts' order: "No asks",
+"We already covered everything in the document", "The content is all
+new", "No terms introduced".
 
 Lead with the outcome or the decision needed, never with the process
 that produced it. Write short, direct sentences, one idea each. Cut
