@@ -2,14 +2,15 @@
 
 <!-- Chunk 1 child B (node P2-N008). This is a template and a
      proposal, not a live configuration: this repository does not
-     enlist itself (it has no plan state to read), and the
-     coordinating repository is deliberately NOT enlisted by this
-     task — checking a live `.mcp.json` into
-     majodali/project-orchestrator is a change to that repository, and
-     belongs to the Orchestrator/owner, not to this repository's work.
-     This document exists so that change is a five-minute copy from a
-     reviewed template rather than a design decision made at commit
-     time. -->
+     enlist itself (it has no plan state to read). The coordinating
+     repository is enlisted: majodali/project-orchestrator checked in
+     its own `.mcp.json` on 2026-08-28, following this template, and
+     its `docs/process/enlistment.md` is the procedure. This document
+     keeps the template and the reasoning behind its two values.
+     Corrected 2026-10-29 (task T051, K-011): this comment said the
+     coordinating repository was deliberately not enlisted. That was
+     true when node P2-N008 wrote it and stopped being true on
+     2026-08-28. -->
 
 ## Where it goes
 
@@ -70,9 +71,16 @@ variable").
 
 ## Committing this
 
-Proposed, not done here: adding the filled-in `.mcp.json` to
-`majodali/project-orchestrator`'s repository root is a change to that
-repository and belongs to whoever holds write scope there (the
-Orchestrator, on the owner's authority) — see this task's result for
-the exact proposal. This repository (`project-orchestrator-service`)
-carries the template and this explanation, not the live file.
+Done in the coordinating repository, not here.
+`majodali/project-orchestrator` checked in its filled-in `.mcp.json`
+at its repository root on 2026-08-28, with the deployed endpoint and
+the 30000 ms timeout. Its
+[`docs/process/enlistment.md`](https://github.com/majodali/project-orchestrator/blob/main/docs/process/enlistment.md)
+gives the steps from not enlisted to enlisted, and its References
+name this repository's template as where the file's values come from. This repository
+(`project-orchestrator-service`) carries the template and this
+explanation, not the live file.
+
+> **Corrected 2026-10-29 (task T051, K-011).** This section said
+> adding the `.mcp.json` to the coordinating repository was proposed,
+> not done. That stopped being true on 2026-08-28.

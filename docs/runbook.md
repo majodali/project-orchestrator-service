@@ -446,8 +446,8 @@ provisional until both tools have been measured):
 | ------------------------------ | ------------------------------------------------------- | -------- |
 | `service_identity` cold        | **~1.70 s**                                             | yes      |
 | `service_identity` warm        | **~0.35–0.60 s**                                        | yes      |
-| `plan_read` cold               | not yet measured (owner action O3 outstanding)          | no       |
-| `plan_read` warm               | not yet measured (owner action O3 outstanding)          | no       |
+| `plan_read` cold               | not yet measured (Step 8 not yet run)                   | no       |
+| `plan_read` warm               | not yet measured (Step 8 not yet run)                   | no       |
 | Configured `.mcp.json` timeout | 30000 ms (ample headroom above the ~1.70 s cold figure) | —        |
 
 First measurements, taken from a cloud session against the deployed
@@ -460,9 +460,21 @@ figures still stand. Re-measure once the fix is redeployed if a more
 precise number is wanted; the 30s enlistment timeout has ample
 headroom over either figure regardless.
 
-`plan_read`'s cold/warm figures cannot be measured without owner
-action O3 (Step 2) and a redeploy (Step 3) — recorded here as a
-Backlog item, not silently left blank.
+`plan_read`'s cold and warm latency are **unmeasured**. No figure
+from this step's `plan_read` timing has been recorded, so the table
+carries none for either. The Backlog entry "Measure `plan_read`'s
+cold and warm latency by `docs/runbook.md` Step 8" carries the
+measurement.
+
+> **Corrected 2026-10-29 (task T051, K-011).** This paragraph said
+> the `plan_read` figures could not be measured until owner action O3
+> (Step 2) and a redeploy (Step 3), and the two table rows said O3 was
+> outstanding. The owner completed O3 and redeployed on 2026-08-30,
+> so that has not been the reason since. A warm figure of 0.82–0.94 s
+> over three calls was observed that day through a session's MCP
+> client (the coordinating repository's Backlog, node P2-N009's
+> entry). That observation did not follow this step's procedure, so
+> the warm row stays unmeasured.
 
 ## CI deploy prerequisites: owner actions O7 and O8 (node P2-N016)
 
@@ -785,9 +797,11 @@ the mechanism, not just the intent.
 
 ## Running cost
 
-Not yet measured — record the actual AWS Cost Explorer figure here
-after the first billing period with this stack deployed (the plan's
-design sketch expects cents per month at this volume).
+**Unmeasured.** No AWS Cost Explorer figure for this stack has been
+recorded. Record the actual figure here after a full billing period
+with the stack deployed (the plan's design sketch expects cents per
+month at this volume). The Backlog entry "Record the stack's running
+cost" carries the measurement.
 
 ## Troubleshooting
 
@@ -919,8 +933,8 @@ DEPLOY` and naming `live`'s current state** (node P2-N016, T036,
 
 ## Pull-request checks (branch protection, O10)
 
-`.github/workflows/checks.yml` (node P2-N014, chunk 2 child B of the
-deploy-from-CI-on-merge node) runs four independent checks on every
+`.github/workflows/checks.yml` (node P2-N014, child B of node P2-N012,
+the deploy-from-CI-on-merge node) runs four independent checks on every
 pull request. The workflow triggers on the plain pull-request event
 only, declares `permissions: contents: read` at the workflow level
 with no job-level override, and requests no OIDC token permission

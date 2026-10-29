@@ -33,8 +33,8 @@ land; C1 matches the judgment load of a small, owner-supervised
 service.
 
 The **Workflow** field above replaces `none declared` as of
-2026-09-02 (node P2-N016, chunk 2 child D, task T034), per decision 1
-of the
+2026-09-02 (node P2-N016, child D of node P2-N012, task T034), per
+decision 1 of the
 [deploy-from-CI-on-merge plan](https://github.com/majodali/project-orchestrator/blob/main/docs/plans/p2-n012-deploy-from-ci-on-merge.md),
 adopted 2026-09-01 and copied here verbatim — the stage names are the
 `preprod` / `live` Lambda alias names `template.yaml` and
