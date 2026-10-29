@@ -36,8 +36,9 @@ in the coordinating repository, not here.
 ## Where the docs live
 
 This repository is enrolled as a **methodology-managed project**
-(majodali/methodology v1.3.0) in its own right, but it is **not** a
-second plan hierarchy:
+(majodali/methodology, at the version
+[`docs/classification.md`](docs/classification.md) pins) in its own
+right, but it is **not** a second plan hierarchy:
 
 - [`docs/classification.md`](docs/classification.md) — this
   repository's binding Classification, including how it relates to its
