@@ -130,6 +130,13 @@ export const FIXTURES: FixtureEntry[] = [
       "Both directions: a Cost log row with no accepted journal event, and an accepted journal event with no Cost log row.",
   },
   {
+    id: "journal-sequence-kinds",
+    kind: "form-check-rule",
+    rules: [],
+    description:
+      "journal-form's clean case for the two sequence event kinds (node P3-N014): a journal that ratifies a sequence, lands two members and stops on asks, with sequence-ratified and sequence-stopped among its events, provokes no finding (exit 0).",
+  },
+  {
     id: "liveness",
     kind: "form-check-rule",
     rules: ["liveness", "liveness"],
