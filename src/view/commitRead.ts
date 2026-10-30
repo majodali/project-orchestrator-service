@@ -111,3 +111,28 @@ export async function readPageFiles(
     files,
   };
 }
+
+/**
+ * Reads one more path at a page's SHA, through the cache: a file whose
+ * path the page learns from a file it already read, such as the plan a
+ * register line links. The SHA is the page's own, so the page still
+ * shows one commit (V1).
+ */
+export async function readMoreAtPageSha(
+  reader: CommitReader,
+  cache: ShaPathCache,
+  page: PageFiles,
+  path: string,
+): Promise<string> {
+  let content = cache.get(page.sha, path);
+  if (content === undefined) {
+    try {
+      content = await reader.readFileAtSha(page.sha, path);
+    } catch (err) {
+      throw new PageReadError(err, path, page.resolvedRef, page.sha);
+    }
+    cache.set(page.sha, path, content);
+  }
+  page.files.set(path, content);
+  return content;
+}
