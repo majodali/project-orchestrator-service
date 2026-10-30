@@ -103,8 +103,13 @@ export AUTH_TOKEN_SECRET_NAME=project-orchestrator-service/mcp-auth-token   # fr
 export GITHUB_APP_ID=123456                                       # from Step 2
 export GITHUB_APP_INSTALLATION_ID=12345678                        # from Step 2
 export GITHUB_APP_PRIVATE_KEY_SECRET_NAME=project-orchestrator-service/github-app-private-key   # from Step 2
+export VIEW_TOKEN_SECRET_NAME=project-orchestrator-service/view-token   # from O-view-1, "The web view" below
 ./scripts/deploy.sh
 ```
+
+`VIEW_TOKEN_SECRET_NAME` names the web view's token (node P2-N021).
+Without it the script warns, and `sam deploy` refuses the update for
+the missing `ViewTokenSecretName` parameter, which has no default.
 
 It builds with esbuild (`template.yaml`'s `Metadata.BuildMethod`,
 bundling `src/lambda.ts`), deploys via CloudFormation
@@ -476,6 +481,167 @@ measurement.
 > entry). That observation did not follow this step's procedure, so
 > the warm row stays unmeasured.
 
+## The web view (node P2-N021)
+
+The service also serves the plan as web pages, for reading in a
+browser on any device. The pages read the coordinating repository at
+one commit, through the same GitHub App `plan_read` uses. They change
+nothing. Task E1 serves three routes:
+
+| Method and path      | Answers                                                   |
+| -------------------- | --------------------------------------------------------- |
+| `GET /view/sign-in`  | the sign-in form                                          |
+| `POST /view/sign-in` | the exchange of the view token for the view cookie        |
+| `GET /view`          | the tree page; `?ref=<branch, tag or SHA>` reads that ref |
+
+The view has its own credential, the **view token**. It is held in
+Secrets Manager apart from the MCP bearer token, and `/mcp` refuses
+it. Sign-in exchanges it for the **view cookie**: `HttpOnly`,
+`Secure`, `SameSite=Strict`, `Path=/view`, valid 30 days, signed with
+a key derived from the view token. Every `/view` route answers `500`
+while `VIEW_TOKEN` is unset or equal to `MCP_AUTH_TOKEN`; `/mcp` keeps
+answering.
+
+Four owner actions put it in production, O-view-1 to O-view-4, and one
+more, O-view-5, closes it. Do O-view-1 to O-view-3 before merging the
+pull request that adds the view (O-view-4). Otherwise the deploy goes
+red and `live` stays where it was.
+
+### O-view-1 — mint the view token and store it
+
+Use a value different from the MCP bearer token of Step 1.
+
+```sh
+VIEW_TOKEN=$(openssl rand -base64 32)
+aws secretsmanager create-secret \
+  --region "$AWS_REGION" \
+  --name project-orchestrator-service/view-token \
+  --secret-string "$VIEW_TOKEN"
+```
+
+**Verify:** `aws secretsmanager get-secret-value --region "$AWS_REGION" --secret-id project-orchestrator-service/view-token --query SecretString --output text` prints the same value. Keep it where you keep passwords: you type it once per device, every 30 days.
+
+### O-view-2 — grant the deploy role read on that secret
+
+CloudFormation resolves the view token's dynamic reference with the
+deploy role, and the smoke test's fourth check reads the secret with
+it. [`docs/deploy-role-permissions.md`](deploy-role-permissions.md)'s
+policy now lists the secret in its
+`SecretsForDeployTimeResolutionAndSmokeToken` statement. Add the same
+line to the policy applied to the role:
+
+1. AWS console → **IAM** → **Roles** →
+   `project-orchestrator-service-deploy` → **Permissions**.
+2. Open the policy that holds the statement
+   `SecretsForDeployTimeResolutionAndSmokeToken` → **Edit** → **JSON**.
+3. Add this line to that statement's `Resource` list, with your region
+   and account ID:
+   `"arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:project-orchestrator-service/view-token-*"`
+4. **Next** → **Save changes**.
+
+**Verify:** the statement lists three secrets: `mcp-auth-token-*`,
+`github-app-private-key-*` and `view-token-*`.
+
+### O-view-3 — add the repository variable
+
+In `majodali/project-orchestrator-service`: **Settings** → **Secrets
+and variables** → **Actions** → **Variables** → **New repository
+variable**. Name `VIEW_TOKEN_SECRET_NAME`, value
+`project-orchestrator-service/view-token`. It is a secret's name, not
+a secret value. The deploy workflow maps it to `scripts/deploy.sh`
+and the smoke test (the O8 table above).
+
+### O-view-4 — review and merge the pull request
+
+Merge it to `main` (RU-009, work reaches `main` by pull request). The
+push runs the deploy workflow. Its smoke-test step now runs four
+checks. Check 4 reads the view token from Secrets Manager, signs in
+against the preprod Function URL, requests `/view`, and requires
+`200` and a 40-character SHA in the page's header. It prints
+`OK — /view returned 200 at commit <SHA>.` on success, and
+`SMOKE FAILURE (check 4/4, ...)` otherwise.
+
+### Signing in on a phone
+
+1. Open `$ENDPOINT/view/sign-in`, the production endpoint from Step 3
+   with `/view/sign-in` added.
+2. Paste the view token into the one field and tap **Sign in**. The
+   page goes to the plan tree.
+3. The cookie lasts 30 days on that browser. After that, or after a
+   rotation, the tree sends you back to sign-in.
+
+Each page names the ref you asked for, the full commit SHA and the
+fetch time. Reloading follows a branch to its newest commit. Add
+`?ref=<SHA>` to stay on one commit. Each node ID links to its node
+page at the same `ref`. Node and task pages arrive with task E2, so
+until then the link answers "No page here yet".
+
+### Rotating the view token: O-view-1 and O-view-3 again
+
+Rotation signs every device out, since the cookie key derives from the
+token. Do it when a device is lost or the token may have leaked.
+
+Store the new token under a **new** secret name. CloudFormation
+resolves a dynamic reference only when the resource holding it
+changes, and a new value under the same name changes nothing in the
+template, so a redeploy alone would keep serving the old token. A new
+name changes the `ViewTokenSecretName` parameter, which updates the
+function. The O-view-2 grant ends in `view-token-*`, so it already
+covers the new name.
+
+1. O-view-1 again, under a dated name:
+
+   ```sh
+   NEW_VIEW_TOKEN=$(openssl rand -base64 32)
+   aws secretsmanager create-secret \
+     --region "$AWS_REGION" \
+     --name project-orchestrator-service/view-token-2026-11 \
+     --secret-string "$NEW_VIEW_TOKEN"
+   ```
+
+2. O-view-3 again: set the repository variable
+   `VIEW_TOKEN_SECRET_NAME` to `project-orchestrator-service/view-token-2026-11`.
+3. Deploy. The next merge to `main` does it (O-view-4), or Step 3 run
+   by hand with `VIEW_TOKEN_SECRET_NAME` set to the new name (O2).
+4. Sign in again on each device. Once the old token is refused, delete
+   the old secret:
+   `aws secretsmanager delete-secret --region "$AWS_REGION" --secret-id <the old name>`.
+
+### Latency of the view's pages (V22)
+
+Measured against the production endpoint, `live`. Sign in once with
+curl to get a cookie, then time `/view` cold and warm:
+
+```sh
+printf '%s' "$VIEW_TOKEN" | curl -sS -o /dev/null -D /tmp/view-headers \
+  -X POST "$ENDPOINT/view/sign-in" --data-urlencode "token@-"
+COOKIE=$(sed -n 's/^[Ss]et-[Cc]ookie: \(po_view=[^;]*\).*/\1/p' /tmp/view-headers | tr -d '\r')
+# Leave the function idle at least 10 minutes, then (cold):
+curl -sS -o /dev/null -w '%{http_code} %{time_total}s\n' -H "Cookie: $COOKIE" "$ENDPOINT/view"
+# Immediately again (warm):
+curl -sS -o /dev/null -w '%{http_code} %{time_total}s\n' -H "Cookie: $COOKIE" "$ENDPOINT/view"
+rm /tmp/view-headers
+```
+
+A cold request includes the Lambda cold start, an installation-token
+mint, resolving the ref, and reading the register. A warm request
+reuses the token and, at an unchanged SHA, the register's content.
+
+| Page              | Cold             | Warm             | Measured |
+| ----------------- | ---------------- | ---------------- | -------- |
+| `GET /view`, tree | not yet measured | not yet measured | no       |
+
+The figures need the first deploy after O-view-1 to O-view-4. No
+dispatched session holds the view token or AWS credentials.
+
+### Every human action is O-view-1 to O-view-5
+
+Every human action the view needs is O-view-1 to O-view-5. O-view-5 is
+the owner's demonstration at the end of node P2-N021: on a phone, on
+the production endpoint, sign in, open the tree, drill to a node and a
+task, and check three facts against git. A step this section asks for
+that is not one of the five is a runbook defect.
+
 ## CI deploy prerequisites: owner actions O7 and O8 (node P2-N016)
 
 Node P2-N012's child D — `.github/workflows/deploy.yml`, the
@@ -532,6 +698,7 @@ secret category — see the row's own note below), exactly as decision
 | `SERVICE_GITHUB_APP_ID`                      | `GITHUB_APP_ID`                                                                                                                                      | the App's numeric ID (Step 2)                                                                         |
 | `SERVICE_GITHUB_APP_INSTALLATION_ID`         | `GITHUB_APP_INSTALLATION_ID`                                                                                                                         | the installation's numeric ID (Step 2)                                                                |
 | `SERVICE_GITHUB_APP_PRIVATE_KEY_SECRET_NAME` | `GITHUB_APP_PRIVATE_KEY_SECRET_NAME`                                                                                                                 | `project-orchestrator-service/github-app-private-key` (Step 2)                                        |
+| `VIEW_TOKEN_SECRET_NAME`                     | `VIEW_TOKEN_SECRET_NAME`                                                                                                                             | `project-orchestrator-service/view-token` (O-view-3; see "The web view" below)                        |
 | `AWS_DEPLOY_ROLE_ARN`                        | not fed to `scripts/deploy.sh` — read directly by `.github/workflows/deploy.yml` and `.github/workflows/oidc-preflight.yml`'s `role-to-assume` input | the deploy role's full ARN, `arn:aws:iam::<ACCOUNT_ID>:role/project-orchestrator-service-deploy` (O7) |
 
 > **Added 2026-09-02 (node P2-N016, task T034).** This section
@@ -569,7 +736,12 @@ env:
   GITHUB_APP_ID: ${{ vars.SERVICE_GITHUB_APP_ID }}
   GITHUB_APP_INSTALLATION_ID: ${{ vars.SERVICE_GITHUB_APP_INSTALLATION_ID }}
   GITHUB_APP_PRIVATE_KEY_SECRET_NAME: ${{ vars.SERVICE_GITHUB_APP_PRIVATE_KEY_SECRET_NAME }}
+  VIEW_TOKEN_SECRET_NAME: ${{ vars.VIEW_TOKEN_SECRET_NAME }}
 ```
+
+The last line was added by node P2-N021 (owner action O-view-3, "The
+web view" below). The smoke test's fourth check reads the same
+variable.
 
 ### Where `GITHUB_` may and may not appear
 
@@ -638,7 +810,7 @@ already document. What the pipeline adds on top, beyond Step 3 alone
    instead of failing deploy in a way that looks like something else.
 2. Publishing a version and pointing the `preprod` alias at it,
    instead of leaving that to a separate manual step.
-3. The three-check smoke test against the `preprod` Function URL (see
+3. The four-check smoke test against the `preprod` Function URL (see
    "Running the smoke test by hand" below).
 4. Promoting `live` — `aws lambda update-alias --name live
 --function-version <version>` — only if the smoke test passed, and
@@ -746,11 +918,11 @@ already puts production back exactly where it was.
 ### Smoke-test failure
 
 A red run at the "Smoke test — preprod Function URL" step means
-exactly one thing: one of the three checks in `scripts/smoke-test.sh`
+exactly one thing: one of the four checks in `scripts/smoke-test.sh`
 failed against `preprod`, and the run stopped there — the "Promote —
 repoint live" step never ran, so `live` and production are already
 untouched (G5). Nothing to roll back. The step's own log names which
-check failed (`SMOKE FAILURE (check N/3, ...)`) and, for checks 2 and
+check failed (`SMOKE FAILURE (check N/4, ...)`) and, for checks 2 and
 3, prints the full MCP response that failed to match, which is usually
 enough to diagnose the defect directly. Fix the defect, merge the fix
 to `main` the ordinary way, and the next `push` runs the whole pipeline
@@ -766,6 +938,7 @@ directly from a workstation against either endpoint (I8):
 export SERVICE_URL="$PREPROD_ENDPOINT"   # or $ENDPOINT, for production
 export AWS_REGION=us-east-1              # the region from O1
 export AUTH_TOKEN_SECRET_NAME=project-orchestrator-service/mcp-auth-token
+export VIEW_TOKEN_SECRET_NAME=project-orchestrator-service/view-token
 ./scripts/smoke-test.sh
 ```
 
@@ -773,7 +946,7 @@ Whatever AWS credentials are already configured in the shell are what
 `aws secretsmanager get-secret-value` uses to read the bearer token —
 the same credential the operator already has for any other `aws`
 command in this runbook, not something new to set up. Each of the
-three checks prints `OK` on success or `SMOKE FAILURE (check N/3, ...)`
+four checks prints `OK` on success or `SMOKE FAILURE (check N/4, ...)`
 naming what did not match, and the script exits non-zero on the first
 failure.
 

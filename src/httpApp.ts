@@ -14,6 +14,11 @@
  *                   `enableJsonResponse: true` so every response is a
  *                   single JSON body rather than an SSE stream — the
  *                   shape a buffered Lambda-proxy response can carry.
+ *   GET  /view/sign-in, POST /view/sign-in, GET /view
+ *                 — the web view (node P2-N021, task E1): server-rendered
+ *                   pages of the coordinating repository's plan at one
+ *                   commit, behind the view cookie, never the MCP bearer
+ *                   token. See src/view/routes.ts.
  */
 
 import { Hono } from "hono";
@@ -32,6 +37,8 @@ import {
 } from "./planRegister/aliasLeaseTable.js";
 import { LazyAliasLeaseBackend } from "./planRegister/defaultLeaseBackend.js";
 import type { LeaseBackend } from "./planRegister/leaseBackend.js";
+import { isViewPath, registerViewRoutes } from "./view/routes.js";
+import type { ViewOptions } from "./view/routes.js";
 
 export interface CreateAppOptions {
   /** Forwarded to createMcpServer — test-only, see src/mcpServer.ts. */
@@ -43,6 +50,8 @@ export interface CreateAppOptions {
    * P2-N015, I7).
    */
   planLeaseBackend?: CreateMcpServerOptions["planLeaseBackend"];
+  /** Test-only: the web view's reader and clock (src/view/routes.ts). */
+  view?: ViewOptions;
 }
 
 /** The shape `hono/aws-lambda`'s `handle()` puts on `c.env` — see
@@ -101,19 +110,21 @@ function resolveLambdaAliasContext(c: Context): LambdaAliasContext | undefined {
 export function createApp(options: CreateAppOptions = {}): Hono {
   const app = new Hono();
 
-  app.use(
-    "*",
-    cors({
-      origin: "*",
-      allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
-      allowHeaders: [
-        "Content-Type",
-        "Authorization",
-        "mcp-session-id",
-        "mcp-protocol-version",
-      ],
-      exposeHeaders: ["mcp-session-id", "mcp-protocol-version"],
-    }),
+  const corsMiddleware = cors({
+    origin: "*",
+    allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
+    allowHeaders: [
+      "Content-Type",
+      "Authorization",
+      "mcp-session-id",
+      "mcp-protocol-version",
+    ],
+    exposeHeaders: ["mcp-session-id", "mcp-protocol-version"],
+  });
+  // The web view is same-origin pages, not a cross-origin API: it gets
+  // no CORS headers and answers no preflight (node P2-N021, V17).
+  app.use("*", (c, next) =>
+    isViewPath(c.req.path) ? next() : corsMiddleware(c, next),
   );
 
   app.get("/health", (c) => {
@@ -158,6 +169,8 @@ export function createApp(options: CreateAppOptions = {}): Hono {
       }
     },
   );
+
+  registerViewRoutes(app, options.view);
 
   return app;
 }

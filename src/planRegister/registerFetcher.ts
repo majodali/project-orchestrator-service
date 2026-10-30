@@ -32,6 +32,33 @@ export interface RegisterFetcher {
   fetchPlanRegister(ref?: string): Promise<FetchedRegister>;
 }
 
+/** A ref resolved once to the commit every later read is pinned to. */
+export interface ResolvedCommit {
+  /** The ref as requested, or the default branch's name if none was given. */
+  ref: string;
+  /** The full 40-character commit SHA the ref resolved to. */
+  sha: string;
+}
+
+/**
+ * The read seam the web view uses (node P2-N021, task E1). It splits
+ * what `fetchPlanRegister` does in one call into its two halves, so a
+ * page can resolve its ref once and then read every file at that one
+ * SHA (the specification of P2-N003, "How a page resolves its
+ * commit"). `readFileAtSha` takes a full SHA only and refuses anything
+ * else, so no caller can read a file by branch name through it.
+ */
+export interface CommitReader {
+  /** The repository read, for links to GitHub's file and commit views. */
+  readonly owner: string;
+  readonly repo: string;
+  resolveRef(ref?: string): Promise<ResolvedCommit>;
+  readFileAtSha(sha: string, path: string): Promise<string>;
+}
+
+/** A full, lower-case, 40-character commit SHA. */
+export const FULL_SHA = /^[0-9a-f]{40}$/;
+
 export class GithubFetchError extends Error {
   readonly status: number;
   readonly body: string;
@@ -44,9 +71,9 @@ export class GithubFetchError extends Error {
   }
 }
 
-export class GithubAppRegisterFetcher implements RegisterFetcher {
-  private readonly owner: string;
-  private readonly repo: string;
+export class GithubAppRegisterFetcher implements RegisterFetcher, CommitReader {
+  readonly owner: string;
+  readonly repo: string;
   private readonly getInstallationToken: () => Promise<string>;
   private readonly fetchImpl: typeof fetch;
   private readonly path: string;
@@ -66,13 +93,7 @@ export class GithubAppRegisterFetcher implements RegisterFetcher {
   }
 
   async fetchPlanRegister(ref?: string): Promise<FetchedRegister> {
-    const token = await this.getInstallationToken();
-    const headers = {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": USER_AGENT,
-    };
+    const headers = await this.requestHeaders();
 
     const requestedRef = ref ?? (await this.fetchDefaultBranch(headers));
     const sha = await this.resolveCommitSha(requestedRef, headers);
@@ -83,6 +104,41 @@ export class GithubAppRegisterFetcher implements RegisterFetcher {
       ref: requestedRef,
       sha,
       fetchedAt: new Date().toISOString(),
+    };
+  }
+
+  async resolveRef(ref?: string): Promise<ResolvedCommit> {
+    const headers = await this.requestHeaders();
+    const requestedRef = ref ?? (await this.fetchDefaultBranch(headers));
+    const sha = await this.resolveCommitSha(requestedRef, headers);
+    if (!FULL_SHA.test(sha)) {
+      throw new GithubFetchError(
+        `ref ${JSON.stringify(requestedRef)} resolved to ${JSON.stringify(sha)}, not a full commit SHA`,
+        502,
+        "",
+      );
+    }
+    return { ref: requestedRef, sha };
+  }
+
+  async readFileAtSha(sha: string, path: string): Promise<string> {
+    if (!FULL_SHA.test(sha)) {
+      // A branch or tag name here would let a page mix two commits.
+      throw new Error(
+        `readFileAtSha needs a full 40-character commit SHA, got ${JSON.stringify(sha)}`,
+      );
+    }
+    const headers = await this.requestHeaders();
+    return this.fetchPathAtSha(path, sha, headers);
+  }
+
+  private async requestHeaders(): Promise<Record<string, string>> {
+    const token = await this.getInstallationToken();
+    return {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": USER_AGENT,
     };
   }
 
@@ -127,13 +183,21 @@ export class GithubAppRegisterFetcher implements RegisterFetcher {
     sha: string,
     headers: Record<string, string>,
   ): Promise<string> {
+    return this.fetchPathAtSha(this.path, sha, headers);
+  }
+
+  private async fetchPathAtSha(
+    path: string,
+    sha: string,
+    headers: Record<string, string>,
+  ): Promise<string> {
     const res = await this.fetchImpl(
-      `${GITHUB_API_BASE}/repos/${this.owner}/${this.repo}/contents/${this.path}?ref=${encodeURIComponent(sha)}`,
+      `${GITHUB_API_BASE}/repos/${this.owner}/${this.repo}/contents/${path}?ref=${encodeURIComponent(sha)}`,
       { headers },
     );
     if (!res.ok) {
       throw new GithubFetchError(
-        `could not fetch ${this.path} at ${sha} from ${this.owner}/${this.repo}`,
+        `could not fetch ${path} at ${sha} from ${this.owner}/${this.repo}`,
         res.status,
         await safeText(res),
       );
@@ -141,7 +205,7 @@ export class GithubAppRegisterFetcher implements RegisterFetcher {
     const body = (await res.json()) as { content: string; encoding: string };
     if (body.encoding !== "base64") {
       throw new GithubFetchError(
-        `unexpected content encoding ${JSON.stringify(body.encoding)} for ${this.path} at ${sha}`,
+        `unexpected content encoding ${JSON.stringify(body.encoding)} for ${path} at ${sha}`,
         res.status,
         "",
       );

@@ -17,7 +17,7 @@ export const BEARER_PREFIX = "Bearer ";
 
 /** Constant-time string comparison, so a wrong token cannot be distinguished
  * from a right one by response timing. */
-function safeEqual(a: string, b: string): boolean {
+export function safeEqual(a: string, b: string): boolean {
   const bufA = Buffer.from(a);
   const bufB = Buffer.from(b);
   if (bufA.length !== bufB.length) {

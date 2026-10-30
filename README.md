@@ -114,6 +114,26 @@ so far:
   `src/planRegister/transitions.ts` / `updateEngine.ts` /
   `leaseBackend.ts`.
 
+### HTTP routes
+
+| Method and path      | Auth                        | Answers                                                                                        |
+| -------------------- | --------------------------- | ---------------------------------------------------------------------------------------------- |
+| `GET /health`        | none                        | liveness, as JSON                                                                              |
+| `ANY /mcp`           | `Authorization: Bearer`     | the MCP endpoint and its six tools                                                             |
+| `GET /view/sign-in`  | none                        | the web view's sign-in form                                                                    |
+| `POST /view/sign-in` | the view token, in the form | `303` to `/view` with the view cookie, or `401`                                                |
+| `GET /view`          | the view cookie             | the plan tree of the coordinating repository at one commit; `?ref=` picks a branch, tag or SHA |
+
+The `/view` routes are the web view's first version (node P2-N021,
+task E1): server-rendered HTML with no script, readable at phone width.
+Each page resolves its ref to one commit SHA and reads every file at
+that SHA through the GitHub App; it names the ref, the SHA and the
+fetch time, and links documents to GitHub's file view at that SHA. The
+view has its own credential, the view token, which `/mcp` refuses, and
+the MCP bearer token does not open `/view`. Only `POST /view/sign-in`
+accepts a method other than `GET`, and it changes only the caller's
+cookie. See `src/view/` and `docs/runbook.md`, "The web view".
+
 ### The vendored register grammar unit, and its drift check
 
 `src/planRegister/vendored/` (`plan-register.ts` plus its conformance
@@ -194,6 +214,7 @@ gets.
 | Variable                     | Required                | Meaning                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ---------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `MCP_AUTH_TOKEN`             | yes                     | The bearer token clients must present. No default — the server refuses every `/mcp` call with 500 if this is unset, rather than accepting all callers.                                                                                                                                                                                                                                                           |
+| `VIEW_TOKEN`                 | yes, for `/view`        | The web view's token (owner action O-view-1). A real secret, resolved from Secrets Manager at deploy time. Every `/view` route answers 500 if it is unset or equal to `MCP_AUTH_TOKEN`; `/mcp` is unaffected.                                                                                                                                                                                                    |
 | `PORT`                       | no (local only)         | Port `npm run dev` listens on. Default `8787`.                                                                                                                                                                                                                                                                                                                                                                   |
 | `SERVICE_COMMIT`             | no                      | Reported by `service_identity`. Set by `scripts/deploy.sh` from `git rev-parse HEAD`; unset locally defaults to `"unknown"`.                                                                                                                                                                                                                                                                                     |
 | `MCP_PROJECT`                | no                      | Reported by `service_identity`; also which `<owner>/<repo>` `plan_read` reads. Defaults to `majodali/project-orchestrator`.                                                                                                                                                                                                                                                                                      |
