@@ -40,9 +40,10 @@ Read this before applying it, so the blast radius is visible:
   service's own stack and the SAM-managed artifact-bucket stack (see
   `--resolve-s3` below) — and no S3 reach outside that one managed
   bucket's name prefix.
-- **No Secrets Manager reach outside the two secrets this stack's
+- **No Secrets Manager reach outside the three secrets this stack's
   dynamic references resolve.** Not the App's installation token, not
-  anything else in the account.
+  anything else in the account. The third, the web view's token, was
+  added by node P2-N021 (see the statement's entry below).
 - **No EC2, VPC, networking, billing, or account-management actions**
   of any kind. Nothing here can create a user, alter this role's own
   policies, or touch a resource this stack does not own.
@@ -289,7 +290,8 @@ in.
       "Action": "secretsmanager:GetSecretValue",
       "Resource": [
         "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:project-orchestrator-service/mcp-auth-token-*",
-        "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:project-orchestrator-service/github-app-private-key-*"
+        "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:project-orchestrator-service/github-app-private-key-*",
+        "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:project-orchestrator-service/view-token-*"
       ]
     }
   ]
@@ -567,6 +569,19 @@ secret names are exact strings from `docs/runbook.md` Steps 1 and 2
 `project-orchestrator-service/github-app-private-key`); the trailing
 `-*` accounts for the random suffix Secrets Manager appends to every
 secret's ARN.
+
+**Added by node P2-N021 (the web view's first version, owner action
+O-view-2).** `template.yaml` gained a third dynamic reference,
+`VIEW_TOKEN` (from `ViewTokenSecretName`), and `scripts/smoke-test.sh`
+gained a fourth check that reads the same secret at run time. So the
+statement gains a third resource,
+`project-orchestrator-service/view-token-*`. The name is the one
+`docs/runbook.md`'s "The web view" section creates under O-view-1. The
+wildcard also covers the dated names that section's rotation
+procedure creates (`project-orchestrator-service/view-token-2026-11`
+and so on). No other statement changes: the view adds route keys to
+the existing HTTP API, which `ApiGatewayV2AuthoringHasNoResourceLevelPermissions`
+already covers, and no new resource type.
 
 ## `CAPABILITY_IAM`, summarized
 
