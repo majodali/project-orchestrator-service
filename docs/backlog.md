@@ -727,6 +727,30 @@ build`, `npm run lint`, `npm test`, `sam validate --lint`) and the
 
 ## Upcoming
 
+- [ ] **The web view's first version, task E1: the tree page behind
+      sign-in** (node P2-N021, task T094; the specification of P2-N003
+      in the coordinating repository, child 1) — built on branch
+      `p2-n021-e1-thin-slice`, not yet merged or deployed. The Hono app
+      serves `GET /view/sign-in`, `POST /view/sign-in` and `GET /view`
+      (`src/view/`). The tree page lists every node of the coordinating
+      repository's Plan register, nested, with stage, hold marker, title
+      and note, from one commit: each request resolves its `ref` (or the
+      default branch) to a SHA once and reads at that SHA
+      (`CommitReader` in `src/planRegister/registerFetcher.ts`). File
+      content is cached by SHA and path only. Sign-in exchanges the view
+      token (`VIEW_TOKEN`, a Secrets Manager dynamic reference) for a
+      30-day signed `HttpOnly` cookie; `/mcp` refuses both. The template
+      adds three route keys on `McpIntegration` and the
+      `ViewTokenSecretName` parameter; `scripts/deploy.sh` passes it from
+      `VIEW_TOKEN_SECRET_NAME`; the deploy workflow maps it from the
+      repository variable of that name; the smoke test gains check 4/4.
+      `docs/runbook.md`, "The web view", gives owner actions O-view-1 to
+      O-view-5. Waits on O-view-1 to O-view-3, then the merge (O-view-4);
+      the first deploy's run log must show check 4 passing against the
+      preprod Function URL, and `/view`'s cold and warm latency is then
+      measured and recorded in the runbook. Tasks E2 (node and task
+      pages) and E3 (the model's renderings) follow.
+
 - [ ] **Declare the multi-repo relationship formally** — replace this
       repository's prose statement of its coordinating repository (this
       Backlog entry and `docs/classification.md` § Coordinating

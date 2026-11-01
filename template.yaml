@@ -93,6 +93,18 @@ Parameters:
       dynamic reference at deploy time, so the key is never a literal
       in this template, in a parameter-overrides file, or in git.
 
+  ViewTokenSecretName:
+    Type: String
+    Description: >
+      Name (not ARN) of the AWS Secrets Manager secret whose
+      SecretString is the web view's token (node P2-N021; owner action
+      O-view-1). The view token is a read-only credential apart from
+      the MCP bearer token; the sign-in route exchanges it for the view
+      cookie. Resolved into the function's environment by a dynamic
+      reference at deploy time, the same pattern as AuthTokenSecretName
+      above. No default: a deploy that does not name it fails at `sam
+      deploy` rather than serving a view with no token.
+
   # LiveVersion is the promotion mechanism's parameter, node P2-N015
   # (I4) — the mechanism docs/findings/alias-assumptions.md
   # (assumption 5) prescribes verbatim for pinning `live` across stack
@@ -240,6 +252,11 @@ Resources:
           GITHUB_APP_ID: !Ref GithubAppId
           GITHUB_APP_INSTALLATION_ID: !Ref GithubAppInstallationId
           GITHUB_APP_PRIVATE_KEY: !Sub "{{resolve:secretsmanager:${GithubAppPrivateKeySecretName}:SecretString}}"
+          # The web view's token (node P2-N021, owner action O-view-1),
+          # resolved the same way MCP_AUTH_TOKEN is above. The /view
+          # routes refuse to run when it is unset or equal to
+          # MCP_AUTH_TOKEN (src/view/viewAuth.ts).
+          VIEW_TOKEN: !Sub "{{resolve:secretsmanager:${ViewTokenSecretName}:SecretString}}"
           # The write path (chunk 1 child D, node P2-N010) — the
           # advisory write lease's only storage when invoked
           # unqualified (local dev, tests) or via the `live` alias
@@ -501,6 +518,32 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       RouteKey: "GET /health"
+      Target: !Sub "integrations/${McpIntegration}"
+
+  # node P2-N021 — the web view's three routes (task E1). Each targets
+  # the existing McpIntegration, bound to `live`; the view adds no
+  # integration, no alias and no Function URL, so nothing outside the
+  # two aliases becomes reachable. The preprod Function URL already
+  # serves every path.
+  ViewRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "GET /view"
+      Target: !Sub "integrations/${McpIntegration}"
+
+  ViewSignInFormRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "GET /view/sign-in"
+      Target: !Sub "integrations/${McpIntegration}"
+
+  ViewSignInRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "POST /view/sign-in"
       Target: !Sub "integrations/${McpIntegration}"
 
   LiveInvokePermission:

@@ -11,7 +11,7 @@
 import { loadGithubAppConfig } from "../githubAppConfig.js";
 import { createInstallationTokenProvider } from "./githubAppAuth.js";
 import { GithubAppRegisterFetcher } from "./registerFetcher.js";
-import type { RegisterFetcher } from "./registerFetcher.js";
+import type { CommitReader, RegisterFetcher } from "./registerFetcher.js";
 
 export class GithubAppNotConfiguredError extends Error {
   readonly missing: string[];
@@ -32,11 +32,27 @@ export class GithubAppNotConfiguredError extends Error {
 // reuses the same installation-token provider — and therefore its
 // cached token — instead of re-reading configuration and starting a
 // fresh cache on every call.
-let cached: RegisterFetcher | null = null;
+let cached: GithubAppRegisterFetcher | null = null;
 
 export function getDefaultRegisterFetcher(
   env: NodeJS.ProcessEnv = process.env,
 ): RegisterFetcher {
+  return getDefaultGithubFetcher(env);
+}
+
+/** The same cached, GitHub-App-backed instance, through the seam the
+ * web view reads by (node P2-N021): resolve a ref once, then read each
+ * file at that SHA. Throws `GithubAppNotConfiguredError` when called
+ * before owner action O3, as `getDefaultRegisterFetcher` does. */
+export function getDefaultCommitReader(
+  env: NodeJS.ProcessEnv = process.env,
+): CommitReader {
+  return getDefaultGithubFetcher(env);
+}
+
+function getDefaultGithubFetcher(
+  env: NodeJS.ProcessEnv,
+): GithubAppRegisterFetcher {
   if (cached) {
     return cached;
   }

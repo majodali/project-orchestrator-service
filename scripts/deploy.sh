@@ -23,6 +23,20 @@
 #                                   PEM private key (owner action O3).
 #                                   Never read by this script, the same
 #                                   pattern as AUTH_TOKEN_SECRET_NAME.
+#   VIEW_TOKEN_SECRET_NAME          Name (not ARN) of the Secrets
+#                                   Manager secret holding the web
+#                                   view's token (node P2-N021, owner
+#                                   action O-view-1; docs/runbook.md,
+#                                   "The web view"). Never read by this
+#                                   script, the same pattern as
+#                                   AUTH_TOKEN_SECRET_NAME. Passed as
+#                                   template.yaml's ViewTokenSecretName,
+#                                   which has no default: when this is
+#                                   unset the script warns and passes
+#                                   nothing, and `sam deploy` refuses
+#                                   the stack update for the missing
+#                                   parameter, so `live` stays where
+#                                   it was.
 #
 # Optional:
 #   STACK_NAME    Default: project-orchestrator-service
@@ -40,6 +54,16 @@ set -euo pipefail
 : "${GITHUB_APP_ID:?Set GITHUB_APP_ID to the GitHub App's numeric ID (owner action O3; see docs/runbook.md).}"
 : "${GITHUB_APP_INSTALLATION_ID:?Set GITHUB_APP_INSTALLATION_ID to the App's installation ID for majodali/project-orchestrator (owner action O3; see docs/runbook.md).}"
 : "${GITHUB_APP_PRIVATE_KEY_SECRET_NAME:?Set GITHUB_APP_PRIVATE_KEY_SECRET_NAME to the secret created under O3 (see docs/runbook.md).}"
+
+# node P2-N021 — the web view's token secret. Passed only when set; see
+# this variable's entry in the header comment for why an unset value
+# warns here and is refused by `sam deploy` rather than by this guard.
+VIEW_TOKEN_OVERRIDE=()
+if [ -n "${VIEW_TOKEN_SECRET_NAME:-}" ]; then
+  VIEW_TOKEN_OVERRIDE=("ViewTokenSecretName=${VIEW_TOKEN_SECRET_NAME}")
+else
+  echo "== WARNING: VIEW_TOKEN_SECRET_NAME is not set (owner actions O-view-1 and O-view-3; docs/runbook.md, \"The web view\"). sam deploy will refuse the missing ViewTokenSecretName parameter. ==" >&2
+fi
 
 STACK_NAME="${STACK_NAME:-project-orchestrator-service}"
 STAGE="${STAGE:-prod}"
@@ -139,7 +163,8 @@ sam deploy \
     "GithubAppId=${GITHUB_APP_ID}" \
     "GithubAppInstallationId=${GITHUB_APP_INSTALLATION_ID}" \
     "GithubAppPrivateKeySecretName=${GITHUB_APP_PRIVATE_KEY_SECRET_NAME}" \
-    "LiveVersion=${LIVE_VERSION}"
+    "LiveVersion=${LIVE_VERSION}" \
+    ${VIEW_TOKEN_OVERRIDE[@]+"${VIEW_TOKEN_OVERRIDE[@]}"}
 
 echo
 echo "== Endpoint =="

@@ -2,9 +2,12 @@
 #
 # Smoke test for project-orchestrator-service (node P2-N016, chunk 2
 # child D of docs/specs/p2-n012-deploy-from-ci-on-merge.md in the
-# coordinating repository). Three checks, in order: `/health` returns
+# coordinating repository). Four checks, in order: `/health` returns
 # 200; `tools/list` carries all six tools; a full
-# plan_lease_acquire/plan_lease_release cycle succeeds. Any failure
+# plan_lease_acquire/plan_lease_release cycle succeeds; and (node
+# P2-N021, the web view) signing in with the view token and reading
+# `/view` returns 200 with a 40-character SHA in the page's header.
+# Any failure
 # prints "SMOKE FAILURE" naming the check and exits non-zero — the
 # deploy workflow (.github/workflows/deploy.yml) runs this against the
 # preprod Function URL before promoting `live`, so a non-zero exit
@@ -32,6 +35,11 @@
 #                             `aws secretsmanager get-secret-value` —
 #                             never a literal, never a new Actions
 #                             secret (I6).
+#   VIEW_TOKEN_SECRET_NAME    Name (not ARN) of the Secrets Manager
+#                             secret holding the web view's token
+#                             (node P2-N021, owner action O-view-1).
+#                             Read here at run time the same way, for
+#                             check 4 only.
 #
 # AWS credentials come from whatever the caller already has configured
 # (the deploy role's OIDC session in CI, or the operator's own AWS
@@ -42,6 +50,7 @@ set -euo pipefail
 : "${SERVICE_URL:?Set SERVICE_URL to the endpoint to test (\$ENDPOINT or \$PREPROD_ENDPOINT).}"
 : "${AWS_REGION:?Set AWS_REGION (the region the bearer-token secret lives in).}"
 : "${AUTH_TOKEN_SECRET_NAME:?Set AUTH_TOKEN_SECRET_NAME to the Secrets Manager secret holding the bearer token.}"
+: "${VIEW_TOKEN_SECRET_NAME:?Set VIEW_TOKEN_SECRET_NAME to the Secrets Manager secret holding the web view token (O-view-1).}"
 
 # Strip exactly one trailing slash, so both $ENDPOINT (none) and
 # $PREPROD_ENDPOINT (a Function URL, which always carries one) work
@@ -74,10 +83,10 @@ mcp_call() {
 }
 
 echo
-echo "== Check 1/3: GET /health returns 200 =="
+echo "== Check 1/4: GET /health returns 200 =="
 HEALTH_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' "${BASE_URL}/health")"
 if [ "$HEALTH_STATUS" != "200" ]; then
-  echo "SMOKE FAILURE (check 1/3, /health): GET ${BASE_URL}/health returned ${HEALTH_STATUS}, expected 200." >&2
+  echo "SMOKE FAILURE (check 1/4, /health): GET ${BASE_URL}/health returned ${HEALTH_STATUS}, expected 200." >&2
   # node P2-N016 (T036) — this exact failure (a 403 on preprod's own
   # /health) was Lambda's own function-URL authorization layer, not
   # the application (src/httpApp.ts never authenticates /health):
@@ -101,7 +110,7 @@ fi
 echo "OK — /health returned 200."
 
 echo
-echo "== Check 2/3: tools/list carries all six tools =="
+echo "== Check 2/4: tools/list carries all six tools =="
 TOOLS_RESPONSE="$(mcp_call '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}')"
 MISSING_TOOLS="$(TOOLS_RESPONSE="$TOOLS_RESPONSE" node -e '
   const required = [
@@ -123,14 +132,14 @@ MISSING_TOOLS="$(TOOLS_RESPONSE="$TOOLS_RESPONSE" node -e '
   process.stdout.write(required.filter((name) => !names.has(name)).join(","));
 ')"
 if [ -n "$MISSING_TOOLS" ]; then
-  echo "SMOKE FAILURE (check 2/3, tools/list): missing tool(s): ${MISSING_TOOLS}." >&2
+  echo "SMOKE FAILURE (check 2/4, tools/list): missing tool(s): ${MISSING_TOOLS}." >&2
   echo "Full response: ${TOOLS_RESPONSE}" >&2
   exit 1
 fi
 echo "OK — tools/list carries all six tools."
 
 echo
-echo "== Check 3/3: full lease acquire-and-release cycle =="
+echo "== Check 3/4: full lease acquire-and-release cycle =="
 ACQUIRE_RESPONSE="$(mcp_call '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"plan_lease_acquire","arguments":{"holder":"ci-smoke-test"}}}')"
 LEASE_TOKEN="$(ACQUIRE_RESPONSE="$ACQUIRE_RESPONSE" node -e '
   let body;
@@ -143,7 +152,7 @@ LEASE_TOKEN="$(ACQUIRE_RESPONSE="$ACQUIRE_RESPONSE" node -e '
   if (typeof token === "string") process.stdout.write(token);
 ')"
 if [ -z "$LEASE_TOKEN" ]; then
-  echo "SMOKE FAILURE (check 3/3, plan_lease_acquire): no lease token in the response." >&2
+  echo "SMOKE FAILURE (check 3/4, plan_lease_acquire): no lease token in the response." >&2
   echo "Full response: ${ACQUIRE_RESPONSE}" >&2
   exit 1
 fi
@@ -167,11 +176,64 @@ RELEASED="$(RELEASE_RESPONSE="$RELEASE_RESPONSE" node -e '
   process.stdout.write(body.result?.structuredContent?.released === true ? "true" : "");
 ')"
 if [ "$RELEASED" != "true" ]; then
-  echo "SMOKE FAILURE (check 3/3, plan_lease_release): did not report {\"released\": true}." >&2
+  echo "SMOKE FAILURE (check 3/4, plan_lease_release): did not report {\"released\": true}." >&2
   echo "Full response: ${RELEASE_RESPONSE}" >&2
   exit 1
 fi
 echo "OK — lease acquired and released against ${BASE_URL}."
 
 echo
-echo "== Smoke test passed: all three checks OK against ${BASE_URL} =="
+echo "== Check 4/4: sign in to the web view and read the tree page =="
+# node P2-N021 (criterion V19). The view token is read from Secrets
+# Manager at run time, as the bearer token is above, and masked at
+# once. It reaches curl on standard input, never in its arguments.
+VIEW_TOKEN="$(aws secretsmanager get-secret-value \
+  --region "$AWS_REGION" \
+  --secret-id "$VIEW_TOKEN_SECRET_NAME" \
+  --query SecretString \
+  --output text)"
+if [ -n "${GITHUB_ACTIONS:-}" ]; then
+  echo "::add-mask::${VIEW_TOKEN}"
+fi
+VIEW_WORK_DIR="$(mktemp -d)"
+trap 'rm -rf "$VIEW_WORK_DIR"' EXIT
+SIGN_IN_STATUS="$(printf '%s' "$VIEW_TOKEN" | curl -sS -o /dev/null \
+  -D "${VIEW_WORK_DIR}/sign-in-headers" \
+  -w '%{http_code}' \
+  -X POST "${BASE_URL}/view/sign-in" \
+  --data-urlencode "token@-")"
+if [ "$SIGN_IN_STATUS" != "303" ]; then
+  echo "SMOKE FAILURE (check 4/4, /view sign-in): POST ${BASE_URL}/view/sign-in returned ${SIGN_IN_STATUS}, expected 303." >&2
+  exit 1
+fi
+# The cookie is Secure; it is sent back as a header rather than through
+# a cookie jar, so the check reads the same against either endpoint.
+VIEW_COOKIE="$(tr -d '\r' < "${VIEW_WORK_DIR}/sign-in-headers" \
+  | sed -n 's/^[Ss][Ee][Tt]-[Cc][Oo][Oo][Kk][Ii][Ee]: \(po_view=[^;]*\).*/\1/p' \
+  | head -n 1)"
+if [ -z "$VIEW_COOKIE" ]; then
+  echo "SMOKE FAILURE (check 4/4, /view sign-in): the 303 set no view cookie." >&2
+  exit 1
+fi
+if [ -n "${GITHUB_ACTIONS:-}" ]; then
+  echo "::add-mask::${VIEW_COOKIE}"
+fi
+printf 'Cookie: %s\n' "$VIEW_COOKIE" > "${VIEW_WORK_DIR}/cookie-header"
+VIEW_STATUS="$(curl -sS -o "${VIEW_WORK_DIR}/view.html" -w '%{http_code}' \
+  -H "@${VIEW_WORK_DIR}/cookie-header" \
+  "${BASE_URL}/view")"
+if [ "$VIEW_STATUS" != "200" ]; then
+  echo "SMOKE FAILURE (check 4/4, /view): GET ${BASE_URL}/view returned ${VIEW_STATUS}, expected 200." >&2
+  exit 1
+fi
+VIEW_SHA="$(grep -Eo '<code data-sha>[0-9a-f]{40}</code>' "${VIEW_WORK_DIR}/view.html" \
+  | head -n 1 \
+  | sed -E 's/<[^>]*>//g' || true)"
+if [ -z "$VIEW_SHA" ]; then
+  echo "SMOKE FAILURE (check 4/4, /view): the page's header carries no 40-character SHA." >&2
+  exit 1
+fi
+echo "OK — /view returned 200 at commit ${VIEW_SHA}."
+
+echo
+echo "== Smoke test passed: all four checks OK against ${BASE_URL} =="
