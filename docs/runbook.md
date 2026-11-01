@@ -486,15 +486,15 @@ measurement.
 The service also serves the plan as web pages, for reading in a
 browser on any device. The pages read the coordinating repository at
 one commit, through the same GitHub App `plan_read` uses. They change
-nothing. Tasks E1 and E2 serve five routes:
+nothing. Tasks E1 to E3 serve five routes:
 
-| Method and path            | Answers                                                                         |
-| -------------------------- | ------------------------------------------------------------------------------- |
-| `GET /view/sign-in`        | the sign-in form                                                                |
-| `POST /view/sign-in`       | the exchange of the view token for the view cookie                              |
-| `GET /view`                | the tree page; `?ref=<branch, tag or SHA>` reads that ref                       |
-| `GET /view/node/<node ID>` | a node page, from the register, the plan it links, the Cost log and the journal |
-| `GET /view/task/<task ID>` | a task page, from the Cost log and the journal                                  |
+| Method and path            | Answers                                                                                                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `GET /view/sign-in`        | the sign-in form                                                                                             |
+| `POST /view/sign-in`       | the exchange of the view token for the view cookie                                                           |
+| `GET /view`                | the tree page, with the Project model's two renderings beside it; `?ref=<branch, tag or SHA>` reads that ref |
+| `GET /view/node/<node ID>` | a node page, from the register, the plan it links, the Cost log, the journal and the Project model           |
+| `GET /view/task/<task ID>` | a task page, from the Cost log and the journal                                                               |
 
 The view has its own credential, the **view token**. It is held in
 Secrets Manager apart from the MCP bearer token, and `/mcp` refuses
@@ -578,6 +578,36 @@ fetch time. Reloading follows a branch to its newest commit. Add
 page at the same `ref`. Node and task pages arrive with task E2, so
 until then the link answers "No page here yet".
 
+### What the model adds to the pages (task E3)
+
+The tree page and every node page also read `docs/project-model.md`,
+the coordinating repository's Project model instance, at the same SHA
+as the register. The vendored `project-model.ts` parses it, the parser
+the coordinating repository owns.
+
+- **Beside the tree**, the tree page shows the model's two renderings.
+  The **implementation map** has one row per resource: its mark, the
+  first sentence of what it is, the date of its latest recorded
+  `done`, its state with the stage of each node counted, and a pointer
+  to its entry. The **list of what is next** has one item per node not
+  `done`: in flight, held, waiting on named nodes, or actionable. Each
+  follows the Project model type's procedure, and the list says it
+  holds recorded dependency only.
+- **On a node page**, "Depends on" and "Needed by" add the nodes linked
+  by recorded edges, each with the resource the edge runs through.
+  **Resources** lists the model's entries whose edge lines name the
+  node, grouped as creates, modifies and uses, each linked to its entry.
+- **Not computable.** Where a procedure cannot finish, the page says
+  so, naming the file, the line and the missing input. That happens in
+  three cases only: the instance is absent at the page's SHA; an entry
+  departs from the type's entry grammar on a line the procedure reads;
+  or a `state:` line disagrees with the stages. A line that reads `not
+yet derived` carries that note, and the rest still renders. Any other
+  failed read of the instance fails the page, as for the register.
+
+Nothing here carries progress authority. The Backlog stays the
+referent, as each page's limit line says.
+
 ### Rotating the view token: O-view-1 and O-view-3 again
 
 Rotation signs every device out, since the cookie key derives from the
@@ -615,10 +645,12 @@ Measured against the production endpoint, `live`. Sign in once with
 curl to get a cookie, then time each page cold and warm. The commands
 below time `/view`; time the node page and the task page the same way,
 each after its own idle period, with `"$ENDPOINT/view/node/P2-N021"`
-and `"$ENDPOINT/view/task/T094"` in place of `"$ENDPOINT/view"`. The
-node page reads four files (the register, the Cost log, the journal and
-the plan its line links) and the task page two (the Cost log and the
-journal), so their cold figures include more reads than the tree's.
+and `"$ENDPOINT/view/task/T094"` in place of `"$ENDPOINT/view"`. From
+task E3, the tree page reads two files (the register and the Project
+model instance) and the node page five (the register, the Cost log, the
+journal, the plan its line links and the instance); the task page reads
+two (the Cost log and the journal). P2-N021's line links no plan, so its
+node page reads four.
 
 ```sh
 printf '%s' "$VIEW_TOKEN" | curl -sS -o /dev/null -D /tmp/view-headers \
@@ -632,18 +664,22 @@ rm /tmp/view-headers
 ```
 
 A cold request includes the Lambda cold start, an installation-token
-mint, resolving the ref, and reading the register. A warm request
-reuses the token and, at an unchanged SHA, the register's content.
+mint, resolving the ref, and reading the page's files. A warm request
+reuses the token and, at an unchanged SHA, the files' content.
 
-| Page                                | Cold             | Warm             | Measured |
-| ----------------------------------- | ---------------- | ---------------- | -------- |
-| `GET /view`, tree                   | not yet measured | not yet measured | no       |
-| `GET /view/node/P2-N021`, node page | not yet measured | not yet measured | no       |
-| `GET /view/task/T094`, task page    | not yet measured | not yet measured | no       |
+| Page                                                                          | Cold             | Warm             | Measured |
+| ----------------------------------------------------------------------------- | ---------------- | ---------------- | -------- |
+| `GET /view`, tree                                                             | not yet measured | not yet measured | no       |
+| `GET /view/node/P2-N021`, node page                                           | not yet measured | not yet measured | no       |
+| `GET /view/task/T094`, task page                                              | not yet measured | not yet measured | no       |
+| `GET /view`, tree with the model's two renderings (E3)                        | not yet measured | not yet measured | no       |
+| `GET /view/node/P2-N021`, node page with resources and edge dependencies (E3) | not yet measured | not yet measured | no       |
 
 The tree's figures need the first deploy after O-view-1 to O-view-4;
 the node and task pages' figures need the deploy after task E2's merge
-(O-view-4). No dispatched session holds the view token or AWS
+(O-view-4); the two E3 rows need the deploy after task E3's merge
+(O-view-4). Each E3 row is timed by the same commands, after its own
+idle period. No dispatched session holds the view token or AWS
 credentials.
 
 ### Every human action is O-view-1 to O-view-5

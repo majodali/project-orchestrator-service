@@ -116,18 +116,18 @@ so far:
 
 ### HTTP routes
 
-| Method and path            | Auth                        | Answers                                                                                                                    |
-| -------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `GET /health`              | none                        | liveness, as JSON                                                                                                          |
-| `ANY /mcp`                 | `Authorization: Bearer`     | the MCP endpoint and its six tools                                                                                         |
-| `GET /view/sign-in`        | none                        | the web view's sign-in form                                                                                                |
-| `POST /view/sign-in`       | the view token, in the form | `303` to `/view` with the view cookie, or `401`                                                                            |
-| `GET /view`                | the view cookie             | the plan tree of the coordinating repository at one commit; `?ref=` picks a branch, tag or SHA                             |
-| `GET /view/node/<node ID>` | the view cookie             | a node page: stage, outcome, depends on, needed by, documents and tasks, at one commit; `404` for an ID the register lacks |
-| `GET /view/task/<task ID>` | the view cookie             | a task page: the task's Cost log row and journal events, at one commit; `404` for an ID neither file names                 |
+| Method and path            | Auth                        | Answers                                                                                                                                                                        |
+| -------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /health`              | none                        | liveness, as JSON                                                                                                                                                              |
+| `ANY /mcp`                 | `Authorization: Bearer`     | the MCP endpoint and its six tools                                                                                                                                             |
+| `GET /view/sign-in`        | none                        | the web view's sign-in form                                                                                                                                                    |
+| `POST /view/sign-in`       | the view token, in the form | `303` to `/view` with the view cookie, or `401`                                                                                                                                |
+| `GET /view`                | the view cookie             | the plan tree of the coordinating repository at one commit, with the Project model's implementation map and list of what is next beside it; `?ref=` picks a branch, tag or SHA |
+| `GET /view/node/<node ID>` | the view cookie             | a node page: stage, outcome, depends on, needed by, documents, resources and tasks, at one commit; `404` for an ID the register lacks                                          |
+| `GET /view/task/<task ID>` | the view cookie             | a task page: the task's Cost log row and journal events, at one commit; `404` for an ID neither file names                                                                     |
 
 The `/view` routes are the web view's first version (node P2-N021,
-tasks E1 and E2): server-rendered HTML with no script, readable at
+tasks E1 to E3): server-rendered HTML with no script, readable at
 phone width.
 Each page resolves its ref to one commit SHA and reads every file at
 that SHA through the GitHub App; it names the ref, the SHA and the
@@ -146,12 +146,30 @@ full; one above the endpoint's 100 MB limit, or one whose raw read
 comes back short, is refused by name and size
 (`src/planRegister/registerFetcher.ts`).
 
+The tree page and the node page also read `docs/project-model.md`, the
+coordinating repository's Project model instance, at the page's SHA,
+through the vendored `project-model.ts` (below), the parser that
+repository owns (task E3). Beside the tree, the tree page renders the
+model's implementation map and its list of what is next, each by the
+procedure of the Project model type (`docs/process/project-model.md`
+there), with no rule of the view's own. The list says it holds recorded
+dependency only. The node page adds, to "depends on" and "needed by",
+the nodes linked by recorded edges under the type's node-to-node
+dependency rule, and lists the entries whose edge lines name the node,
+grouped by label. Where a procedure cannot finish, the page marks the
+item **not computable**, naming the file, the line and the missing
+input: the instance absent at the SHA, an entry that fails the type's
+entry grammar on a line the procedure reads, or a `state:` line the
+stages contradict. Neither rendering carries progress authority
+(`src/view/modelRenderings.ts`, `src/view/projectModel.ts`).
+
 ### The vendored register grammar unit, and its drift check
 
 `src/planRegister/vendored/` (`plan-register.ts` plus its conformance
-corpus, and `cost-log-and-journal.ts`, the Cost log row and run-journal
-line grammar the web view reads, since node P2-N021's task E2) is
-vendored, byte-for-byte, from the coordinating repository's canonical
+corpus; `cost-log-and-journal.ts`, the Cost log row and run-journal
+line grammar the web view reads, since node P2-N021's task E2; and
+`project-model.ts`, the parser of the Project model instance, since
+task E3) is vendored, byte-for-byte, from the coordinating repository's canonical
 copies under `plugin/scripts/lib/` — ruling
 [RU-012](https://github.com/majodali/project-orchestrator/blob/main/docs/rulings.md):
 one canonical copy, vendored outward by a generator with a `--check`

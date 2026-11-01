@@ -8,7 +8,7 @@
  */
 
 import type { CommitReader } from "../planRegister/registerFetcher.js";
-import { FULL_SHA } from "../planRegister/registerFetcher.js";
+import { FULL_SHA, GithubFetchError } from "../planRegister/registerFetcher.js";
 
 /** File content at a commit, keyed by SHA and path only (V4). */
 export class ShaPathCache {
@@ -135,4 +135,32 @@ export async function readMoreAtPageSha(
   }
   page.files.set(path, content);
   return content;
+}
+
+/**
+ * Reads one more path at a page's SHA, as `readMoreAtPageSha` does, but
+ * answers undefined when GitHub answers `404`: the file is absent at
+ * that SHA. The register was read at the same SHA, so a `404` names the
+ * file's absence, not the repository's. Any other failure still fails
+ * the page. The Project model instance is read this way (node P2-N021,
+ * task E3; the specification of P2-N003, decision 11, case (a)).
+ */
+export async function readOptionalAtPageSha(
+  reader: CommitReader,
+  cache: ShaPathCache,
+  page: PageFiles,
+  path: string,
+): Promise<string | undefined> {
+  try {
+    return await readMoreAtPageSha(reader, cache, page, path);
+  } catch (err) {
+    if (
+      err instanceof PageReadError &&
+      err.underlying instanceof GithubFetchError &&
+      err.underlying.status === 404
+    ) {
+      return undefined;
+    }
+    throw err;
+  }
 }

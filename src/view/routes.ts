@@ -5,7 +5,8 @@
  *
  *   GET  /view/sign-in  the sign-in form
  *   POST /view/sign-in  the exchange of the view token for the view cookie
- *   GET  /view          the tree page
+ *   GET  /view          the tree page, with the Project model's two
+ *                       renderings beside it (task E3)
  *   GET  /view/node/<node ID>  a node page (task E2)
  *   GET  /view/task/<task ID>  a task page (task E2)
  *
@@ -37,6 +38,7 @@ import {
   PageReadError,
   ShaPathCache,
   readMoreAtPageSha,
+  readOptionalAtPageSha,
   readPageFiles,
 } from "./commitRead.js";
 import type { PageFiles } from "./commitRead.js";
@@ -50,6 +52,7 @@ import {
   viewLink,
 } from "./html.js";
 import { nodePagePath, planLink, renderNodePage } from "./nodePage.js";
+import { MODEL_PATH, modelAtPage } from "./projectModel.js";
 import {
   COST_LOG_PATH,
   JOURNAL_PATH,
@@ -346,7 +349,13 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
         [REGISTER_PATH],
         now,
       );
-      const html = renderTreePage(page.files.get(REGISTER_PATH)!, {
+      // The instance, at the SHA the register was read at (V1); absent
+      // there, the renderings say so (decision 11, case (a)).
+      const model = modelAtPage(
+        page.sha,
+        await readOptionalAtPageSha(source, cache, page, MODEL_PATH),
+      );
+      const html = renderTreePage(page.files.get(REGISTER_PATH)!, model, {
         owner: source.owner,
         repo: source.repo,
         requestedRef,
@@ -409,8 +418,12 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
         plan === undefined
           ? undefined
           : await readMoreAtPageSha(source, cache, page, plan.path);
+      const model = modelAtPage(
+        page.sha,
+        await readOptionalAtPageSha(source, cache, page, MODEL_PATH),
+      );
       const html = renderNodePage(
-        { parsed, node, costLog, journal, planText },
+        { parsed, node, costLog, journal, planText, model },
         commit,
       );
       return htmlResponse(c, html, 200);

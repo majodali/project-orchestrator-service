@@ -183,7 +183,10 @@ describe("V1 — one commit per page", () => {
     expect(html).toContain("Commit A root");
     expect(html).not.toContain("Commit B root");
     expect(repo.resolveCalls).toEqual([undefined]);
-    expect(repo.readCalls).toEqual([{ sha: SHA_A, path: REGISTER }]);
+    expect(repo.readCalls).toEqual([
+      { sha: SHA_A, path: REGISTER },
+      { sha: SHA_A, path: "docs/project-model.md" },
+    ]);
   });
 
   it("reads every file through the GitHub App at the resolved SHA, never by branch name, while the real branch head moves", async () => {
@@ -218,7 +221,8 @@ describe("V1 — one commit per page", () => {
     const { html } = await getView(app);
     expect(attributeText(html, "data-sha")).toBe(SHA_A);
     expect(html).toContain("Commit A root");
-    expect(contentsUrls).toHaveLength(1);
+    // The register and the Project model instance (task E3).
+    expect(contentsUrls).toHaveLength(2);
     for (const url of contentsUrls) {
       expect(new URL(url).searchParams.get("ref")).toMatch(/^[0-9a-f]{40}$/);
     }
@@ -401,7 +405,13 @@ describe("V4 — the cache answers no state", () => {
     await getView(app);
     await getView(app);
     expect(repo.resolveCalls).toHaveLength(2);
-    expect(repo.readCalls).toEqual([{ sha: SHA_A, path: REGISTER }]);
+    // The register is read once. The instance is absent here, and an
+    // absence is not content, so each request asks again (task E3).
+    expect(repo.readCalls).toEqual([
+      { sha: SHA_A, path: REGISTER },
+      { sha: SHA_A, path: "docs/project-model.md" },
+      { sha: SHA_A, path: "docs/project-model.md" },
+    ]);
   });
 
   it("keys the cache by a full SHA and a path, and refuses any other key", () => {

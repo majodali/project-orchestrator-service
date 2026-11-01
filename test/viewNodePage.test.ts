@@ -155,8 +155,11 @@ describe("V8 — the node page, seven fields in order", () => {
       `${BLOB}/docs/specs/p1-n008-mtool-checker-extension-point.md`,
     ]);
 
-    // 6. Resources: task E3's, absent here.
-    expect(textOf(section(html, "resources"))).toContain("Task E3 adds");
+    // 6. Resources: task E3's. This fixture holds no Project model, so
+    // the field is not computable (decision 11, case (a)).
+    expect(textOf(section(html, "resources"))).toContain(
+      "Not computable: docs/project-model.md, no line.",
+    );
 
     // 7. Tasks: in task-number order, each with a Cost log row.
     expect(taskItems(html)).toEqual([
@@ -232,6 +235,7 @@ describe("V8 — the node page, seven fields in order", () => {
       "docs/plan-register.md",
       "docs/cost-log.md",
       "orchestration/journal.jsonl",
+      "docs/project-model.md",
     ]);
   });
 
@@ -363,6 +367,7 @@ describe("V1 — the node page reads one commit", () => {
         sha: FIXTURE_COMMIT,
         path: "docs/plans/p1-n008-mtool-checker-extension-point.md",
       },
+      { sha: FIXTURE_COMMIT, path: "docs/project-model.md" },
     ]);
   });
 
