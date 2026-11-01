@@ -751,6 +751,33 @@ build`, `npm run lint`, `npm test`, `sam validate --lint`) and the
       measured and recorded in the runbook. Tasks E2 (node and task
       pages) and E3 (the model's renderings) follow.
 
+- [ ] **The web view's first version, task E2: the node page and the
+      task page** (node P2-N021, task T095; the specification of
+      P2-N003 in the coordinating repository, child 1) — built on
+      branch `p2-n021-e2-node-task-pages`, cut from E1's branch, not
+      yet merged or deployed. `GET /view/node/<node ID>` shows the
+      node's stage (with the date of its latest `gate-crossed` or
+      `accepted` journal event, labelled telemetry), the first paragraph
+      of its linked plan's _Outcome_ section ("the plan has no Outcome
+      section", or "no plan linked", decision 14), its register note
+      with node IDs linked, the nodes whose notes name it, its documents
+      (or the nearest ancestor's, labelled), and every task a Cost log
+      row or journal event names with it, in task-number order;
+      Resources and the edge dependencies wait for task E3.
+      `GET /view/task/<task ID>` shows the task's Cost log row, its
+      journal events in file order, and a link to its node; an unknown
+      ID answers `404` naming the ID and the SHA. Every read is pinned
+      to the page's one SHA. Both files are read through
+      `src/planRegister/vendored/cost-log-and-journal.ts`, vendored by
+      the generator from the coordinating repository (RU-012).
+      `GithubAppRegisterFetcher` reads a file above the contents
+      endpoint's 1 MB base64 limit again with the raw media type, in
+      full, and refuses one above 100 MB, or a short raw read, by name
+      and size. The template adds two route keys on `McpIntegration`.
+      Waits on E1's merge, then this branch's rebase onto `main` and
+      its merge (O-view-4); the two pages' cold and warm latency is then
+      measured and recorded in `docs/runbook.md` (V22).
+
 - [ ] **Declare the multi-repo relationship formally** — replace this
       repository's prose statement of its coordinating repository (this
       Backlog entry and `docs/classification.md` § Coordinating

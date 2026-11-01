@@ -71,6 +71,51 @@ export class GithubFetchError extends Error {
   }
 }
 
+/**
+ * GitHub's REST documentation for "Get repository content"
+ * (https://docs.github.com/en/rest/repos/contents, API version
+ * 2022-11-28, read 2026-10-30) sets three size bands for a file:
+ *
+ *   - 1 MB or smaller: "All features of this endpoint are supported."
+ *   - Between 1 and 100 MB: "Only the raw or object custom media types
+ *     are supported." With the object media type, "the content field
+ *     will be an empty string and the encoding field will be "none"".
+ *     "To get the contents of these larger files, use the raw media
+ *     type."
+ *   - Greater than 100 MB: "This endpoint is not supported."
+ *
+ * So a file above 1 MB comes back with `encoding: "none"` and no
+ * content. The fetcher then reads it again at the same SHA with the raw
+ * media type, in full, and checks the byte count against the `size`
+ * the first answer gave. A file above 100 MB, or a raw read whose
+ * length differs from that size, is refused by `FileTooLargeError`,
+ * which names the file and its size. A file is never read as empty
+ * (the specification of P2-N003, criterion V5).
+ */
+export const CONTENTS_BASE64_LIMIT_BYTES = 1024 * 1024;
+export const CONTENTS_ENDPOINT_LIMIT_BYTES = 100 * 1024 * 1024;
+const RAW_MEDIA_TYPE = "application/vnd.github.raw+json";
+
+/** A file the contents endpoint cannot return in full: refused by name
+ * and size, never read as empty. */
+export class FileTooLargeError extends Error {
+  readonly path: string;
+  readonly sha: string;
+  /** The file's size in bytes, as the contents endpoint reported it. */
+  readonly size: number;
+  /** Why the file is refused. */
+  readonly reason: string;
+
+  constructor(path: string, sha: string, size: number, reason: string) {
+    super(`${path} at ${sha} is ${size} bytes: ${reason}`);
+    this.name = "FileTooLargeError";
+    this.path = path;
+    this.sha = sha;
+    this.size = size;
+    this.reason = reason;
+  }
+}
+
 export class GithubAppRegisterFetcher implements RegisterFetcher, CommitReader {
   readonly owner: string;
   readonly repo: string;
@@ -202,7 +247,19 @@ export class GithubAppRegisterFetcher implements RegisterFetcher, CommitReader {
         await safeText(res),
       );
     }
-    const body = (await res.json()) as { content: string; encoding: string };
+    const body = (await res.json()) as {
+      content: string;
+      encoding: string;
+      size?: number;
+    };
+    const size = typeof body.size === "number" ? body.size : undefined;
+    if (
+      body.encoding === "none" ||
+      (body.encoding === "base64" && body.content === "" && (size ?? 0) > 0)
+    ) {
+      // Above the base64 limit: read the raw bytes instead (V5).
+      return this.fetchRawAtSha(path, sha, size, headers);
+    }
     if (body.encoding !== "base64") {
       throw new GithubFetchError(
         `unexpected content encoding ${JSON.stringify(body.encoding)} for ${path} at ${sha}`,
@@ -211,6 +268,52 @@ export class GithubAppRegisterFetcher implements RegisterFetcher, CommitReader {
       );
     }
     return Buffer.from(body.content, "base64").toString("utf-8");
+  }
+
+  /** Reads a file above the base64 limit with the raw media type, in
+   * full, or refuses it by name and size (V5). */
+  private async fetchRawAtSha(
+    path: string,
+    sha: string,
+    size: number | undefined,
+    headers: Record<string, string>,
+  ): Promise<string> {
+    if (size === undefined) {
+      throw new GithubFetchError(
+        `${path} at ${sha} came back without content or a size`,
+        502,
+        "",
+      );
+    }
+    if (size > CONTENTS_ENDPOINT_LIMIT_BYTES) {
+      throw new FileTooLargeError(
+        path,
+        sha,
+        size,
+        `above the ${CONTENTS_ENDPOINT_LIMIT_BYTES}-byte limit of GitHub's contents endpoint`,
+      );
+    }
+    const res = await this.fetchImpl(
+      `${GITHUB_API_BASE}/repos/${this.owner}/${this.repo}/contents/${path}?ref=${encodeURIComponent(sha)}`,
+      { headers: { ...headers, Accept: RAW_MEDIA_TYPE } },
+    );
+    if (!res.ok) {
+      throw new GithubFetchError(
+        `could not fetch the raw content of ${path} at ${sha} from ${this.owner}/${this.repo}`,
+        res.status,
+        await safeText(res),
+      );
+    }
+    const bytes = Buffer.from(await res.arrayBuffer());
+    if (bytes.length !== size) {
+      throw new FileTooLargeError(
+        path,
+        sha,
+        size,
+        `the raw read returned ${bytes.length} bytes, so the file was not read in full`,
+      );
+    }
+    return bytes.toString("utf-8");
   }
 }
 

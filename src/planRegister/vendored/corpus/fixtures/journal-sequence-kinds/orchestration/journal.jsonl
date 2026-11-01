@@ -1,0 +1,8 @@
+{"ts": "2026-01-01T00:00:00Z", "event": "sequence-ratified", "node": "P1-N001", "ref": "0000000", "note": "Members: P1-N001 execute; P1-N002 execute."}
+{"ts": "2026-01-01T00:01:00Z", "event": "dispatched", "task": "T001", "node": "P1-N001", "stage": "execute", "role": "implementer"}
+{"ts": "2026-01-01T00:02:00Z", "event": "result-received", "task": "T001", "node": "P1-N001", "stage": "execute", "role": "implementer", "note": "done. Checks: form check 0 violations. Refs: none. Flags: none. Findings: none. What changed: none. Asks: No asks."}
+{"ts": "2026-01-01T00:03:00Z", "event": "accepted", "task": "T001", "node": "P1-N001", "stage": "execute", "role": "implementer"}
+{"ts": "2026-01-02T00:01:00Z", "event": "dispatched", "task": "T002", "node": "P1-N002", "stage": "execute", "role": "implementer"}
+{"ts": "2026-01-02T00:02:00Z", "event": "result-received", "task": "T002", "node": "P1-N002", "stage": "execute", "role": "implementer", "note": "done. Checks: form check 0 violations. Refs: none. Flags: none. Findings: none. What changed: none. Asks: A1. Owner: hand-carry the proposal upstream."}
+{"ts": "2026-01-02T00:03:00Z", "event": "accepted", "task": "T002", "node": "P1-N002", "stage": "execute", "role": "implementer"}
+{"ts": "2026-01-02T00:04:00Z", "event": "sequence-stopped", "task": "T002", "node": "P1-N002", "stage": "execute", "note": "condition 4. Asks: A1. Owner: hand-carry the proposal upstream."}

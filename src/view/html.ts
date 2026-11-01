@@ -64,8 +64,15 @@ export const PAGE_CSS = [
   ".hold{font-family:ui-monospace,monospace;font-size:13px;color:#8a3b00}",
   ".note{font-size:14px;color:#444}",
   ".error{color:#8a0000}",
+  "h2{font-size:17px;margin:14px 0 4px}",
+  "section{margin:0 0 8px}",
+  ".label,dt{font-size:14px;color:#444}",
+  "dl{margin:0 0 8px}",
+  "dd{margin:0 0 4px}",
+  "ol.events{padding-left:20px}",
+  "ol.events li{margin:0 0 10px}",
   "input,button{font-size:16px;max-width:100%}",
-  "@media (prefers-color-scheme:dark){body{color:#e8e8e8;background:#121212}header,.limit,.note{color:#bbb}.hold{color:#f0a060}.error{color:#ff8080}a{color:#8ab4f8}}",
+  "@media (prefers-color-scheme:dark){body{color:#e8e8e8;background:#121212}header,.limit,.note,.label,dt{color:#bbb}.hold{color:#f0a060}.error{color:#ff8080}a{color:#8ab4f8}}",
 ].join("\n");
 
 const CSS_HASH = createHash("sha256").update(PAGE_CSS).digest("base64");

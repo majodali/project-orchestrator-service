@@ -6,6 +6,8 @@
  *   GET  /view/sign-in  the sign-in form
  *   POST /view/sign-in  the exchange of the view token for the view cookie
  *   GET  /view          the tree page
+ *   GET  /view/node/<node ID>  a node page (task E2)
+ *   GET  /view/task/<task ID>  a task page (task E2)
  *
  * Every other `/view` route requires a valid view cookie and refuses a
  * request without one by a `303` to the sign-in page. No `/view` route
@@ -26,16 +28,35 @@ import {
   getDefaultCommitReader,
 } from "../planRegister/defaultFetcher.js";
 import type { CommitReader } from "../planRegister/registerFetcher.js";
-import { GithubFetchError } from "../planRegister/registerFetcher.js";
-import { PageReadError, ShaPathCache, readPageFiles } from "./commitRead.js";
-import type { ErrorPageCommit } from "./html.js";
+import {
+  FileTooLargeError,
+  GithubFetchError,
+} from "../planRegister/registerFetcher.js";
+import { parseRegister } from "../planRegister/parser.js";
+import {
+  PageReadError,
+  ShaPathCache,
+  readMoreAtPageSha,
+  readPageFiles,
+} from "./commitRead.js";
+import type { PageFiles } from "./commitRead.js";
+import type { ErrorPageCommit, PageCommit } from "./html.js";
 import {
   VIEW_SECURITY_HEADERS,
   escapeHtml,
   limitLine,
   pageHeader,
   pageShell,
+  viewLink,
 } from "./html.js";
+import { nodePagePath, planLink, renderNodePage } from "./nodePage.js";
+import {
+  COST_LOG_PATH,
+  JOURNAL_PATH,
+  readCostLog,
+  readJournal,
+} from "./runRecords.js";
+import { recordsOf, renderTaskPage, taskPagePath } from "./taskPage.js";
 import { REGISTER_PATH, renderTreePage } from "./treePage.js";
 import {
   VIEW_COOKIE_NAME,
@@ -121,6 +142,7 @@ function errorPage(
   requestedRef: string | undefined,
   repo: { owner: string; repo: string },
   now: () => Date,
+  selfPath = "/view",
 ): Response {
   const failure = err instanceof PageReadError ? err : undefined;
   const underlying = failure ? failure.underlying : err;
@@ -133,16 +155,20 @@ function errorPage(
     sha: failure?.sha,
     fetchedAt: now().toISOString(),
   };
+  const tooLarge =
+    underlying instanceof FileTooLargeError ? underlying : undefined;
   const what =
     failure?.path === undefined
       ? `The ref ${requestedRef === undefined ? "(none requested: the default branch)" : JSON.stringify(requestedRef)} did not resolve to a commit.`
-      : `The file ${failure.path} could not be read at ${failure.sha}.`;
+      : tooLarge !== undefined
+        ? `The file ${failure.path} is ${tooLarge.size} bytes at ${failure.sha}, and this page refuses it: ${tooLarge.reason}.`
+        : `The file ${failure.path} could not be read at ${failure.sha}.`;
   const statusLine =
     status === undefined
       ? `<p>GitHub status: <span data-github-status>none</span> (${escapeHtml(underlying instanceof Error ? underlying.message : String(underlying))})</p>`
       : `<p>GitHub status: <span data-github-status>${status}</span></p>`;
   const body = [
-    pageHeader(commit, "/view"),
+    pageHeader(commit, selfPath),
     limitLine(commit, commit.sha),
     "<main>",
     "<h1>The page could not be read</h1>",
@@ -150,6 +176,9 @@ function errorPage(
     failure?.path === undefined
       ? ""
       : `<p>Failing file: <code data-failing-file>${escapeHtml(failure.path)}</code></p>`,
+    tooLarge === undefined
+      ? ""
+      : `<p>File size: <span data-file-size>${tooLarge.size}</span> bytes</p>`,
     statusLine,
     "</main>",
   ].join("\n");
@@ -160,6 +189,45 @@ function errorPage(
         ? 404
         : 502;
   return htmlResponse(c, pageShell("Read failed", body), pageStatus);
+}
+
+/** The commit a page read, for its header. */
+function pageCommit(
+  source: CommitReader,
+  requestedRef: string | undefined,
+  page: PageFiles,
+): PageCommit {
+  return {
+    owner: source.owner,
+    repo: source.repo,
+    requestedRef,
+    resolvedRef: page.resolvedRef,
+    sha: page.sha,
+    fetchedAt: page.fetchedAt,
+  };
+}
+
+/**
+ * A `404` for an ID the files at the page's commit do not name (V9).
+ * It carries the header (V2) and the limit line (V13), and names the
+ * ID and the SHA.
+ */
+function notFoundPage(
+  c: Context,
+  commit: PageCommit,
+  selfPath: string,
+  what: string,
+): Response {
+  const body = [
+    pageHeader(commit, selfPath),
+    limitLine(commit, commit.sha),
+    "<main>",
+    `<p><a href="${escapeHtml(viewLink("/view", commit.requestedRef))}">Plan tree</a></p>`,
+    "<h1>Not found at this commit</h1>",
+    `<p class="error" data-not-found>${escapeHtml(what)}</p>`,
+    "</main>",
+  ].join("\n");
+  return htmlResponse(c, pageShell("Not found", body), 404);
 }
 
 export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
@@ -292,8 +360,109 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
     }
   });
 
-  // The node and task pages arrive with task E2. Until then a signed-in
-  // request for any other `/view` path answers this page.
+  app.get("/view/node/:id", async (c) => {
+    const requestedRef = c.req.query("ref") || undefined;
+    const id = c.req.param("id");
+    const selfPath = nodePagePath(id);
+    let source: CommitReader;
+    try {
+      source = reader();
+    } catch (err) {
+      return errorPage(
+        c,
+        err,
+        requestedRef,
+        { owner: "(not configured)", repo: "(not configured)" },
+        now,
+        selfPath,
+      );
+    }
+    try {
+      const page = await readPageFiles(
+        source,
+        cache,
+        requestedRef,
+        [REGISTER_PATH],
+        now,
+      );
+      const commit = pageCommit(source, requestedRef, page);
+      const parsed = parseRegister(page.files.get(REGISTER_PATH)!);
+      const node = parsed.nodes.get(id);
+      if (node === undefined) {
+        return notFoundPage(
+          c,
+          commit,
+          selfPath,
+          `No node ${id} in ${REGISTER_PATH} at ${page.sha}.`,
+        );
+      }
+      // Every further read is pinned to the SHA the register was read
+      // at (V1).
+      const costLog = readCostLog(
+        await readMoreAtPageSha(source, cache, page, COST_LOG_PATH),
+      );
+      const journal = readJournal(
+        await readMoreAtPageSha(source, cache, page, JOURNAL_PATH),
+      );
+      const plan = planLink(node);
+      const planText =
+        plan === undefined
+          ? undefined
+          : await readMoreAtPageSha(source, cache, page, plan.path);
+      const html = renderNodePage(
+        { parsed, node, costLog, journal, planText },
+        commit,
+      );
+      return htmlResponse(c, html, 200);
+    } catch (err) {
+      return errorPage(c, err, requestedRef, source, now, selfPath);
+    }
+  });
+
+  app.get("/view/task/:id", async (c) => {
+    const requestedRef = c.req.query("ref") || undefined;
+    const id = c.req.param("id");
+    const selfPath = taskPagePath(id);
+    let source: CommitReader;
+    try {
+      source = reader();
+    } catch (err) {
+      return errorPage(
+        c,
+        err,
+        requestedRef,
+        { owner: "(not configured)", repo: "(not configured)" },
+        now,
+        selfPath,
+      );
+    }
+    try {
+      const page = await readPageFiles(
+        source,
+        cache,
+        requestedRef,
+        [COST_LOG_PATH, JOURNAL_PATH],
+        now,
+      );
+      const commit = pageCommit(source, requestedRef, page);
+      const costLog = readCostLog(page.files.get(COST_LOG_PATH)!);
+      const journal = readJournal(page.files.get(JOURNAL_PATH)!);
+      const records = recordsOf(id, costLog, journal);
+      if (records.rows.length === 0 && records.events.length === 0) {
+        return notFoundPage(
+          c,
+          commit,
+          selfPath,
+          `No task ${id} in ${COST_LOG_PATH} or ${JOURNAL_PATH} at ${page.sha}.`,
+        );
+      }
+      return htmlResponse(c, renderTaskPage(id, costLog, journal, commit), 200);
+    } catch (err) {
+      return errorPage(c, err, requestedRef, source, now, selfPath);
+    }
+  });
+
+  // A signed-in request for any other `/view` path answers this page.
   app.get("/view/*", (c) =>
     simplePage(
       c,

@@ -67,7 +67,7 @@ describe("V18 — the template", () => {
     for (const [key] of routes) {
       if (key.includes("/view")) {
         expect(key).toMatch(
-          /^(GET \/view|GET \/view\/sign-in|POST \/view\/sign-in)$/,
+          /^(GET \/view|GET \/view\/sign-in|POST \/view\/sign-in|GET \/view\/node\/\{nodeId\}|GET \/view\/task\/\{taskId\})$/,
         );
       }
     }

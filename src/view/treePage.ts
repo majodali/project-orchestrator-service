@@ -9,59 +9,18 @@
  */
 
 import { parseRegister } from "../planRegister/parser.js";
-import type { PlanNode, RegisterParseResult } from "../planRegister/types.js";
-import type { PageCommit, RepoCoordinates } from "./html.js";
+import type { RegisterParseResult } from "../planRegister/types.js";
+import type { PageCommit } from "./html.js";
 import {
   blobUrl,
   escapeHtml,
   limitLine,
   pageHeader,
   pageShell,
-  viewLink,
 } from "./html.js";
+import { nodePageHref, renderNote } from "./registerNote.js";
 
 export const REGISTER_PATH = "docs/plan-register.md";
-/** Register links such as `plans/x.md` resolve against `docs/`. */
-const REGISTER_LINK_BASE = "docs/";
-const LINK_SEPARATOR = " · ";
-/** A relative path to a Markdown document inside the repository. */
-const DOCUMENT_TARGET =
-  /^(?!\/)(?!.*\.\.)[A-Za-z0-9._\-/]+\.md(?:#[A-Za-z0-9_-]+)?$/;
-
-/**
- * The note as written, with each document target the register's
- * `label: target` links name turned into a link at the page's SHA.
- * The text a reader sees is the note verbatim (V7); only targets that
- * are relative Markdown paths become links, so every link is pinned to
- * the SHA (V10).
- */
-function renderNote(
-  node: PlanNode,
-  repo: RepoCoordinates,
-  sha: string,
-): string {
-  const annotation = node.annotation ?? "";
-  const targets = new Set(node.links.map((link) => link.target));
-  return annotation
-    .split(LINK_SEPARATOR)
-    .map((segment) => {
-      const trimmed = segment.trimEnd();
-      for (const target of targets) {
-        if (DOCUMENT_TARGET.test(target) && trimmed.endsWith(target)) {
-          const head = segment.slice(0, trimmed.length - target.length);
-          const tail = segment.slice(trimmed.length);
-          const [path] = target.split("#") as [string];
-          const href = blobUrl(repo, sha, `${REGISTER_LINK_BASE}${path}`);
-          const anchor = target.includes("#")
-            ? `#${target.slice(target.indexOf("#") + 1)}`
-            : "";
-          return `${escapeHtml(head)}<a href="${escapeHtml(href + anchor)}">${escapeHtml(target)}</a>${escapeHtml(tail)}`;
-        }
-      }
-      return escapeHtml(segment);
-    })
-    .join(escapeHtml(LINK_SEPARATOR));
-}
 
 function renderNode(
   parsed: RegisterParseResult,
@@ -73,7 +32,7 @@ function renderNode(
   const parts = [
     `<li data-node="${escapeHtml(node.id)}" data-depth="${depth}">`,
     "<div>",
-    `<a data-node-link href="${escapeHtml(viewLink(`/view/node/${encodeURIComponent(node.id)}`, commit.requestedRef))}">${escapeHtml(node.id)}</a>`,
+    `<a data-node-link href="${escapeHtml(nodePageHref(node.id, commit.requestedRef))}">${escapeHtml(node.id)}</a>`,
     ` <span class="stage" data-stage>[${escapeHtml(node.stage)}]</span>`,
     node.hold
       ? ` <span class="hold" data-hold>[${escapeHtml(node.hold.kind)}: ${escapeHtml(node.hold.reason)}]</span>`

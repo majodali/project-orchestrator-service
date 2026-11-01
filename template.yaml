@@ -546,6 +546,24 @@ Resources:
       RouteKey: "POST /view/sign-in"
       Target: !Sub "integrations/${McpIntegration}"
 
+  # node P2-N021 — the node page and the task page (task E2), on the
+  # same integration, under the same reasoning as the three routes
+  # above. The path variable carries the node or task ID; the Hono app
+  # reads it from the path, so the variable's name is not used.
+  ViewNodeRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "GET /view/node/{nodeId}"
+      Target: !Sub "integrations/${McpIntegration}"
+
+  ViewTaskRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "GET /view/task/{taskId}"
+      Target: !Sub "integrations/${McpIntegration}"
+
   LiveInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:

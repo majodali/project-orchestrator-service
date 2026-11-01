@@ -116,16 +116,19 @@ so far:
 
 ### HTTP routes
 
-| Method and path      | Auth                        | Answers                                                                                        |
-| -------------------- | --------------------------- | ---------------------------------------------------------------------------------------------- |
-| `GET /health`        | none                        | liveness, as JSON                                                                              |
-| `ANY /mcp`           | `Authorization: Bearer`     | the MCP endpoint and its six tools                                                             |
-| `GET /view/sign-in`  | none                        | the web view's sign-in form                                                                    |
-| `POST /view/sign-in` | the view token, in the form | `303` to `/view` with the view cookie, or `401`                                                |
-| `GET /view`          | the view cookie             | the plan tree of the coordinating repository at one commit; `?ref=` picks a branch, tag or SHA |
+| Method and path            | Auth                        | Answers                                                                                                                    |
+| -------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `GET /health`              | none                        | liveness, as JSON                                                                                                          |
+| `ANY /mcp`                 | `Authorization: Bearer`     | the MCP endpoint and its six tools                                                                                         |
+| `GET /view/sign-in`        | none                        | the web view's sign-in form                                                                                                |
+| `POST /view/sign-in`       | the view token, in the form | `303` to `/view` with the view cookie, or `401`                                                                            |
+| `GET /view`                | the view cookie             | the plan tree of the coordinating repository at one commit; `?ref=` picks a branch, tag or SHA                             |
+| `GET /view/node/<node ID>` | the view cookie             | a node page: stage, outcome, depends on, needed by, documents and tasks, at one commit; `404` for an ID the register lacks |
+| `GET /view/task/<task ID>` | the view cookie             | a task page: the task's Cost log row and journal events, at one commit; `404` for an ID neither file names                 |
 
 The `/view` routes are the web view's first version (node P2-N021,
-task E1): server-rendered HTML with no script, readable at phone width.
+tasks E1 and E2): server-rendered HTML with no script, readable at
+phone width.
 Each page resolves its ref to one commit SHA and reads every file at
 that SHA through the GitHub App; it names the ref, the SHA and the
 fetch time, and links documents to GitHub's file view at that SHA. The
@@ -134,11 +137,22 @@ the MCP bearer token does not open `/view`. Only `POST /view/sign-in`
 accepts a method other than `GET`, and it changes only the caller's
 cookie. See `src/view/` and `docs/runbook.md`, "The web view".
 
+The node and task pages read `docs/cost-log.md` and
+`orchestration/journal.jsonl` through the vendored
+`cost-log-and-journal.ts` (below), the same code the coordinating
+repository's form checker runs. A file above 1 MB, the contents
+endpoint's base64 limit, is read again with the raw media type, in
+full; one above the endpoint's 100 MB limit, or one whose raw read
+comes back short, is refused by name and size
+(`src/planRegister/registerFetcher.ts`).
+
 ### The vendored register grammar unit, and its drift check
 
 `src/planRegister/vendored/` (`plan-register.ts` plus its conformance
-corpus) is vendored, byte-for-byte, from the coordinating repository's
-canonical copy at `plugin/scripts/lib/plan-register.ts` — ruling
+corpus, and `cost-log-and-journal.ts`, the Cost log row and run-journal
+line grammar the web view reads, since node P2-N021's task E2) is
+vendored, byte-for-byte, from the coordinating repository's canonical
+copies under `plugin/scripts/lib/` — ruling
 [RU-012](https://github.com/majodali/project-orchestrator/blob/main/docs/rulings.md):
 one canonical copy, vendored outward by a generator with a `--check`
 drift mode, the consumer never edits its copy. This repository's own

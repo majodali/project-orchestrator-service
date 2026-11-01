@@ -486,13 +486,15 @@ measurement.
 The service also serves the plan as web pages, for reading in a
 browser on any device. The pages read the coordinating repository at
 one commit, through the same GitHub App `plan_read` uses. They change
-nothing. Task E1 serves three routes:
+nothing. Tasks E1 and E2 serve five routes:
 
-| Method and path      | Answers                                                   |
-| -------------------- | --------------------------------------------------------- |
-| `GET /view/sign-in`  | the sign-in form                                          |
-| `POST /view/sign-in` | the exchange of the view token for the view cookie        |
-| `GET /view`          | the tree page; `?ref=<branch, tag or SHA>` reads that ref |
+| Method and path            | Answers                                                                         |
+| -------------------------- | ------------------------------------------------------------------------------- |
+| `GET /view/sign-in`        | the sign-in form                                                                |
+| `POST /view/sign-in`       | the exchange of the view token for the view cookie                              |
+| `GET /view`                | the tree page; `?ref=<branch, tag or SHA>` reads that ref                       |
+| `GET /view/node/<node ID>` | a node page, from the register, the plan it links, the Cost log and the journal |
+| `GET /view/task/<task ID>` | a task page, from the Cost log and the journal                                  |
 
 The view has its own credential, the **view token**. It is held in
 Secrets Manager apart from the MCP bearer token, and `/mcp` refuses
@@ -610,7 +612,13 @@ covers the new name.
 ### Latency of the view's pages (V22)
 
 Measured against the production endpoint, `live`. Sign in once with
-curl to get a cookie, then time `/view` cold and warm:
+curl to get a cookie, then time each page cold and warm. The commands
+below time `/view`; time the node page and the task page the same way,
+each after its own idle period, with `"$ENDPOINT/view/node/P2-N021"`
+and `"$ENDPOINT/view/task/T094"` in place of `"$ENDPOINT/view"`. The
+node page reads four files (the register, the Cost log, the journal and
+the plan its line links) and the task page two (the Cost log and the
+journal), so their cold figures include more reads than the tree's.
 
 ```sh
 printf '%s' "$VIEW_TOKEN" | curl -sS -o /dev/null -D /tmp/view-headers \
@@ -627,12 +635,16 @@ A cold request includes the Lambda cold start, an installation-token
 mint, resolving the ref, and reading the register. A warm request
 reuses the token and, at an unchanged SHA, the register's content.
 
-| Page              | Cold             | Warm             | Measured |
-| ----------------- | ---------------- | ---------------- | -------- |
-| `GET /view`, tree | not yet measured | not yet measured | no       |
+| Page                                | Cold             | Warm             | Measured |
+| ----------------------------------- | ---------------- | ---------------- | -------- |
+| `GET /view`, tree                   | not yet measured | not yet measured | no       |
+| `GET /view/node/P2-N021`, node page | not yet measured | not yet measured | no       |
+| `GET /view/task/T094`, task page    | not yet measured | not yet measured | no       |
 
-The figures need the first deploy after O-view-1 to O-view-4. No
-dispatched session holds the view token or AWS credentials.
+The tree's figures need the first deploy after O-view-1 to O-view-4;
+the node and task pages' figures need the deploy after task E2's merge
+(O-view-4). No dispatched session holds the view token or AWS
+credentials.
 
 ### Every human action is O-view-1 to O-view-5
 
