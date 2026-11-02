@@ -6,6 +6,12 @@
  * note, verbatim. The register is parsed by the vendored grammar
  * (RU-012, how two repositories share one unit of code), which this
  * page uses and does not change.
+ *
+ * From task E3, beside the tree: the Project model's two renderings,
+ * the implementation map and the list of what is next, each by the
+ * type's procedure from the instance and the register at the page's
+ * SHA (./modelRenderings.ts; the specification of P2-N003, "What "what
+ * is next" means").
  */
 
 import { parseRegister } from "../planRegister/parser.js";
@@ -18,6 +24,13 @@ import {
   pageHeader,
   pageShell,
 } from "./html.js";
+import {
+  implementationMap,
+  implementationMapHtml,
+  listOfWhatIsNext,
+  listOfWhatIsNextHtml,
+} from "./modelRenderings.js";
+import type { ModelAtPage } from "./projectModel.js";
 import { nodePageHref, renderNote } from "./registerNote.js";
 
 export const REGISTER_PATH = "docs/plan-register.md";
@@ -65,9 +78,11 @@ function renderParseErrors(parsed: RegisterParseResult): string {
   return `<h2>Register lines that did not parse</h2>\n<ul class="error">\n${items}\n</ul>`;
 }
 
-/** Renders the tree page from the register's text at `commit.sha`. */
+/** Renders the tree page from the register's text and the Project
+ * model instance at `commit.sha`. */
 export function renderTreePage(
   registerText: string,
+  model: ModelAtPage,
   commit: PageCommit,
 ): string {
   const parsed = parseRegister(registerText);
@@ -82,6 +97,8 @@ export function renderTreePage(
     `<p class="note">From <a href="${escapeHtml(blobUrl(commit, commit.sha, REGISTER_PATH))}">${escapeHtml(REGISTER_PATH)}</a> at this commit.</p>`,
     `<ul class="tree">\n${tree}\n</ul>`,
     renderParseErrors(parsed),
+    implementationMapHtml(implementationMap(model, parsed), commit),
+    listOfWhatIsNextHtml(listOfWhatIsNext(model, parsed), commit),
     "</main>",
   ].join("\n");
   return pageShell("Plan tree", body);

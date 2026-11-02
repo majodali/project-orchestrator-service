@@ -778,6 +778,26 @@ build`, `npm run lint`, `npm test`, `sam validate --lint`) and the
       its merge (O-view-4); the two pages' cold and warm latency is then
       measured and recorded in `docs/runbook.md` (V22).
 
+- [ ] **The web view's first version, task E3: the Project model's
+      renderings, resources and edge dependencies** (node P2-N021, task
+      T096; the specification of P2-N003 in the coordinating repository,
+      child 1) — built on branch `p2-n021-e3-model-parser`, cut from
+      `main` at `4b441c0`, not yet merged or deployed. The tree page and
+      the node page read `docs/project-model.md` at the page's SHA,
+      parsed by `src/planRegister/vendored/project-model.ts`, vendored by
+      the generator from the coordinating repository (RU-012, decision
+      7). Beside the tree: the implementation map and the list of what
+      is next, by the Project model type's procedures
+      (`src/view/modelRenderings.ts`). The node page adds the nodes
+      linked by recorded edges to "depends on" and "needed by", and
+      fills Resources with the entries whose edge lines name the node
+      (`src/view/projectModel.ts`). Where a procedure cannot finish, the
+      page marks the item not computable, naming the file, the line and
+      the missing input, in decision 11's three cases. Waits on its
+      rebase onto `main` and its merge (O-view-4); the two pages' cold
+      and warm latency is then measured and recorded in
+      `docs/runbook.md` (V22).
+
 - [ ] **Declare the multi-repo relationship formally** — replace this
       repository's prose statement of its coordinating repository (this
       Backlog entry and `docs/classification.md` § Coordinating

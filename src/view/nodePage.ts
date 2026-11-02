@@ -11,17 +11,21 @@
  *   2. Outcome: the first paragraph of the *Outcome* section of the
  *      plan the node's line links; or "the plan has no Outcome
  *      section", with the link; or "no plan linked".
- *   3. Depends on: the register's note, verbatim, node IDs linked.
- *   4. Needed by: the nodes whose register notes name this node.
+ *   3. Depends on: the register's note, verbatim, node IDs linked;
+ *      from task E3, also the nodes it depends on by recorded edges.
+ *   4. Needed by: the nodes whose register notes name this node; from
+ *      task E3, also the nodes that depend on it by recorded edges.
  *   5. Documents: the line's links, or the nearest ancestor's,
  *      labelled with that ancestor's ID.
- *   6. Resources: task E3's, not read in this version.
+ *   6. Resources (task E3): the Project model's entries whose
+ *      created-by, modified-by or used-by lines name the node, grouped
+ *      by label, each linked to its entry.
  *   7. Tasks: every task a Cost log row or a journal event names with
  *      this node, in task-number order.
  *
- * The parts the specification assigns to task E3 (the edge
- * dependencies in fields 3 and 4, and field 6's content) are absent.
- * The view parses no prose for dependencies.
+ * The view parses no prose for dependencies. The edge dependencies are
+ * the type's node-to-node dependency rule (P3-N007 decision 3), applied
+ * by ./projectModel.ts to the instance at the page's SHA.
  */
 
 import type { PlanNode, RegisterParseResult } from "../planRegister/types.js";
@@ -40,6 +44,19 @@ import {
   renderNote,
   renderRegisterLink,
 } from "./registerNote.js";
+import { notComputableHtml } from "./modelRenderings.js";
+import type {
+  DependencyAnswer,
+  ModelAtPage,
+  ResourceMention,
+} from "./projectModel.js";
+import {
+  dependenciesOf,
+  dependentsOf,
+  entryHref,
+  instanceAbsent,
+  resourcesOf,
+} from "./projectModel.js";
 import type { CostLog, Journal } from "./runRecords.js";
 import {
   COST_LOG_PATH,
@@ -98,6 +115,8 @@ export interface NodePageInput {
   journal: Journal;
   /** The linked plan's text at the page's SHA, when the line links one. */
   planText: string | undefined;
+  /** The Project model instance at the page's SHA (task E3). */
+  model: ModelAtPage;
 }
 
 function field(name: string, heading: string, body: string): string {
@@ -164,13 +183,73 @@ function outcomeField(input: NodePageInput, commit: PageCommit): string {
   );
 }
 
+/**
+ * The edge part of fields 3 and 4: each dependency the type's rule
+ * derives, with the resource it runs through, each linked; or what
+ * stopped the rule (decision 11).
+ */
+function edgeDependencies(
+  answer: DependencyAnswer | "absent",
+  input: NodePageInput,
+  commit: PageCommit,
+  direction: "depends-on" | "needed-by",
+): string {
+  const label =
+    direction === "depends-on"
+      ? `<p class="label" data-edges-label>By recorded edges:</p>`
+      : `<p class="label" data-edges-label>Depending on it by recorded edges:</p>`;
+  if (answer === "absent") {
+    return `${label}\n${notComputableHtml(instanceAbsent(commit.sha))}`;
+  }
+  const node = input.node.id;
+  const link = (id: string): string =>
+    `<a href="${escapeHtml(nodePageHref(id, commit.requestedRef))}">${escapeHtml(id)}</a>`;
+  const items = answer.dependencies.map((dep) => {
+    const entry = `<a href="${escapeHtml(entryHref(commit, commit.sha, dep.entry))}">${escapeHtml(dep.entry.slug)}</a>`;
+    if (direction === "depends-on") {
+      const why =
+        dep.via === "creates"
+          ? `creates ${entry}, which ${escapeHtml(node)} uses`
+          : `named in the after qualifier of ${escapeHtml(node)}'s use of ${entry}`;
+      return `<li data-edge-dependency="${escapeHtml(dep.on)}">${link(dep.on)}: ${why}</li>`;
+    }
+    const why =
+      dep.via === "creates"
+        ? `uses ${entry}, which ${escapeHtml(node)} creates`
+        : `names ${escapeHtml(node)} in the after qualifier of its use of ${entry}`;
+    return `<li data-edge-dependent="${escapeHtml(dep.from)}">${link(dep.from)}: ${why}</li>`;
+  });
+  const list =
+    items.length === 0
+      ? `<p class="note" data-edges-none>None.</p>`
+      : `<ul>\n${items.join("\n")}\n</ul>`;
+  const stops = answer.notComputable.map((nc) => notComputableHtml(nc));
+  return [label, list, ...stops].join("\n");
+}
+
+function edgesOf(
+  input: NodePageInput,
+  direction: "depends-on" | "needed-by",
+): DependencyAnswer | "absent" {
+  if (input.model.kind === "absent") return "absent";
+  return direction === "depends-on"
+    ? dependenciesOf(input.model.parsed, input.node.id)
+    : dependentsOf(input.model.parsed, input.node.id);
+}
+
 function dependsOnField(input: NodePageInput, commit: PageCommit): string {
   const { node, parsed } = input;
+  const edges = edgeDependencies(
+    edgesOf(input, "depends-on"),
+    input,
+    commit,
+    "depends-on",
+  );
   if (node.annotation === null) {
     return field(
       "depends-on",
       "Depends on",
-      `<p class="note">The register's line carries no note.</p>`,
+      `<p class="note">The register's line carries no note.</p>\n${edges}`,
     );
   }
   const note = renderNote(node, commit, commit.sha, {
@@ -180,7 +259,7 @@ function dependsOnField(input: NodePageInput, commit: PageCommit): string {
   return field(
     "depends-on",
     "Depends on",
-    `<p><span class="label">From the register's note:</span> <span data-note>${note}</span></p>`,
+    `<p><span class="label">From the register's note:</span> <span data-note>${note}</span></p>\n${edges}`,
   );
 }
 
@@ -192,11 +271,17 @@ function neededByField(input: NodePageInput, commit: PageCommit): string {
     const other = parsed.nodes.get(id)!;
     return other.annotation !== null && pattern.test(other.annotation);
   });
+  const edges = edgeDependencies(
+    edgesOf(input, "needed-by"),
+    input,
+    commit,
+    "needed-by",
+  );
   if (naming.length === 0) {
     return field(
       "needed-by",
       "Needed by",
-      `<p class="note">No register note names ${escapeHtml(node.id)}.</p>`,
+      `<p class="note">No register note names ${escapeHtml(node.id)}.</p>\n${edges}`,
     );
   }
   const items = naming
@@ -208,7 +293,7 @@ function neededByField(input: NodePageInput, commit: PageCommit): string {
   return field(
     "needed-by",
     "Needed by",
-    `<p class="label">Named in the register notes of:</p>\n<ul>\n${items}\n</ul>`,
+    `<p class="label">Named in the register notes of:</p>\n<ul>\n${items}\n</ul>\n${edges}`,
   );
 }
 
@@ -238,11 +323,49 @@ function documentsField(input: NodePageInput, commit: PageCommit): string {
   );
 }
 
-function resourcesField(): string {
+const RESOURCE_GROUPS = [
+  ["created-by", "Creates (created-by)"],
+  ["modified-by", "Modifies (modified-by)"],
+  ["used-by", "Uses (used-by)"],
+] as const;
+
+function mentionHtml(mention: ResourceMention, commit: PageCommit): string {
+  const entry = `<a href="${escapeHtml(entryHref(commit, commit.sha, mention.entry))}">${escapeHtml(mention.entry.slug)}</a>`;
+  const how =
+    mention.as === "gate item"
+      ? " (a gate item)"
+      : mention.as === "after qualifier"
+        ? ` (named in the after qualifier of ${escapeHtml(mention.of ?? "")}'s item)`
+        : "";
+  return `<li data-resource="${escapeHtml(mention.entry.slug)}">${entry}${how}</li>`;
+}
+
+function resourcesField(input: NodePageInput, commit: PageCommit): string {
+  if (input.model.kind === "absent") {
+    return field(
+      "resources",
+      "Resources",
+      notComputableHtml(instanceAbsent(commit.sha)),
+    );
+  }
+  const answer = resourcesOf(input.model.parsed, input.node.id);
+  const groups = RESOURCE_GROUPS.map(([label, heading]) => {
+    const mentions = answer.mentions.filter((m) => m.label === label);
+    const body =
+      mentions.length === 0
+        ? `<p class="note">None.</p>`
+        : `<ul>\n${mentions.map((m) => mentionHtml(m, commit)).join("\n")}\n</ul>`;
+    return `<div data-resource-group="${label}">\n<p class="label">${escapeHtml(heading)}:</p>\n${body}\n</div>`;
+  });
+  const source = `<p class="note">From the Project model, <a href="${escapeHtml(blobUrl(commit, commit.sha, "docs/project-model.md"))}">docs/project-model.md</a> at this commit: the entries whose edge lines name ${escapeHtml(input.node.id)}.</p>`;
   return field(
     "resources",
     "Resources",
-    `<p class="note">Not shown in this version. Task E3 adds the resources, from the Project model.</p>`,
+    [
+      source,
+      ...groups,
+      ...answer.notComputable.map((nc) => notComputableHtml(nc)),
+    ].join("\n"),
   );
 }
 
@@ -305,7 +428,7 @@ export function renderNodePage(
     dependsOnField(input, commit),
     neededByField(input, commit),
     documentsField(input, commit),
-    resourcesField(),
+    resourcesField(input, commit),
     tasksField(input, commit),
     "</main>",
   ].join("\n");
