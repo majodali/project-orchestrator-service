@@ -725,12 +725,11 @@ build`, `npm run lint`, `npm test`, `sam validate --lint`) and the
       the role through it. Moved here from Upcoming on 2026-10-29
       (task T051), where it had stayed after node P2-N016 closed.
 
-## Upcoming
-
-- [ ] **The web view's first version, task E1: the tree page behind
+- [x] **The web view's first version, task E1: the tree page behind
       sign-in** (node P2-N021, task T094; the specification of P2-N003
       in the coordinating repository, child 1) — built on branch
-      `p2-n021-e1-thin-slice`, not yet merged or deployed. The Hono app
+      `p2-n021-e1-thin-slice`, merged by PR #18 and deployed by deploy
+      run `41507069450`, attempt 3, on 2026-11-02. The Hono app
       serves `GET /view/sign-in`, `POST /view/sign-in` and `GET /view`
       (`src/view/`). The tree page lists every node of the coordinating
       repository's Plan register, nested, with stage, hold marker, title
@@ -745,17 +744,22 @@ build`, `npm run lint`, `npm test`, `sam validate --lint`) and the
       `VIEW_TOKEN_SECRET_NAME`; the deploy workflow maps it from the
       repository variable of that name; the smoke test gains check 4/4.
       `docs/runbook.md`, "The web view", gives owner actions O-view-1 to
-      O-view-5. Waits on O-view-1 to O-view-3, then the merge (O-view-4);
-      the first deploy's run log must show check 4 passing against the
-      preprod Function URL, and `/view`'s cold and warm latency is then
-      measured and recorded in the runbook. Tasks E2 (node and task
-      pages) and E3 (the model's renderings) follow.
+      O-view-5. O-view-1 to O-view-4 are done. V19 is met: the deploy's
+      run log shows check 4 passing against the preprod Function URL
+      (`docs/runbook.md`, O-view-4). V22 is recorded in
+      `docs/runbook.md`, "Latency of the view's pages (V22)", on
+      2026-11-03. The tree's E1 row is not measurable, since `live`
+      reached task E3's version before any measurement. The sign-in
+      page's row is not yet measured. The owner times the sign-in page at
+      the demonstration (V30, O-view-5). Moved here from Upcoming on
+      2026-11-03.
 
-- [ ] **The web view's first version, task E2: the node page and the
+- [x] **The web view's first version, task E2: the node page and the
       task page** (node P2-N021, task T095; the specification of
       P2-N003 in the coordinating repository, child 1) — built on
-      branch `p2-n021-e2-node-task-pages`, cut from E1's branch, not
-      yet merged or deployed. `GET /view/node/<node ID>` shows the
+      branch `p2-n021-e2-node-task-pages`, cut from E1's branch, merged
+      by PR #19 and deployed by deploy run `41507069450`, attempt 3, on
+      2026-11-02. `GET /view/node/<node ID>` shows the
       node's stage (with the date of its latest `gate-crossed` or
       `accepted` journal event, labelled telemetry), the first paragraph
       of its linked plan's _Outcome_ section ("the plan has no Outcome
@@ -774,15 +778,17 @@ build`, `npm run lint`, `npm test`, `sam validate --lint`) and the
       endpoint's 1 MB base64 limit again with the raw media type, in
       full, and refuses one above 100 MB, or a short raw read, by name
       and size. The template adds two route keys on `McpIntegration`.
-      Waits on E1's merge, then this branch's rebase onto `main` and
-      its merge (O-view-4); the two pages' cold and warm latency is then
-      measured and recorded in `docs/runbook.md` (V22).
+      V22 is recorded in `docs/runbook.md` on 2026-11-03. The task
+      page's row is measured. The node page's E2 row is not measurable,
+      since `live` reached task E3's version before any measurement.
+      Moved here from Upcoming on 2026-11-03.
 
-- [ ] **The web view's first version, task E3: the Project model's
+- [x] **The web view's first version, task E3: the Project model's
       renderings, resources and edge dependencies** (node P2-N021, task
       T096; the specification of P2-N003 in the coordinating repository,
       child 1) — built on branch `p2-n021-e3-model-parser`, cut from
-      `main` at `4b441c0`, not yet merged or deployed. The tree page and
+      `main` at `4b441c0`, merged by PR #20 and deployed by deploy run
+      `41507069450`, attempt 3, on 2026-11-02. The tree page and
       the node page read `docs/project-model.md` at the page's SHA,
       parsed by `src/planRegister/vendored/project-model.ts`, vendored by
       the generator from the coordinating repository (RU-012, decision
@@ -793,10 +799,11 @@ build`, `npm run lint`, `npm test`, `sam validate --lint`) and the
       fills Resources with the entries whose edge lines name the node
       (`src/view/projectModel.ts`). Where a procedure cannot finish, the
       page marks the item not computable, naming the file, the line and
-      the missing input, in decision 11's three cases. Waits on its
-      rebase onto `main` and its merge (O-view-4); the two pages' cold
-      and warm latency is then measured and recorded in
-      `docs/runbook.md` (V22).
+      the missing input, in decision 11's three cases. V22 is
+      recorded in `docs/runbook.md` on 2026-11-03: both E3 rows are
+      measured. Moved here from Upcoming on 2026-11-03.
+
+## Upcoming
 
 - [ ] **Declare the multi-repo relationship formally** — replace this
       repository's prose statement of its coordinating repository (this
