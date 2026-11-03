@@ -106,15 +106,18 @@ describe("V7 — the tree, from the register at a named commit", () => {
     expect(new Set(ids).size).toBe(ids.length);
 
     // The nesting: rebuild each node's parent from the page's own
-    // list structure and compare it with the parser's.
+    // list structure and compare it with the parser's. Other list
+    // items (resources, the legend) open and close without a node.
     const parents = new Map<string, string | null>();
-    const stack: string[] = [];
-    for (const m of html.matchAll(/<li data-node="([^"]+)"|<\/li>/g)) {
+    const stack: Array<string | null> = [];
+    for (const m of html.matchAll(/<li data-node="([^"]+)"|<li[ >]|<\/li>/g)) {
       if (m[1]) {
-        parents.set(m[1], stack.at(-1) ?? null);
+        parents.set(m[1], stack.filter((id) => id !== null).at(-1) ?? null);
         stack.push(m[1]);
-      } else {
+      } else if (m[0] === "</li>") {
         stack.pop();
+      } else {
+        stack.push(null);
       }
     }
     expect(stack).toEqual([]);
@@ -122,19 +125,29 @@ describe("V7 — the tree, from the register at a named commit", () => {
       expect(parents.get(id), id).toBe(parsed.nodes.get(id)!.parentId);
     }
 
-    // Per node: stage, hold marker, title and note as the register gives.
+    // Per node: stage, hold marker, title and note as the register
+    // gives, the row leading with the title (node P2-N023, iteration 2).
     for (const id of parsed.order) {
       const node = parsed.nodes.get(id)!;
       const start = html.indexOf(`<li data-node="${id}"`);
-      const own = html.slice(start, html.indexOf("</div>", start) + 6);
-      const afterOwn = html.slice(start + own.length);
+      const rowEnd = html.indexOf("</span></span>", start);
+      const own = html.slice(start, rowEnd + "</span></span>".length);
       expect(attributeText(own, "data-stage"), id).toBe(`[${node.stage}]`);
       expect(attributeText(own, "data-title"), id).toBe(node.title);
+      expect(attributeText(own, "data-node-id"), id).toBe(node.id);
+      expect(own.indexOf("data-title"), id).toBeLessThan(
+        own.indexOf("data-node-id"),
+      );
+      expect(own, id).toMatch(
+        /data-status-icon="(done|owner|progress|pending|ready)"/,
+      );
       expect(attributeText(own, "data-hold"), id).toBe(
         node.hold ? `[${node.hold.kind}: ${node.hold.reason}]` : null,
       );
-      const noteMatch = /^<div class="note" data-note>([\s\S]*?)<\/div>/.exec(
-        afterOwn,
+      const next = html.indexOf("<li data-node=", rowEnd);
+      const segment = html.slice(rowEnd, next === -1 ? undefined : next);
+      const noteMatch = /<div class="note" data-note>([\s\S]*?)<\/div>/.exec(
+        segment,
       );
       expect(noteMatch ? textOf(noteMatch[1]!) : null, id).toBe(
         node.annotation,
@@ -143,10 +156,10 @@ describe("V7 — the tree, from the register at a named commit", () => {
 
     // Spot checks against the register text itself.
     expect(html).toContain(
-      "[gated: owner review of the plan]</span> <span data-title>Process spec maintenance: branch lifecycle, PR citation, packet table</span>",
+      '<a class="title" data-title data-node-link href="/view/node/P1-N016">Process spec maintenance: branch lifecycle, PR citation, packet table</a> <span class="meta"><span class="id" data-node-id>P1-N016</span> <span class="stage" data-stage>[planned]</span> <span class="hold" data-hold>[gated: owner review of the plan]</span>',
     );
     expect(textOf(html)).toContain(
-      "P2-N021 [identified] The web view's first version",
+      "The web view's first version: the plan tree from commits, drilling to node and task P2-N021 [identified]",
     );
   });
 
@@ -156,7 +169,7 @@ describe("V7 — the tree, from the register at a named commit", () => {
     repo.setFile(FIXTURE_COMMIT, REGISTER, FIXTURE_REGISTER);
     const { html } = await getView(appFor(repo), "?ref=main");
     expect(html).toContain(
-      '<a data-node-link href="/view/node/P2-N021?ref=main">P2-N021</a>',
+      '<a class="title" data-title data-node-link href="/view/node/P2-N021?ref=main">The web view&#39;s first version: the plan tree from commits, drilling to node and task</a>',
     );
     expect(html).toContain(
       `href="https://github.com/${OWNER}/${REPO}/blob/${FIXTURE_COMMIT}/docs/specs/p2-n003-owner-questions-and-plan-view.md"`,

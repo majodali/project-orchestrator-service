@@ -1,7 +1,6 @@
 /**
- * The Project model's two renderings, beside the tree on the tree page
- * (node P2-N021, the web view's first version, task E3; the
- * specification of P2-N003 in the coordinating repository, "The tree
+ * The Project model's two renderings (node P2-N021, the web view's
+ * first version, task E3; the specification of P2-N003 in the coordinating repository, "The tree
  * page" and "What "what is next" means", decisions 9 and 11).
  *
  * Each rendering applies the type's procedure as written, reading the
@@ -17,6 +16,11 @@
  * `not yet derived` is not a case: the rendering carries the type's
  * note and the procedure finishes.
  *
+ * Since node P2-N023's iteration 2, the tree page shows no separate
+ * rendering: it shows each map row in the tree, and draws a node's
+ * "pending dependencies" status from the list's classes
+ * (./treeModel.ts).
+ *
  * The renderings are not the referent for what is done and what is
  * next while K-003 (the Backlog is the single source of progress truth)
  * as released at methodology 1.6.0 stands; every page's limit line says
@@ -30,12 +34,10 @@ import type {
   ModelItem,
   ModelParseResult,
 } from "../planRegister/vendored/project-model.js";
-import type { PageCommit } from "./html.js";
 import { escapeHtml } from "./html.js";
 import type { ModelAtPage, NotComputable } from "./projectModel.js";
 import {
   MODEL_PATH,
-  entryHref,
   entryPointer,
   instanceAbsent,
   isStanding,
@@ -46,7 +48,6 @@ import {
   readsNotYetDerived,
   stageOf,
 } from "./projectModel.js";
-import { nodePageHref } from "./registerNote.js";
 
 // ---- State derivation (the map's step 6 re-derives it) ----------------
 
@@ -480,128 +481,4 @@ export function listOfWhatIsNext(
 
 export function notComputableHtml(nc: NotComputable): string {
   return `<p class="error" data-not-computable>${escapeHtml(notComputableText(nc))}</p>`;
-}
-
-function rowHtml(row: MapRow, commit: PageCommit): string {
-  const href = entryHref(commit, commit.sha, row.entry);
-  const pointer = `<a data-pointer href="${escapeHtml(href)}">${escapeHtml(row.pointer)}</a>`;
-  if (row.notComputable !== null) {
-    return `<li data-map-row="${escapeHtml(row.entry.slug)}"><strong>${escapeHtml(row.entry.slug)}</strong> — ${notComputableHtml(row.notComputable)} Pointer: ${pointer}.</li>`;
-  }
-  return [
-    `<li data-map-row="${escapeHtml(row.entry.slug)}">`,
-    `<span data-mark>[${row.mark}]</span> `,
-    `<strong data-what>${escapeHtml(row.what)}</strong>`,
-    ` — When: <span data-when>${escapeHtml(row.when)}</span>.`,
-    ` Status: <span data-status>${escapeHtml(row.status)}</span>.`,
-    ` Pointer: ${pointer}.`,
-    "</li>",
-  ].join("");
-}
-
-/** The map's section on the tree page. */
-export function implementationMapHtml(
-  rendering: MapRendering,
-  commit: PageCommit,
-): string {
-  const head = [
-    `<section data-rendering="implementation-map">`,
-    "<h2>Implementation map</h2>",
-    `<p class="note">One row per resource of the Project model, in file order, by the type's procedure. Each row carries the first sentence of <code>is:</code>, the <code>state:</code> line and the nodes that create and modify the resource, with their dates; its pointer reaches the entry's other lines.</p>`,
-  ];
-  if (rendering.kind === "not-computable") {
-    return [
-      ...head,
-      notComputableHtml(rendering.notComputable),
-      "</section>",
-    ].join("\n");
-  }
-  const rows = rendering.rows.map((row) => rowHtml(row, commit)).join("\n");
-  return [...head, `<ul class="rendering">\n${rows}\n</ul>`, "</section>"].join(
-    "\n",
-  );
-}
-
-function nextItemHtml(item: NextItem, commit: PageCommit): string {
-  const node = item.node;
-  const link = (id: string): string =>
-    `<a href="${escapeHtml(nodePageHref(id, commit.requestedRef))}">${escapeHtml(id)}</a>`;
-  const entryLink = (entry: ModelEntry): string =>
-    `<a href="${escapeHtml(entryHref(commit, commit.sha, entry))}">${escapeHtml(entry.slug)}</a>`;
-  const parts = [
-    `<li data-next-item="${escapeHtml(node.id)}">`,
-    `${link(node.id)} ${escapeHtml(node.title)} <span class="stage">[${escapeHtml(node.stage)}]</span>`,
-    node.hold
-      ? ` <span class="hold">[${escapeHtml(node.hold.kind)}: ${escapeHtml(node.hold.reason)}]</span>`
-      : "",
-    " — ",
-  ];
-  if (item.classification === null) {
-    parts.push(`<span data-classification>not computable</span>.`);
-  } else if (item.classification === "waiting on") {
-    const waits = item.waitingOn
-      .map((w) => {
-        const entry = item.uses.find((u) => u.entry.slug === w.slug)!.entry;
-        return `${link(w.node)} (${entryLink(entry)})`;
-      })
-      .join(", ");
-    parts.push(`<span data-classification>waiting on</span>: ${waits}.`);
-  } else {
-    parts.push(
-      `<span data-classification>${escapeHtml(item.classification)}</span>${item.noRecordedUses ? ", no recorded uses edge" : ""}.`,
-    );
-  }
-  if (item.uses.length > 0) {
-    const uses = item.uses
-      .map((use) => {
-        const after =
-          use.after.length > 0
-            ? ` after ${use.after.map((id) => link(id)).join(", ")}`
-            : "";
-        return `${entryLink(use.entry)}${after}, ${escapeHtml(creatorsPhrase(use))}`;
-      })
-      .join("; ");
-    parts.push(` Uses: ${uses}.`);
-  }
-  parts.push(` Next: <span data-next-stage>${escapeHtml(item.next)}</span>.`);
-  for (const nc of item.notComputable) parts.push(` ${notComputableHtml(nc)}`);
-  parts.push("</li>");
-  return parts.join("");
-}
-
-/** The list's section on the tree page. */
-export function listOfWhatIsNextHtml(
-  rendering: NextRendering,
-  commit: PageCommit,
-): string {
-  const head = [
-    `<section data-rendering="what-is-next">`,
-    "<h2>What is next</h2>",
-    `<p class="note" data-recorded-only>This list holds recorded dependency only: the Project model's uses edges, by the type's procedure. Which node is dispatched also depends on the approved scope, which the model does not hold.</p>`,
-  ];
-  if (rendering.kind === "not-computable") {
-    return [
-      ...head,
-      notComputableHtml(rendering.notComputable),
-      "</section>",
-    ].join("\n");
-  }
-  const notes =
-    rendering.usedByNotYetDerived.length === 0
-      ? ""
-      : `<p class="note" data-not-yet-derived>The used-by lines of these entries read not yet derived, so they name no node yet: ${rendering.usedByNotYetDerived
-          .map(
-            (entry) =>
-              `<a href="${escapeHtml(entryHref(commit, commit.sha, entry))}">${escapeHtml(entry.slug)}</a>`,
-          )
-          .join(", ")}.</p>`;
-  const items = rendering.items
-    .map((item) => nextItemHtml(item, commit))
-    .join("\n");
-  return [
-    ...head,
-    notes,
-    `<ul class="rendering">\n${items}\n</ul>`,
-    "</section>",
-  ].join("\n");
 }

@@ -488,13 +488,13 @@ browser on any device. The pages read the coordinating repository at
 one commit, through the same GitHub App `plan_read` uses. They change
 nothing. Tasks E1 to E3 serve five routes:
 
-| Method and path            | Answers                                                                                                      |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `GET /view/sign-in`        | the sign-in form                                                                                             |
-| `POST /view/sign-in`       | the exchange of the view token for the view cookie                                                           |
-| `GET /view`                | the tree page, with the Project model's two renderings beside it; `?ref=<branch, tag or SHA>` reads that ref |
-| `GET /view/node/<node ID>` | a node page, from the register, the plan it links, the Cost log, the journal and the Project model           |
-| `GET /view/task/<task ID>` | a task page, from the Cost log and the journal                                                               |
+| Method and path            | Answers                                                                                                                                     |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /view/sign-in`        | the sign-in form                                                                                                                            |
+| `POST /view/sign-in`       | the exchange of the view token for the view cookie                                                                                          |
+| `GET /view`                | the tree page: the plan tree, foldable, with status icons and the Project model resources in it; `?ref=<branch, tag or SHA>` reads that ref |
+| `GET /view/node/<node ID>` | a node page, from the register, the plan it links, the Cost log, the journal and the Project model                                          |
+| `GET /view/task/<task ID>` | a task page, from the Cost log and the journal                                                                                              |
 
 The view has its own credential, the **view token**. It is held in
 Secrets Manager apart from the MCP bearer token, and `/mcp` refuses
@@ -602,14 +602,15 @@ the coordinating repository's Project model instance, at the same SHA
 as the register. The vendored `project-model.ts` parses it, the parser
 the coordinating repository owns.
 
-- **Beside the tree**, the tree page shows the model's two renderings.
-  The **implementation map** has one row per resource: its mark, the
-  first sentence of what it is, the date of its latest recorded
-  `done`, its state with the stage of each node counted, and a pointer
-  to its entry. The **list of what is next** has one item per node not
-  `done`: in flight, held, waiting on named nodes, or actionable. Each
-  follows the Project model type's procedure, and the list says it
-  holds recorded dependency only.
+- **In the tree** (node P2-N023, iteration 2), each node carries an
+  icon for its aggregate status over its subtree: all done, waiting on
+  the owner (a `gated` hold), in progress, pending dependencies (a
+  `blocked` hold, or a recorded dependency on a node not `done`), or
+  not started and ready. Each resource of the model shows as its
+  implementation-map row under the highest node that creates it,
+  modifies it, or is the parent of a node that uses it; the rest are
+  listed after the tree with the reason. The separate implementation
+  map and list of what is next are no longer on the page.
 - **On a node page**, "Depends on" and "Needed by" add the nodes linked
   by recorded edges, each with the resource the edge runs through.
   **Resources** lists the model's entries whose edge lines name the
