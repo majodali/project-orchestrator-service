@@ -563,6 +563,19 @@ against the preprod Function URL, requests `/view`, and requires
 `OK — /view returned 200 at commit <SHA>.` on success, and
 `SMOKE FAILURE (check 4/4, ...)` otherwise.
 
+The first green run of all four checks is deploy run `41507069450`,
+attempt 3. It ran on 2026-11-02, from 22:50:51 to 22:53:12 UTC. Check 4 passed
+against the preprod Function URL, and `live` moved from version 7 to
+version 8. The log reads:
+
+```text
+OK — /view returned 200 at commit 5bc3fb8deebd2a341fa85ec5591f125506ca3527.
+live now points at version 8 (promoted from 7).
+```
+
+The SHA is the coordinating repository's `main`, the tree the view
+read. This repository's `main` was at `22fa51d`.
+
 ### Signing in on a phone
 
 1. Open `$ENDPOINT/view/sign-in`, the production endpoint from Step 3
@@ -645,7 +658,8 @@ Measured against the production endpoint, `live`. Sign in once with
 curl to get a cookie, then time each page cold and warm. The commands
 below time `/view`; time the node page and the task page the same way,
 each after its own idle period, with `"$ENDPOINT/view/node/P2-N021"`
-and `"$ENDPOINT/view/task/T094"` in place of `"$ENDPOINT/view"`. From
+and `"$ENDPOINT/view/task/T094"` in place of `"$ENDPOINT/view"`. Time
+the sign-in page with `"$ENDPOINT/view/sign-in"` and no cookie. From
 task E3, the tree page reads two files (the register and the Project
 model instance) and the node page five (the register, the Cost log, the
 journal, the plan its line links and the instance); the task page reads
@@ -667,20 +681,29 @@ A cold request includes the Lambda cold start, an installation-token
 mint, resolving the ref, and reading the page's files. A warm request
 reuses the token and, at an unchanged SHA, the files' content.
 
-| Page                                                                          | Cold             | Warm             | Measured |
-| ----------------------------------------------------------------------------- | ---------------- | ---------------- | -------- |
-| `GET /view`, tree                                                             | not yet measured | not yet measured | no       |
-| `GET /view/node/P2-N021`, node page                                           | not yet measured | not yet measured | no       |
-| `GET /view/task/T094`, task page                                              | not yet measured | not yet measured | no       |
-| `GET /view`, tree with the model's two renderings (E3)                        | not yet measured | not yet measured | no       |
-| `GET /view/node/P2-N021`, node page with resources and edge dependencies (E3) | not yet measured | not yet measured | no       |
+| Page                                                                          | Cold           | Warm           | Measured |
+| ----------------------------------------------------------------------------- | -------------- | -------------- | -------- |
+| `GET /view/sign-in`, sign-in page                                             | not measured   | not measured   | no       |
+| `GET /view`, tree                                                             | not measurable | not measurable | no       |
+| `GET /view/node/P2-N021`, node page                                           | not measurable | not measurable | no       |
+| `GET /view/task/T094`, task page                                              | 3.374777 s     | 0.993619 s     | yes      |
+| `GET /view`, tree with the model's two renderings (E3)                        | 3.639131 s     | 1.252417 s     | yes      |
+| `GET /view/node/P2-N021`, node page with resources and edge dependencies (E3) | 3.918084 s     | 1.050819 s     | yes      |
 
-The tree's figures need the first deploy after O-view-1 to O-view-4;
-the node and task pages' figures need the deploy after task E2's merge
-(O-view-4); the two E3 rows need the deploy after task E3's merge
-(O-view-4). Each E3 row is timed by the same commands, after its own
-idle period. No dispatched session holds the view token or AWS
-credentials.
+The owner measured the three rows marked yes on 2026-11-03, with the
+commands above, in the owner's shell. The target was the production
+endpoint at function version 8. Version 8 carries tasks E1 to E3. Each figure is
+curl's `time_total` as pasted, and each request returned `200`. Task E3
+does not change the task page, so its row is task E2's.
+
+`live` reached version 8 before any measurement. The tree without the
+model's renderings (task E1) cannot be timed as such. Nor can the node
+page without resources (task E2). Those two rows are not measurable,
+and the two E3 rows replace them.
+
+The sign-in page was not measured. The owner times the sign-in page
+at the demonstration (V30, O-view-5). No dispatched session holds the
+view token or AWS credentials.
 
 ### Every human action is O-view-1 to O-view-5
 
