@@ -83,12 +83,13 @@ function sectionOf(html: string, open: string): string {
   return html.slice(start, html.indexOf("</section>", start));
 }
 
+/** The tree and what follows it: since node P2-N023's iteration 2,
+ * the map's rows sit in the tree, under the nodes that place them, and
+ * the rows no rule places follow it. */
 function mapSection(html: string): string {
-  return sectionOf(html, `<section data-rendering="implementation-map">`);
-}
-
-function nextSection(html: string): string {
-  return sectionOf(html, `<section data-rendering="what-is-next">`);
+  const start = html.indexOf(`<ul class="tree">`);
+  expect(start).toBeGreaterThan(-1);
+  return html.slice(start, html.indexOf("</main>", start));
 }
 
 function field(html: string, name: string): string {
@@ -99,7 +100,10 @@ function field(html: string, name: string): string {
 function items(html: string, attribute: string): Array<[string, string]> {
   return [
     ...html.matchAll(
-      new RegExp(`<li ${attribute}="([^"]+)">([\\s\\S]*?)</li>`, "g"),
+      new RegExp(
+        `<li[^>]*?\\b${attribute}="([^"]+)"[^>]*>([\\s\\S]*?)</li>`,
+        "g",
+      ),
     ),
   ].map((m) => [m[1]!, textOf(m[2]!).trim()]);
 }
@@ -108,6 +112,14 @@ function items(html: string, attribute: string): Array<[string, string]> {
  * marker and the bold markers. */
 function shown(row: string): string {
   return row.replace(/^- /, "").replace(/\*\*/g, "");
+}
+
+/** A row as the tree shows it (node P2-N023, iteration 2): the mark is
+ * the resource icon and the row's `data-mark`, not text. */
+function shownInTree(row: string): string {
+  return shown(row)
+    .replace(/^\[[x ]\] /, "")
+    .replace(" — When:", " When:");
 }
 
 // ---- V25: the implementation map ------------------------------------
@@ -320,36 +332,41 @@ describe("V25 — the implementation map", () => {
     }
   });
 
-  it("shows the same rows on the tree page, beside the tree, with each pointer linking the entry at the page's SHA", async () => {
+  it("shows the same rows on the tree page, inside the tree (node P2-N023, iteration 2), with each pointer linking the entry at the page's SHA", async () => {
     const repo = repositoryAt({
       [REGISTER]: MAP_REGISTER,
       [MODEL]: MAP_INSTANCE,
     });
     const { res, html } = await getPage(repo, "/view");
     expect(res.status).toBe(200);
-    // Beside the tree: after it, on a page one column wide.
-    expect(html.indexOf(`<ul class="tree">`)).toBeLessThan(
-      html.indexOf(`<section data-rendering="implementation-map">`),
-    );
+    // The separate sections are gone: the rows sit in the tree.
+    expect(html).not.toContain(`data-rendering="implementation-map"`);
+    expect(html).not.toContain(`data-rendering="what-is-next"`);
     const rows = items(mapSection(html), "data-map-row");
-    expect(rows.map(([slug]) => slug)).toEqual(
-      Object.keys(MAP_ROWS)
-        .concat(Object.keys(MAP_NOT_COMPUTABLE))
-        .sort(
-          (a, b) =>
-            MAP_INSTANCE.indexOf(`## ${a}`) - MAP_INSTANCE.indexOf(`## ${b}`),
-        ),
+    expect(rows.map(([slug]) => slug).sort()).toEqual(
+      Object.keys(MAP_ROWS).concat(Object.keys(MAP_NOT_COMPUTABLE)).sort(),
     );
     for (const [slug, text] of rows) {
       if (MAP_ROWS[slug] !== undefined) {
-        expect(text, slug).toBe(shown(MAP_ROWS[slug]));
+        // A row no rule places also says why, after the row.
+        const [row, reason] = text.split(" No node in the register");
+        expect(row, slug).toBe(shownInTree(MAP_ROWS[slug]));
+        if (reason !== undefined) {
+          expect(slug).toBe("old-doc");
+          expect(reason).toBe(
+            " creates, modifies or uses it (created-by: P1-N099 (not in the register); modified-by: none; used-by: none).",
+          );
+        }
+        expect(html, slug).toContain(
+          `data-map-row="${slug}" data-mark="${MAP_ROWS[slug].slice(3, 4)}"`,
+        );
       } else {
         expect(text, slug).toContain(MAP_NOT_COMPUTABLE[slug]!);
         expect(text, slug).toContain(`Pointer: docs/project-model.md#${slug}.`);
       }
     }
     const pointer =
-      /<li data-map-row="checker">[\s\S]*?data-pointer href="([^"]+)"/.exec(
+      /<li[^>]*data-map-row="checker"[\s\S]*?data-pointer href="([^"]+)"/.exec(
         html,
       )!;
     expect(pointer[1]).toBe(
@@ -364,7 +381,12 @@ describe("V25 — the implementation map", () => {
       [REGISTER]: MAP_REGISTER,
       [MODEL]: MAP_INSTANCE,
     });
-    const map = textOf(mapSection((await getPage(repo, "/view")).html));
+    const map = items(
+      mapSection((await getPage(repo, "/view")).html),
+      "data-map-row",
+    )
+      .map(([, text]) => text)
+      .join("\n");
     for (const omitted of [
       "Auditing",
       "R13",
@@ -422,9 +444,9 @@ describe("V25 — the implementation map", () => {
       { sha: SHA_A, path: REGISTER },
       { sha: SHA_A, path: MODEL },
     ]);
-    expect(items(mapSection(html), "data-map-row")[1]![1]).toBe(
-      shown(MAP_ROWS.checker!),
-    );
+    expect(
+      new Map(items(mapSection(html), "data-map-row")).get("checker"),
+    ).toBe(shownInTree(MAP_ROWS.checker!));
   });
 });
 
@@ -616,20 +638,30 @@ describe("V26 — the list of what is next", () => {
     ]);
   });
 
-  it("shows the same items on the tree page, saying the list holds recorded dependency only, with the type's note for used-by lines not yet derived", async () => {
+  it("shows the list's classes on the tree page as each node's aggregate status (node P2-N023, iteration 2)", async () => {
     const repo = repositoryAt({
       [REGISTER]: BREAKDOWN_REGISTER,
       [MODEL]: BREAKDOWN_INSTANCE,
     });
     const { html } = await getPage(repo, "/view?ref=main");
-    const next = nextSection(html);
-    expect(items(next, "data-next-item")).toEqual(BREAKDOWN_ITEMS);
-    expect(attributeText(next, "data-recorded-only")).toBe(
-      "This list holds recorded dependency only: the Project model's uses edges, by the type's procedure. Which node is dispatched also depends on the approved scope, which the model does not hold.",
+    const statuses = Object.fromEntries(
+      [
+        ...html.matchAll(/<li data-node="([^"]+)"[^>]*data-status="([^"]+)"/g),
+      ].map((m) => [m[1]!, m[2]!]),
     );
-    expect(attributeText(next, "data-not-yet-derived")).toBe(
-      "The used-by lines of these entries read not yet derived, so they name no node yet: k-003-amendment.",
-    );
+    // Written by hand from the rules: done subtrees are done; a node
+    // the list classes "waiting on" is pending; an actionable node not
+    // started is ready; a broken-down node is in progress.
+    expect(statuses).toEqual({
+      "P1-N002": "done",
+      "P2-N012": "done",
+      "P3-N001": "progress",
+      "P3-N002": "progress",
+      "P3-N006": "ready",
+      "P3-N007": "pending",
+      "P3-N008": "pending",
+      "P3-N009": "pending",
+    });
     expectLinksPinned(html, "main");
   });
 
@@ -758,26 +790,14 @@ describe("V26 — the list of what is next", () => {
       ],
     ]);
 
-    const repo = repositoryAt({
-      [REGISTER]: CLASSES_REGISTER,
-      [MODEL]: CLASSES_INSTANCE,
-    });
-    const next = nextSection((await getPage(repo, "/view")).html);
-    const shownItems = new Map(items(next, "data-next-item"));
-    expect(shownItems.get("P4-N008")).toBe(
-      "P4-N008 Named by an item that fails the grammar [identified] — not computable. Next: planned. Not computable: docs/project-model.md, line 41. Missing input: the used-by line of delta. It fails the type's entry grammar: the used-by line's item body \"the node P4-N008, written without the grammar\" is not one this line holds (node items, with or without an after qualifier, and outside items, then optionally a partial item; or `none`).",
-    );
-    expect(shownItems.get("P4-N009")).toContain(
-      "Not computable: docs/project-model.md, line 49. Missing input: the created-by line of epsilon.",
-    );
-
-    // (a): the instance absent at the page's SHA.
+    // (a): the instance absent at the page's SHA. The tree still
+    // shows every node, and says the resources cannot be placed.
     const absent = repositoryAt({ [REGISTER]: CLASSES_REGISTER });
-    const nextAbsent = nextSection((await getPage(absent, "/view")).html);
-    expect(attributeText(nextAbsent, "data-not-computable")).toBe(
+    const absentPage = (await getPage(absent, "/view")).html;
+    expect(attributeText(mapSection(absentPage), "data-not-computable")).toBe(
       `Not computable: docs/project-model.md, no line. Missing input: the Project model instance. docs/project-model.md is absent at ${SHA_A}.`,
     );
-    expect(items(nextAbsent, "data-next-item")).toEqual([]);
+    expect(items(mapSection(absentPage), "data-map-row")).toEqual([]);
 
     // (c): a step-6 disagreement belongs to the map, which re-derives
     // the state line; the list reads stages from the register and
@@ -795,9 +815,7 @@ describe("V26 — the list of what is next", () => {
     expect(textOf(mapSection(page))).toContain(
       'Not computable: docs/project-model.md, line 16. Missing input: the state line of beta. It reads "built", and the stages give "planned".',
     );
-    expect(
-      new Map(items(nextSection(page), "data-next-item")).get("P4-N005"),
-    ).toBe(shownItems.get("P4-N005"));
+    expect(page).toMatch(/<li data-node="P4-N005"[^>]*data-status="pending"/);
   });
 });
 

@@ -111,7 +111,7 @@ function walk(html: string, entry: ModelEntry): Steps {
   // Step 1: the pointer, on the entry's map row, opens the instance at
   // the entry's heading, at the page's SHA.
   const row = new RegExp(
-    `<li data-map-row="${entry.slug}">[\\s\\S]*?data-pointer href="([^"]+)"`,
+    `<li[^>]*data-map-row="${entry.slug}"[\\s\\S]*?data-pointer href="([^"]+)"`,
   ).exec(html);
   expect(row, entry.slug).not.toBeNull();
   const href = unescapeHtml(row![1]!);

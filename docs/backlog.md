@@ -803,9 +803,7 @@ build`, `npm run lint`, `npm test`, `sam validate --lint`) and the
       recorded in `docs/runbook.md` on 2026-11-03: both E3 rows are
       measured. Moved here from Upcoming on 2026-11-03.
 
-## Upcoming
-
-- [ ] **Web view UX refinement, iteration 1: preview and screenshot
+- [x] **Web view UX refinement, iteration 1: preview and screenshot
       tooling** (node P2-N023, `ux-01-preview-tooling`) — with
       `VIEW_FIXTURE_DIR` set, `npm run dev` serves the view's pages from
       a fixture directory at a fixed pretend SHA
@@ -815,8 +813,21 @@ build`, `npm run lint`, `npm test`, `sam validate --lint`) and the
       P2-N021 and the task page for T094 to `src/view/preview/shots/`,
       committed so pull request bodies can show them. Sign-in is
       unchanged and the production path does not read the variable
-      (`test/viewFixtureReader.test.ts`). Iterations 2 to 10 follow as
-      the owner names each change.
+      (`test/viewFixtureReader.test.ts`). Merged in
+      majodali/project-orchestrator-service#23 and
+      majodali/project-orchestrator-service#24 and promoted to
+      `live` on 2026-11-03. Moved here from Upcoming on 2026-11-03.
+
+## Upcoming
+
+- [ ] **Web view UX refinement, iteration 2: a polished, foldable
+      tree** (node P2-N023, `ux-02`) — the pages gain cards, borders
+      and table-style field lists; the tree folds, each row leads with
+      the node's title and an icon for its aggregate status; the
+      Project model's resources sit in the tree under the node that
+      places them (`src/view/treeModel.ts`), and the separate
+      implementation map and list of what is next leave the tree page,
+      by the owner's rules of 2026-11-03.
 - [ ] **Declare the multi-repo relationship formally** — replace this
       repository's prose statement of its coordinating repository (this
       Backlog entry and `docs/classification.md` § Coordinating

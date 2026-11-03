@@ -116,15 +116,15 @@ so far:
 
 ### HTTP routes
 
-| Method and path            | Auth                        | Answers                                                                                                                                                                        |
-| -------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /health`              | none                        | liveness, as JSON                                                                                                                                                              |
-| `ANY /mcp`                 | `Authorization: Bearer`     | the MCP endpoint and its six tools                                                                                                                                             |
-| `GET /view/sign-in`        | none                        | the web view's sign-in form                                                                                                                                                    |
-| `POST /view/sign-in`       | the view token, in the form | `303` to `/view` with the view cookie, or `401`                                                                                                                                |
-| `GET /view`                | the view cookie             | the plan tree of the coordinating repository at one commit, with the Project model's implementation map and list of what is next beside it; `?ref=` picks a branch, tag or SHA |
-| `GET /view/node/<node ID>` | the view cookie             | a node page: stage, outcome, depends on, needed by, documents, resources and tasks, at one commit; `404` for an ID the register lacks                                          |
-| `GET /view/task/<task ID>` | the view cookie             | a task page: the task's Cost log row and journal events, at one commit; `404` for an ID neither file names                                                                     |
+| Method and path            | Auth                        | Answers                                                                                                                                                                                                      |
+| -------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /health`              | none                        | liveness, as JSON                                                                                                                                                                                            |
+| `ANY /mcp`                 | `Authorization: Bearer`     | the MCP endpoint and its six tools                                                                                                                                                                           |
+| `GET /view/sign-in`        | none                        | the web view's sign-in form                                                                                                                                                                                  |
+| `POST /view/sign-in`       | the view token, in the form | `303` to `/view` with the view cookie, or `401`                                                                                                                                                              |
+| `GET /view`                | the view cookie             | the plan tree of the coordinating repository at one commit, foldable, each node marked with its aggregate status and holding the Project model resources placed under it; `?ref=` picks a branch, tag or SHA |
+| `GET /view/node/<node ID>` | the view cookie             | a node page: stage, outcome, depends on, needed by, documents, resources and tasks, at one commit; `404` for an ID the register lacks                                                                        |
+| `GET /view/task/<task ID>` | the view cookie             | a task page: the task's Cost log row and journal events, at one commit; `404` for an ID neither file names                                                                                                   |
 
 The `/view` routes are the web view's first version (node P2-N021,
 tasks E1 to E3): server-rendered HTML with no script, readable at
@@ -149,11 +149,17 @@ comes back short, is refused by name and size
 The tree page and the node page also read `docs/project-model.md`, the
 coordinating repository's Project model instance, at the page's SHA,
 through the vendored `project-model.ts` (below), the parser that
-repository owns (task E3). Beside the tree, the tree page renders the
-model's implementation map and its list of what is next, each by the
+repository owns (task E3). Since node P2-N023's iteration 2, the tree
+folds, and each row leads with the node's title and an icon for its
+aggregate status: all done, waiting on the owner, in progress, pending
+dependencies, or not started and ready. Each resource of the model
+sits in the tree as its implementation-map row, under the highest
+node that creates it, modifies it, or is the parent of a node that
+uses it; resources no rule places are listed after the tree with the
+reason. The map rows and the dependencies behind "pending" follow the
 procedure of the Project model type (`docs/process/project-model.md`
-there), with no rule of the view's own. The list says it holds recorded
-dependency only. The node page adds, to "depends on" and "needed by",
+there). The status and placement rules are the owner's
+(`src/view/treeModel.ts`). The node page adds, to "depends on" and "needed by",
 the nodes linked by recorded edges under the type's node-to-node
 dependency rule, and lists the entries whose edge lines name the node,
 grouped by label. Where a procedure cannot finish, the page marks the
