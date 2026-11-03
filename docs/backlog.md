@@ -818,9 +818,7 @@ build`, `npm run lint`, `npm test`, `sam validate --lint`) and the
       majodali/project-orchestrator-service#24 and promoted to
       `live` on 2026-11-03. Moved here from Upcoming on 2026-11-03.
 
-## Upcoming
-
-- [ ] **Web view UX refinement, iteration 2: a polished, foldable
+- [x] **Web view UX refinement, iteration 2: a polished, foldable
       tree** (node P2-N023, `ux-02`) — the pages gain cards, borders
       and table-style field lists; the tree folds, each row leads with
       the node's title and an icon for its aggregate status; the
@@ -828,6 +826,21 @@ build`, `npm run lint`, `npm test`, `sam validate --lint`) and the
       places them (`src/view/treeModel.ts`), and the separate
       implementation map and list of what is next leave the tree page,
       by the owner's rules of 2026-11-03.
+      Merged in majodali/project-orchestrator-service#25 and promoted to
+      `live` on 2026-11-03. Moved here from Upcoming on 2026-11-03.
+
+## Upcoming
+
+- [ ] **Web view UX refinement, iteration 3: task tables, gates and a
+      problems section** (node P2-N023, `ux-03`) — the node page's
+      Tasks field becomes a table of each task's Cost log row with its
+      notes beneath, whitespace kept, opening to the task's journal
+      events; a gated node shows its gate on its own line in the tree,
+      linked to a new Gate field on its node page; the tree's
+      resources drop an empty date and show building in its own
+      colour; a problems section at the bottom of the tree page lists
+      unplaced resources and anything else that did not read as
+      expected; the fold triangles double in size.
 - [ ] **Declare the multi-repo relationship formally** — replace this
       repository's prose statement of its coordinating repository (this
       Backlog entry and `docs/classification.md` § Coordinating

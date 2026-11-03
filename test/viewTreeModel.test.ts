@@ -1,9 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { createApp } from "../src/httpApp.js";
 import { parseRegister } from "../src/planRegister/parser.js";
 import { modelAtPage } from "../src/view/projectModel.js";
 import { placeResources, treeStatuses } from "../src/view/treeModel.js";
-import { SHA_A } from "./support/view.js";
+import {
+  FakeRepository,
+  NOW,
+  SHA_A,
+  attributeText,
+  expectLinksPinned,
+  expectPhoneWidth,
+  textOf,
+  validCookie,
+  viewEnv,
+} from "./support/view.js";
 
 /**
  * The tree page's aggregate status and resource placement (node
@@ -200,5 +211,109 @@ describe("resource placement: under the highest of creator, modifier and the par
     expect(
       placeResources(parseRegister(REGISTER), { kind: "absent", sha: SHA_A }),
     ).toEqual([]);
+  });
+});
+
+describe("the tree page, node P2-N023 iteration 3: resource icons, dates and the problems section", () => {
+  const ORIGINAL_ENV = { ...process.env };
+  beforeEach(() => {
+    viewEnv();
+  });
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  const REGISTER = [
+    "# Plan register",
+    "",
+    "- P7-N001 [broken-down] Root",
+    "  - P7-N002 [executing] Building it",
+    "  - P7-N003 [done] Built it",
+    "- P7-N004 [Not A Stage] this line is not a register line",
+    "",
+  ].join("\n");
+  const DATED = `P7-N003 (Built it; done 2026-10-01; from [Cost log](cost-log.md))`;
+  const INSTANCE = [
+    "# Project model\n",
+    entry(
+      "in-progress",
+      `P7-N002 (Building it; ${F})`,
+      `none (nothing; ${F})`,
+      `none (nothing; ${F})`,
+      "building",
+    ),
+    entry("finished", DATED, `none (nothing; ${F})`, `none (nothing; ${F})`),
+    entry(
+      "nowhere",
+      `not yet derived (${F})`,
+      `none (nothing; ${F})`,
+      `none (nothing; ${F})`,
+    ),
+  ].join("\n");
+
+  async function page(files: Record<string, string>): Promise<string> {
+    const repo = new FakeRepository();
+    repo.heads.set("main", SHA_A);
+    for (const [path, content] of Object.entries(files)) {
+      repo.setFile(SHA_A, path, content);
+    }
+    const res = await createApp({
+      view: { reader: repo, now: () => NOW },
+    }).request("/view", { headers: { Cookie: validCookie() } });
+    expect(res.status).toBe(200);
+    return res.text();
+  }
+
+  it("gives building its own icon, and drops the When clause of a row with no date", async () => {
+    const html = await page({
+      "docs/plan-register.md": REGISTER,
+      "docs/project-model.md": INSTANCE,
+    });
+    const row = (slug: string): string => {
+      const m = new RegExp(
+        `<li[^>]*data-map-row="${slug}"[\\s\\S]*?</li>`,
+      ).exec(html);
+      expect(m, slug).not.toBeNull();
+      return m![0];
+    };
+    expect(row("in-progress")).toContain('data-resource-icon="building"');
+    expect(row("in-progress")).toContain('data-value="building"');
+    expect(textOf(row("in-progress"))).not.toContain("When:");
+    expect(row("finished")).toContain('data-resource-icon="built"');
+    expect(textOf(row("finished"))).toContain("When: 2026-10-01");
+    expect(html).toContain(".r-building{color:var(--progress)}");
+    expectLinksPinned(html, undefined);
+    expectPhoneWidth(html);
+  });
+
+  it("lists register lines that did not parse and unplaced resources in one problems section at the bottom", async () => {
+    const html = await page({
+      "docs/plan-register.md": REGISTER,
+      "docs/project-model.md": INSTANCE,
+    });
+    const at = html.indexOf('<section class="problems" data-problems>');
+    expect(at).toBeGreaterThan(html.indexOf('<ul class="tree">'));
+    const problems = html.slice(at, html.indexOf("</main>"));
+    expect(problems).toContain('data-problem="register"');
+    expect(textOf(problems)).toContain("this line is not a register line");
+    expect(problems).toContain('data-problem="unplaced"');
+    expect(problems).toContain('data-map-row="nowhere"');
+    expect(attributeText(problems, "data-unplaced-reason")).toBe(
+      "No node in the register creates, modifies or uses it (created-by: not yet derived; modified-by: none; used-by: none).",
+    );
+    // The tree holds the two placed rows and not the unplaced one.
+    const tree = html.slice(html.indexOf('<ul class="tree">'), at);
+    expect(tree).toContain('data-map-row="in-progress"');
+    expect(tree).not.toContain('data-map-row="nowhere"');
+  });
+
+  it("says the instance is absent there, and shows no problems section when nothing is wrong", async () => {
+    const absent = await page({ "docs/plan-register.md": REGISTER });
+    expect(absent).toContain('data-problem="model-absent"');
+    const clean = await page({
+      "docs/plan-register.md": "- P7-N001 [done] Root",
+      "docs/project-model.md": "# Project model\n",
+    });
+    expect(clean).not.toContain("data-problems");
   });
 });

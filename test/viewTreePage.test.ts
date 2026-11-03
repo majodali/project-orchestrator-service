@@ -130,8 +130,12 @@ describe("V7 — the tree, from the register at a named commit", () => {
     for (const id of parsed.order) {
       const node = parsed.nodes.get(id)!;
       const start = html.indexOf(`<li data-node="${id}"`);
-      const rowEnd = html.indexOf("</span></span>", start);
-      const own = html.slice(start, rowEnd + "</span></span>".length);
+      // The row ends where the summary or the leaf does.
+      const ends = ["</summary>", "</div></li>"]
+        .map((end) => html.indexOf(end, start))
+        .filter((i) => i !== -1);
+      const rowEnd = Math.min(...ends);
+      const own = html.slice(start, rowEnd);
       expect(attributeText(own, "data-stage"), id).toBe(`[${node.stage}]`);
       expect(attributeText(own, "data-title"), id).toBe(node.title);
       expect(attributeText(own, "data-node-id"), id).toBe(node.id);
@@ -141,9 +145,20 @@ describe("V7 — the tree, from the register at a named commit", () => {
       expect(own, id).toMatch(
         /data-status-icon="(done|owner|progress|pending|ready)"/,
       );
+      // A gate has its own line, linked to the node page's Gate field
+      // (node P2-N023, iteration 3); a block stays a bracketed marker.
       expect(attributeText(own, "data-hold"), id).toBe(
-        node.hold ? `[${node.hold.kind}: ${node.hold.reason}]` : null,
+        node.hold === null
+          ? null
+          : node.hold.kind === "gated"
+            ? `Gated: ${node.hold.reason}`
+            : `[${node.hold.kind}: ${node.hold.reason}]`,
       );
+      if (node.hold?.kind === "gated") {
+        expect(own, id).toContain(
+          `<a class="gate" data-hold href="/view/node/${id}#gate">`,
+        );
+      }
       const next = html.indexOf("<li data-node=", rowEnd);
       const segment = html.slice(rowEnd, next === -1 ? undefined : next);
       const noteMatch = /<div class="note" data-note>([\s\S]*?)<\/div>/.exec(
@@ -156,7 +171,7 @@ describe("V7 — the tree, from the register at a named commit", () => {
 
     // Spot checks against the register text itself.
     expect(html).toContain(
-      '<a class="title" data-title data-node-link href="/view/node/P1-N016">Process spec maintenance: branch lifecycle, PR citation, packet table</a> <span class="meta"><span class="id" data-node-id>P1-N016</span> <span class="stage" data-stage>[planned]</span> <span class="hold" data-hold>[gated: owner review of the plan]</span>',
+      '<a class="title" data-title data-node-link href="/view/node/P1-N016">Process spec maintenance: branch lifecycle, PR citation, packet table</a> <span class="meta"><span class="id" data-node-id>P1-N016</span> <span class="stage" data-stage>[planned]</span></span><a class="gate" data-hold href="/view/node/P1-N016#gate">Gated: owner review of the plan</a>',
     );
     expect(textOf(html)).toContain(
       "The web view's first version: the plan tree from commits, drilling to node and task P2-N021 [identified]",
@@ -466,10 +481,14 @@ describe("V10 to V13 — what every page carries", () => {
       const counts = expectLinksPinned(html, ref);
       // Backlog, register, and the register's own document links.
       expect(counts.documentLinks).toBeGreaterThan(30);
-      // Reload link, plus one node link per node.
-      expect(counts.pageLinks).toBe(
-        parseRegister(FIXTURE_REGISTER).order.length + 1,
-      );
+      // Reload link, plus one node link per node, plus one gate link
+      // per gated node.
+      const parsed = parseRegister(FIXTURE_REGISTER);
+      const gated = [...parsed.nodes.values()].filter(
+        (node) => node.hold?.kind === "gated",
+      ).length;
+      expect(gated).toBeGreaterThan(0);
+      expect(counts.pageLinks).toBe(parsed.order.length + 1 + gated);
     }
   });
 
@@ -508,7 +527,7 @@ describe("V10 to V13 — what every page carries", () => {
       "&lt;script&gt;alert(&quot;fake&quot;)&lt;/script&gt; title",
     );
     expect(textOf(html)).toContain('<script>alert("fake")</script> title');
-    expect(unescapeHtml(html)).toContain("[gated: <b>bold</b> reason]");
+    expect(unescapeHtml(html)).toContain("Gated: <b>bold</b> reason");
   });
 
   it("V12 — every page carries a viewport meta tag, runs no script, and no style sets a width above 360 CSS pixels", async () => {

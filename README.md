@@ -123,7 +123,7 @@ so far:
 | `GET /view/sign-in`        | none                        | the web view's sign-in form                                                                                                                                                                                  |
 | `POST /view/sign-in`       | the view token, in the form | `303` to `/view` with the view cookie, or `401`                                                                                                                                                              |
 | `GET /view`                | the view cookie             | the plan tree of the coordinating repository at one commit, foldable, each node marked with its aggregate status and holding the Project model resources placed under it; `?ref=` picks a branch, tag or SHA |
-| `GET /view/node/<node ID>` | the view cookie             | a node page: stage, outcome, depends on, needed by, documents, resources and tasks, at one commit; `404` for an ID the register lacks                                                                        |
+| `GET /view/node/<node ID>` | the view cookie             | a node page: stage, gate, outcome, depends on, needed by, documents, resources and a task table with each task's notes and journal events, at one commit; `404` for an ID the register lacks                 |
 | `GET /view/task/<task ID>` | the view cookie             | a task page: the task's Cost log row and journal events, at one commit; `404` for an ID neither file names                                                                                                   |
 
 The `/view` routes are the web view's first version (node P2-N021,
@@ -155,8 +155,12 @@ aggregate status: all done, waiting on the owner, in progress, pending
 dependencies, or not started and ready. Each resource of the model
 sits in the tree as its implementation-map row, under the highest
 node that creates it, modifies it, or is the parent of a node that
-uses it; resources no rule places are listed after the tree with the
-reason. The map rows and the dependencies behind "pending" follow the
+uses it. A gated node shows its gate on its own line, linked to the
+Gate field of its node page. From iteration 3, a "Problems found"
+section at the bottom lists what did not read as expected: register
+lines that did not parse, Project model lines that depart from the
+entry grammar, rows that are not computable, and resources no rule
+places, with the reason. The map rows and the dependencies behind "pending" follow the
 procedure of the Project model type (`docs/process/project-model.md`
 there). The status and placement rules are the owner's
 (`src/view/treeModel.ts`). The node page adds, to "depends on" and "needed by",

@@ -12,8 +12,9 @@
  * shows its register note, verbatim, the Project model resources placed
  * under it, each as its implementation-map row, and its children. The
  * separate implementation map and list of what is next are gone from
- * this page: the tree now carries both. Resources no rule places are
- * listed after the tree, with the reason. The page runs no script: the
+ * this page: the tree now carries both. From iteration 3, anything that
+ * did not read as expected, unplaced resources included, is listed in
+ * one section after the tree. The page runs no script: the
  * folding is HTML's own `details` element.
  */
 
@@ -27,10 +28,11 @@ import {
   pageHeader,
   pageShell,
 } from "./html.js";
+import type { DerivedValue } from "../planRegister/vendored/project-model.js";
 import type { MapRow } from "./modelRenderings.js";
-import { notComputableHtml } from "./modelRenderings.js";
+import { listOfWhatIsNext, notComputableHtml } from "./modelRenderings.js";
 import type { ModelAtPage } from "./projectModel.js";
-import { entryHref, instanceAbsent } from "./projectModel.js";
+import { MODEL_PATH, entryHref, instanceAbsent } from "./projectModel.js";
 import { nodePageHref, renderNote } from "./registerNote.js";
 import type { PlacedResource, TreeStatus } from "./treeModel.js";
 import { STATUS_LABELS, placeResources, treeStatuses } from "./treeModel.js";
@@ -55,11 +57,34 @@ export function statusIcon(status: TreeStatus): string {
   return `<svg class="icon s-${status}" data-status-icon="${status}" viewBox="0 0 16 16" width="16" height="16" role="img" aria-label="${label}"><title>${label}</title>${ICON_SHAPES[status]}</svg>`;
 }
 
-function resourceIcon(built: boolean): string {
-  const label = built ? "Built" : "Not built yet";
-  const fill = built ? "currentColor" : "none";
-  return `<svg class="icon r-${built ? "built" : "open"}" viewBox="0 0 16 16" width="16" height="16" role="img" aria-label="${label}"><rect x="2.5" y="2.5" width="11" height="11" rx="2.5" fill="${fill}" stroke="currentColor" stroke-width="1.6"/></svg>`;
+/** The resource's state as its icon: built (and built, changing)
+ * filled, building half filled in its own colour, planned or not
+ * computable empty (node P2-N023, iterations 2 and 3). */
+function resourceIcon(value: DerivedValue | null): string {
+  const kind =
+    value === "built" || value === "built, changing"
+      ? "built"
+      : value === "building"
+        ? "building"
+        : "open";
+  const label =
+    kind === "built"
+      ? "Built"
+      : kind === "building"
+        ? "Building"
+        : "Not built yet";
+  const fill =
+    kind === "built"
+      ? '<rect x="2.5" y="2.5" width="11" height="11" rx="2.5" fill="currentColor"/>'
+      : kind === "building"
+        ? '<path d="M2.5 8v3a2.5 2.5 0 0 0 2.5 2.5h6a2.5 2.5 0 0 0 2.5-2.5V8z" fill="currentColor"/>'
+        : "";
+  return `<svg class="icon r-${kind}" data-resource-icon="${kind}" viewBox="0 0 16 16" width="16" height="16" role="img" aria-label="${label}">${fill}<rect x="2.5" y="2.5" width="11" height="11" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`;
 }
+
+/** The map's words for a row with no date (step 5), which the tree
+ * leaves out (the owner, 2026-11-03). */
+const NO_DATE = "the model holds no date";
 
 /** One resource, as its implementation-map row. */
 function resourceHtml(placed: PlacedResource, commit: PageCommit): string {
@@ -74,7 +99,7 @@ function resourceHtml(placed: PlacedResource, commit: PageCommit): string {
   if (row.notComputable !== null) {
     return [
       `<li class="resource" data-map-row="${slug}">`,
-      `<div class="resource-head">${resourceIcon(false)} <strong>${slug}</strong></div> `,
+      `<div class="resource-head">${resourceIcon(null)} <strong>${slug}</strong></div> `,
       notComputableHtml(row.notComputable),
       `<p class="note">Pointer: ${pointer}.</p>`,
       reason,
@@ -82,9 +107,9 @@ function resourceHtml(placed: PlacedResource, commit: PageCommit): string {
     ].join("");
   }
   return [
-    `<li class="resource" data-map-row="${slug}" data-mark="${row.mark === "x" ? "x" : " "}">`,
-    `<div class="resource-head">${resourceIcon(row.mark === "x")} <strong data-what>${escapeHtml(row.what)}</strong></div> `,
-    `<p class="note">When: <span data-when>${escapeHtml(row.when)}</span>. Status: <span data-status>${escapeHtml(row.status)}</span>. Pointer: ${pointer}.</p>`,
+    `<li class="resource" data-map-row="${slug}" data-mark="${row.mark === "x" ? "x" : " "}" data-value="${escapeHtml(row.value ?? "")}">`,
+    `<div class="resource-head">${resourceIcon(row.value)} <strong data-what>${escapeHtml(row.what)}</strong></div> `,
+    `<p class="note">${row.when === NO_DATE ? "" : `When: <span data-when>${escapeHtml(row.when)}</span>. `}Status: <span data-status>${escapeHtml(row.status)}</span>. Pointer: ${pointer}.</p>`,
     reason,
     "</li>",
   ].join("");
@@ -107,10 +132,16 @@ function renderNode(context: TreeContext, id: string, depth: number): string {
     ` <a class="title" data-title data-node-link href="${escapeHtml(nodePageHref(node.id, commit.requestedRef))}">${escapeHtml(node.title)}</a>`,
     ` <span class="meta"><span class="id" data-node-id>${escapeHtml(node.id)}</span>`,
     ` <span class="stage" data-stage>[${escapeHtml(node.stage)}]</span>`,
-    node.hold
+    node.hold?.kind === "blocked"
       ? ` <span class="hold" data-hold>[${escapeHtml(node.hold.kind)}: ${escapeHtml(node.hold.reason)}]</span>`
       : "",
-    "</span></span>",
+    "</span>",
+    // A gate gets its own line, linked to the node page's Gate field
+    // (node P2-N023, iteration 3).
+    node.hold?.kind === "gated"
+      ? `<a class="gate" data-hold href="${escapeHtml(nodePageHref(node.id, commit.requestedRef))}#gate">Gated: ${escapeHtml(node.hold.reason)}</a>`
+      : "",
+    "</span>",
   ].join("");
   const inner: string[] = [];
   if (node.annotation !== null) {
@@ -147,35 +178,78 @@ function legend(): string {
   return `<ul class="legend" data-legend>${items}</ul>`;
 }
 
-function unplacedHtml(
+/**
+ * What did not read as expected, at the bottom of the page (node
+ * P2-N023, iteration 3): register lines that did not parse, the
+ * Project model absent or departing from its entry grammar, map rows
+ * and next-list items that are not computable, and resources no rule
+ * places. Absent when there is none.
+ */
+function problemsHtml(
+  parsed: RegisterParseResult,
   model: ModelAtPage,
   placed: PlacedResource[],
   commit: PageCommit,
 ): string {
-  if (model.kind === "absent") {
-    return `<section data-unplaced><h2>Resources</h2>${notComputableHtml(instanceAbsent(model.sha))}</section>`;
+  const parts: string[] = [];
+  if (parsed.errors.length > 0) {
+    const items = parsed.errors
+      .map(
+        (error) =>
+          `<li>line ${error.line}: ${escapeHtml(error.reason)}: <code>${escapeHtml(error.raw)}</code></li>`,
+      )
+      .join("");
+    parts.push(
+      `<div data-problem="register"><p class="label">Register lines that did not parse (${escapeHtml(REGISTER_PATH)}):</p><ul class="error">${items}</ul></div>`,
+    );
   }
-  const apart = placed.filter((p) => p.nodeId === null);
-  if (apart.length === 0) return "";
-  return [
-    "<section data-unplaced>",
-    `<details><summary><span class="row"><strong>Unplaced resources</strong> <span class="meta">${apart.length}</span></span></summary>`,
-    `<div class="fold"><p class="note">Project model entries that no node in the register creates, modifies or uses.</p>`,
-    `<ul class="resources">${apart.map((p) => resourceHtml(p, commit)).join("")}</ul></div>`,
-    "</details>",
-    "</section>",
-  ].join("");
-}
-
-function renderParseErrors(parsed: RegisterParseResult): string {
-  if (parsed.errors.length === 0) return "";
-  const items = parsed.errors
-    .map(
-      (error) =>
-        `<li>line ${error.line}: ${escapeHtml(error.reason)}: <code>${escapeHtml(error.raw)}</code></li>`,
-    )
-    .join("\n");
-  return `<h2>Register lines that did not parse</h2>\n<ul class="error">\n${items}\n</ul>`;
+  if (model.kind === "absent") {
+    parts.push(
+      `<div data-problem="model-absent"><p class="label">The Project model, so no resource is placed and no dependency is read:</p>${notComputableHtml(instanceAbsent(model.sha))}</div>`,
+    );
+  } else {
+    if (model.parsed.errors.length > 0) {
+      const items = model.parsed.errors
+        .map(
+          (error) =>
+            `<li>line ${error.line}${error.slug ? ` (${escapeHtml(error.slug)})` : ""}: ${escapeHtml(error.reason)}: <code>${escapeHtml(error.raw)}</code></li>`,
+        )
+        .join("");
+      parts.push(
+        `<div data-problem="model-grammar"><p class="label">Project model lines that depart from the entry grammar (${escapeHtml(MODEL_PATH)}):</p><ul class="error">${items}</ul></div>`,
+      );
+    }
+    const stopped = placed.filter((p) => p.row.notComputable !== null);
+    if (stopped.length > 0) {
+      parts.push(
+        `<div data-problem="not-computable"><p class="label">Resources whose map row is not computable:</p><ul class="resources">${stopped.map((p) => resourceHtml({ ...p, reason: null }, commit)).join("")}</ul></div>`,
+      );
+    }
+    const next = listOfWhatIsNext(model, parsed);
+    const nodes =
+      next.kind === "items"
+        ? next.items.filter((i) => i.notComputable.length > 0)
+        : [];
+    if (nodes.length > 0) {
+      const items = nodes
+        .map(
+          (item) =>
+            `<li data-problem-node="${escapeHtml(item.node.id)}"><a href="${escapeHtml(nodePageHref(item.node.id, commit.requestedRef))}">${escapeHtml(item.node.id)}</a>: ${item.notComputable.map((nc) => notComputableHtml(nc)).join("")}</li>`,
+        )
+        .join("");
+      parts.push(
+        `<div data-problem="dependencies"><p class="label">Nodes whose recorded dependencies cannot be read, so their status ignores them:</p><ul>${items}</ul></div>`,
+      );
+    }
+    const apart = placed.filter((p) => p.nodeId === null);
+    if (apart.length > 0) {
+      parts.push(
+        `<div data-problem="unplaced"><p class="label">Unplaced resources: Project model entries that no node in the register creates, modifies or uses:</p><ul class="resources">${apart.map((p) => resourceHtml(p, commit)).join("")}</ul></div>`,
+      );
+    }
+  }
+  if (parts.length === 0) return "";
+  return `<section class="problems" data-problems><h2>Problems found</h2>${parts.join("")}</section>`;
 }
 
 /** Renders the tree page from the register's text and the Project
@@ -207,8 +281,7 @@ export function renderTreePage(
     `<p class="note">From <a href="${escapeHtml(blobUrl(commit, commit.sha, REGISTER_PATH))}">${escapeHtml(REGISTER_PATH)}</a> and the Project model at this commit. Open a node for its note, its resources and its children.</p>`,
     legend(),
     `<ul class="tree">${tree}</ul>`,
-    unplacedHtml(model, placed, commit),
-    renderParseErrors(parsed),
+    problemsHtml(parsed, model, placed, commit),
     "</main>",
   ].join("\n");
   return pageShell("Plan tree", body);
