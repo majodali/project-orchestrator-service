@@ -15,10 +15,15 @@
 import { serve } from "@hono/node-server";
 
 import { createApp } from "./httpApp.js";
+import { previewViewOptions } from "./view/fixtureReader.js";
 
 const PORT = process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 8787;
 
-const app = createApp();
+// `VIEW_FIXTURE_DIR` set: the web view reads that directory instead of
+// GitHub (the preview mode, src/view/fixtureReader.ts). Unset: the
+// options are undefined and the app is the one Lambda runs.
+const view = previewViewOptions();
+const app = createApp(view === undefined ? {} : { view });
 
 const server = serve({ fetch: app.fetch, port: PORT }, (info) => {
   console.log(
@@ -26,6 +31,12 @@ const server = serve({ fetch: app.fetch, port: PORT }, (info) => {
   );
   console.log(`  health: http://localhost:${info.port}/health`);
   console.log(`  mcp:    http://localhost:${info.port}/mcp`);
+  console.log(`  view:   http://localhost:${info.port}/view`);
+  if (view !== undefined) {
+    console.log(
+      `  the view reads ${process.env.VIEW_FIXTURE_DIR}, not GitHub (preview mode)`,
+    );
+  }
 });
 
 function shutdown() {

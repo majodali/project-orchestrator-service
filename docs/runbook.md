@@ -509,6 +509,10 @@ more, O-view-5, closes it. Do O-view-1 to O-view-3 before merging the
 pull request that adds the view (O-view-4). Otherwise the deploy goes
 red and `live` stays where it was.
 
+To see a page change before it deploys, preview the view from fixture
+files and screenshot it locally (README.md, "Trying it locally",
+"Previewing the web view").
+
 ### O-view-1 — mint the view token and store it
 
 Use a value different from the MCP bearer token of Step 1.
