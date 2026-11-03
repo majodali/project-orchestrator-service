@@ -805,6 +805,17 @@ build`, `npm run lint`, `npm test`, `sam validate --lint`) and the
 
 ## Upcoming
 
+- [ ] **Web view UX refinement, iteration 1: preview and screenshot
+      tooling** (node P2-N023, `ux-01-preview-tooling`) — with
+      `VIEW_FIXTURE_DIR` set, `npm run dev` serves the view's pages from
+      a fixture directory at a fixed pretend SHA
+      (`src/view/fixtureReader.ts`); `npm run view:preview` serves the
+      2da1843 test fixtures, and `npm run view:shots` writes phone- and
+      desktop-width screenshots of the tree page, the node page for
+      P2-N021 and the task page for T094 to `shots/`. Sign-in is
+      unchanged and the production path does not read the variable
+      (`test/viewFixtureReader.test.ts`). Iterations 2 to 10 follow as
+      the owner names each change.
 - [ ] **Declare the multi-repo relationship formally** — replace this
       repository's prose statement of its coordinating repository (this
       Backlog entry and `docs/classification.md` § Coordinating

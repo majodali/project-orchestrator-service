@@ -26,3 +26,8 @@ secrets.json
 .idea/
 *.log
 npm-debug.log*
+
+# The web view preview (node P2-N023): the assembled fixture set and
+# the screenshots `npm run view:shots` writes.
+.preview/
+shots/

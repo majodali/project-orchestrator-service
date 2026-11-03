@@ -216,6 +216,37 @@ curl -i -X POST http://localhost:8787/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"service_identity","arguments":{}}}'
 ```
 
+#### Previewing the web view
+
+The web view normally reads the coordinating repository through the
+GitHub App. With `VIEW_FIXTURE_DIR` set, `npm run dev` reads that
+directory instead: the files at their repository paths
+(`docs/plan-register.md`, `docs/cost-log.md`,
+`orchestration/journal.jsonl`, `docs/project-model.md`, and any plan a
+register line links). A local checkout of the coordinating repository
+works. Every ref resolves to one pretend SHA, or to
+`VIEW_FIXTURE_SHA` when set, so the page header still carries a
+40-character SHA. Sign-in is unchanged: sign in with the local
+`VIEW_TOKEN`.
+
+```
+VIEW_TOKEN=local-preview npm run view:preview   # the 2da1843 fixtures, at http://localhost:8787/view
+VIEW_TOKEN=local-preview VIEW_FIXTURE_DIR=../project-orchestrator npm run dev
+npm run view:shots -- --iteration 2 --label before
+```
+
+`npm run view:preview` assembles the test fixtures at commit 2da1843
+into the gitignored `.preview/` directory and serves them.
+`npm run view:shots` starts that preview on a free port, signs in with
+Playwright, and writes full-page PNGs of the tree page, the node page
+for `P2-N021` and the task page for `T094`, at 390 by 844 and at
+1440 by 900, to the gitignored `shots/` directory, named
+`ux-<NN>-<label>-<page>-<width>.png`. It fails when a page scrolls
+horizontally. Playwright is not a dependency: Claude Code sessions
+have it installed; elsewhere, `npm install --no-save playwright` and
+`npx playwright install chromium` provide it. Lambda never reads
+`VIEW_FIXTURE_DIR`; only `src/localServer.ts` does.
+
 The `.mcp.json` shape a Claude Code session enlists with — including
 where it goes and why it is not committed here or in the coordinating
 repository by this task — is documented in
