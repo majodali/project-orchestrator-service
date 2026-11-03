@@ -8,9 +8,12 @@
  * It starts the local server in preview mode on a free port, signs in
  * through the real sign-in form with Playwright, loads the tree page,
  * the node page for P2-N021 and the task page for T094, and writes
- * full-page PNGs to the gitignored `shots/` directory, named
- * `ux-<NN>-<label>-<page>-<width>.png`. A page wider than its viewport
- * (a horizontal scroll) is reported and fails the run.
+ * full-page PNGs to `src/view/preview/shots/`, named
+ * `ux-<NN>-<label>-<page>-<width>.png`. The directory is committed, so
+ * a pull request body can show the shots (owner, 2026-11-03). Each PNG
+ * is reduced to a 64-colour palette, which keeps text sharp at about
+ * half the size. A page wider than its viewport (a horizontal scroll)
+ * is reported and fails the run.
  *
  * Playwright is not a dependency of this repository: Claude Code
  * sessions have it pre-installed, and elsewhere `npm install
@@ -25,7 +28,24 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { parseArgs } from "node:util";
 
+import sharp from "sharp";
+
 import { REPO_ROOT, assembleFixtureSet } from "./fixtureSet.js";
+
+export const SHOTS_DIR = path.join(
+  REPO_ROOT,
+  "src",
+  "view",
+  "preview",
+  "shots",
+);
+
+/** Writes a screenshot as a 64-colour palette PNG. */
+export async function writeShot(png: Buffer, file: string): Promise<void> {
+  await sharp(png)
+    .png({ palette: true, colors: 64, compressionLevel: 9, effort: 10 })
+    .toFile(file);
+}
 
 export const SHOT_PAGES = [
   { name: "tree", path: "/view" },
@@ -67,7 +87,7 @@ interface Page {
   click(selector: string): Promise<void>;
   waitForURL(url: string): Promise<void>;
   evaluate(expression: string): Promise<unknown>;
-  screenshot(options: { path: string; fullPage: boolean }): Promise<unknown>;
+  screenshot(options: { fullPage: boolean }): Promise<Buffer>;
 }
 
 function freePort(): Promise<number> {
@@ -138,8 +158,7 @@ async function main(): Promise<void> {
     ],
     { env, stdio: ["ignore", "ignore", "inherit"] },
   );
-  const outDir = path.join(REPO_ROOT, "shots");
-  mkdirSync(outDir, { recursive: true });
+  mkdirSync(SHOTS_DIR, { recursive: true });
   const overflows: string[] = [];
   const browser = await chromium.launch();
   try {
@@ -174,10 +193,10 @@ async function main(): Promise<void> {
           );
         }
         const file = path.join(
-          outDir,
+          SHOTS_DIR,
           shotFileName(iteration, label, target.name, size.name),
         );
-        await page.screenshot({ path: file, fullPage: true });
+        await writeShot(await page.screenshot({ fullPage: true }), file);
         console.log(path.relative(REPO_ROOT, file));
       }
       await context.close();

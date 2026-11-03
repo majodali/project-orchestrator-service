@@ -812,7 +812,8 @@ build`, `npm run lint`, `npm test`, `sam validate --lint`) and the
       (`src/view/fixtureReader.ts`); `npm run view:preview` serves the
       2da1843 test fixtures, and `npm run view:shots` writes phone- and
       desktop-width screenshots of the tree page, the node page for
-      P2-N021 and the task page for T094 to `shots/`. Sign-in is
+      P2-N021 and the task page for T094 to `src/view/preview/shots/`,
+      committed so pull request bodies can show them. Sign-in is
       unchanged and the production path does not read the variable
       (`test/viewFixtureReader.test.ts`). Iterations 2 to 10 follow as
       the owner names each change.

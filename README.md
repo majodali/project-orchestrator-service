@@ -240,8 +240,10 @@ into the gitignored `.preview/` directory and serves them.
 `npm run view:shots` starts that preview on a free port, signs in with
 Playwright, and writes full-page PNGs of the tree page, the node page
 for `P2-N021` and the task page for `T094`, at 390 by 844 and at
-1440 by 900, to the gitignored `shots/` directory, named
-`ux-<NN>-<label>-<page>-<width>.png`. It fails when a page scrolls
+1440 by 900, to `src/view/preview/shots/`, named
+`ux-<NN>-<label>-<page>-<width>.png`, as 64-colour palette PNGs. That
+directory is committed, so each pull request's body can show its
+before and after shots. It fails when a page scrolls
 horizontally. Playwright is not a dependency: Claude Code sessions
 have it installed; elsewhere, `npm install --no-save playwright` and
 `npx playwright install chromium` provide it. Lambda never reads
