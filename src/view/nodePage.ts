@@ -21,7 +21,14 @@
  *      created-by, modified-by or used-by lines name the node, grouped
  *      by label, each linked to its entry.
  *   7. Tasks: every task a Cost log row or a journal event names with
- *      this node, in task-number order.
+ *      this node, in task-number order. From node P2-N023's iteration
+ *      3, a table: date, task, stage, role, model, input and output
+ *      from the Cost log row, then a row holding the notes with their
+ *      whitespace kept, which opens to the task's journal events.
+ *
+ * From iteration 3 too, a Gate field follows the stage when the node
+ * is gated, a journal event opens or crosses a gate on it, or a
+ * Project model gate item names it.
  *
  * The view parses no prose for dependencies. The edge dependencies are
  * the type's node-to-node dependency rule (P3-N007 decision 3), applied
@@ -57,7 +64,12 @@ import {
   instanceAbsent,
   resourcesOf,
 } from "./projectModel.js";
-import type { CostLog, Journal } from "./runRecords.js";
+import type {
+  CostLog,
+  CostLogRow,
+  Journal,
+  JournalEntry,
+} from "./runRecords.js";
 import {
   COST_LOG_PATH,
   JOURNAL_PATH,
@@ -369,11 +381,67 @@ function resourcesField(input: NodePageInput, commit: PageCommit): string {
   );
 }
 
+/** The Cost log columns the task table shows, by cell index. */
+const TASK_COLUMNS: ReadonlyArray<readonly [number, string]> = [
+  [0, "Date"],
+  [1, "Task"],
+  [3, "Stage"],
+  [4, "Role"],
+  [5, "Model"],
+  [6, "Input"],
+  [7, "Output"],
+];
+const NOTES_CELL = 8;
+/** Journal fields an event row adds to its note when they differ from
+ * the task's Cost log row: stage, role and model, by cell index. */
+const EVENT_EXTRAS: ReadonlyArray<readonly [string, number]> = [
+  ["stage", 3],
+  ["role", 4],
+  ["model", 5],
+];
+
+/** The journal events naming `task`, as a table: time, event, ref and
+ * note (the owner, 2026-11-03). */
+function journalTable(
+  events: JournalEntry[],
+  row: CostLogRow | undefined,
+): string {
+  if (events.length === 0) {
+    return `<p class="note" data-no-events>No journal event names this task at this commit.</p>`;
+  }
+  const rows = events
+    .map(({ line, event }) => {
+      const extras = EVENT_EXTRAS.flatMap(([name, cell]) => {
+        const value = eventString(event, name);
+        return value !== undefined && value !== row?.cells[cell]
+          ? [`${name}: ${value}`]
+          : [];
+      });
+      const note = eventString(event, "note") ?? "";
+      const noteText =
+        extras.length === 0
+          ? note
+          : `${note}${note ? " " : ""}(${extras.join("; ")})`;
+      return [
+        `<tr data-event-line="${line}">`,
+        `<td data-event-field="ts">${escapeHtml(eventString(event, "ts") ?? "")}</td>`,
+        `<td data-event-field="event">${escapeHtml(eventString(event, "event") ?? "")}</td>`,
+        `<td data-event-field="ref">${escapeHtml(eventString(event, "ref") ?? "")}</td>`,
+        `<td class="pre" data-event-field="note">${escapeHtml(noteText)}</td>`,
+        "</tr>",
+      ].join("");
+    })
+    .join("");
+  return `<table class="journal" data-journal><thead><tr><th>Time</th><th>Event</th><th>Ref</th><th>Note</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
 function tasksField(input: NodePageInput, commit: PageCommit): string {
   const { node, costLog, journal } = input;
-  const withRow = new Set(
-    costLog.rows.filter((row) => row.node === node.id).map((row) => row.task),
-  );
+  const rowsOf = new Map<string, CostLogRow[]>();
+  for (const row of costLog.rows) {
+    if (row.node !== node.id) continue;
+    rowsOf.set(row.task, [...(rowsOf.get(row.task) ?? []), row]);
+  }
   const withEvent = new Set<string>();
   for (const { event } of journal.events) {
     const task = eventString(event, "task");
@@ -381,7 +449,9 @@ function tasksField(input: NodePageInput, commit: PageCommit): string {
       withEvent.add(task);
     }
   }
-  const tasks = [...new Set([...withRow, ...withEvent])].sort(byTaskNumber);
+  const tasks = [...new Set([...rowsOf.keys(), ...withEvent])].sort(
+    byTaskNumber,
+  );
   const notes = [
     skippedNote(COST_LOG_PATH, costLog.skippedLines),
     skippedNote(JOURNAL_PATH, journal.skippedLines),
@@ -396,18 +466,79 @@ function tasksField(input: NodePageInput, commit: PageCommit): string {
       `<p class="note">No Cost log row and no journal event names a task with ${escapeHtml(node.id)}.</p>${notes ? `\n${notes}` : ""}`,
     );
   }
-  const items = tasks
-    .map((task) => {
-      const label = withRow.has(task)
-        ? ""
-        : ` <span class="note" data-no-row>no Cost log row</span>`;
-      return `<li data-task="${escapeHtml(task)}"><a href="${escapeHtml(viewLink(`/view/task/${encodeURIComponent(task)}`, commit.requestedRef))}">${escapeHtml(task)}</a>${label}</li>`;
+  const span = TASK_COLUMNS.length;
+  const body = tasks
+    .flatMap((task) => {
+      const events = journal.events.filter(
+        ({ event }) => eventString(event, "task") === task,
+      );
+      const taskLink = `<a href="${escapeHtml(viewLink(`/view/task/${encodeURIComponent(task)}`, commit.requestedRef))}">${escapeHtml(task)}</a>`;
+      const rows = rowsOf.get(task);
+      if (rows === undefined) {
+        return [
+          `<tr class="task" data-task="${escapeHtml(task)}"><td></td><td>${taskLink}</td><td colspan="${span - 2}" class="note" data-no-row>no Cost log row</td></tr>`,
+          `<tr class="task-notes"><td colspan="${span}"><details><summary><span class="pre note">No notes: the task has no Cost log row.</span></summary>${journalTable(events, undefined)}</details></td></tr>`,
+        ];
+      }
+      return rows.flatMap((row) => [
+        `<tr class="task" data-task="${escapeHtml(task)}" data-row-line="${row.line}">${TASK_COLUMNS.map(
+          ([cell, name]) =>
+            `<td data-cell="${name.toLowerCase()}">${cell === 1 ? taskLink : escapeHtml(row.cells[cell] ?? "")}</td>`,
+        ).join("")}</tr>`,
+        `<tr class="task-notes"><td colspan="${span}"><details><summary><span class="pre" data-notes>${escapeHtml(row.cells[NOTES_CELL] ?? "")}</span></summary>${journalTable(events, row)}</details></td></tr>`,
+      ]);
     })
-    .join("\n");
+    .join("");
+  const head = `<thead><tr>${TASK_COLUMNS.map(([, name]) => `<th>${name}</th>`).join("")}</tr></thead>`;
   return field(
     "tasks",
     "Tasks",
-    `<ul>\n${items}\n</ul>${notes ? `\n${notes}` : ""}`,
+    `<p class="note">From ${escapeHtml(COST_LOG_PATH)}, one row per task, each with its notes below it. Open a note for the task's journal events from ${escapeHtml(JOURNAL_PATH)}.</p>\n<div class="table-wrap"><table class="tasks" data-tasks>${head}<tbody>${body}</tbody></table></div>${notes ? `\n${notes}` : ""}`,
+  );
+}
+
+/** The journal events that open or cross a gate. */
+const GATE_EVENTS = new Set(["gate-opened", "gate-crossed"]);
+
+/**
+ * The gate (node P2-N023, iteration 3): the register's hold, the
+ * journal's gate events for the node, and the Project model's gate
+ * items that name it. The tree's gate line links here. Absent when the
+ * node has none of the three.
+ */
+function gateField(input: NodePageInput, commit: PageCommit): string {
+  const { node, journal } = input;
+  const events = journal.events.filter(
+    ({ event }) =>
+      eventString(event, "node") === node.id &&
+      GATE_EVENTS.has(eventString(event, "event") ?? ""),
+  );
+  const items =
+    input.model.kind === "absent"
+      ? []
+      : resourcesOf(input.model.parsed, node.id).mentions.filter(
+          (m) => m.as === "gate item",
+        );
+  const gated = node.hold?.kind === "gated";
+  if (!gated && events.length === 0 && items.length === 0) return "";
+  const parts = [
+    gated
+      ? `<p class="gate" data-gate-reason>Gated: ${escapeHtml(node.hold!.reason)}</p>`
+      : `<p class="note">The register holds no open gate on ${escapeHtml(node.id)}.</p>`,
+  ];
+  parts.push(
+    events.length === 0
+      ? `<p class="note">No journal event opens or crosses a gate on ${escapeHtml(node.id)} at this commit.</p>`
+      : `<div class="table-wrap">${journalTable(events, undefined)}</div>`,
+  );
+  if (items.length > 0) {
+    parts.push(
+      `<p class="label">Project model gate items:</p>\n<ul>${items.map((m) => mentionHtml(m, commit)).join("")}</ul>`,
+    );
+  }
+  return field("gate", "Gate", parts.join("\n")).replace(
+    '<section data-field="gate">',
+    '<section data-field="gate" id="gate">',
   );
 }
 
@@ -424,6 +555,7 @@ export function renderNodePage(
     `<p><a href="${escapeHtml(viewLink("/view", commit.requestedRef))}">Plan tree</a></p>`,
     `<h1><span data-node-id>${escapeHtml(node.id)}</span> <span data-title>${escapeHtml(node.title)}</span></h1>`,
     stageField(input),
+    gateField(input, commit),
     outcomeField(input, commit),
     dependsOnField(input, commit),
     neededByField(input, commit),

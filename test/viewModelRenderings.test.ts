@@ -114,11 +114,13 @@ function shown(row: string): string {
   return row.replace(/^- /, "").replace(/\*\*/g, "");
 }
 
-/** A row as the tree shows it (node P2-N023, iteration 2): the mark is
- * the resource icon and the row's `data-mark`, not text. */
+/** A row as the tree shows it (node P2-N023, iterations 2 and 3): the
+ * mark is the resource icon and the row's `data-mark`, not text, and a
+ * row with no date says nothing of a date. */
 function shownInTree(row: string): string {
   return shown(row)
     .replace(/^\[[x ]\] /, "")
+    .replace(" — When: the model holds no date.", "")
     .replace(" — When:", " When:");
 }
 
@@ -342,10 +344,34 @@ describe("V25 — the implementation map", () => {
     // The separate sections are gone: the rows sit in the tree.
     expect(html).not.toContain(`data-rendering="implementation-map"`);
     expect(html).not.toContain(`data-rendering="what-is-next"`);
-    const rows = items(mapSection(html), "data-map-row");
+    // Each entry once in the tree, or, unplaced, once in the problems
+    // section; a row that is not computable is also named there
+    // (node P2-N023, iteration 3).
+    const problemsAt = html.indexOf(`<section class="problems"`);
+    expect(problemsAt).toBeGreaterThan(-1);
+    const inTree = items(mapSection(html.slice(0, problemsAt)), "data-map-row");
+    const inProblems = items(html.slice(problemsAt), "data-map-row");
+    // Every entry is shown; none twice in the tree.
+    expect(new Set(inTree.map(([slug]) => slug)).size).toBe(inTree.length);
+    const seen = new Set(inTree.map(([slug]) => slug));
+    const rows = [
+      ...inTree,
+      ...inProblems.filter(([slug]) => {
+        if (seen.has(slug)) return false;
+        seen.add(slug);
+        return true;
+      }),
+    ];
     expect(rows.map(([slug]) => slug).sort()).toEqual(
       Object.keys(MAP_ROWS).concat(Object.keys(MAP_NOT_COMPUTABLE)).sort(),
     );
+    // Each row that is not computable is named in the problems section.
+    for (const slug of Object.keys(MAP_NOT_COMPUTABLE)) {
+      expect(
+        inProblems.some(([s]) => s === slug),
+        slug,
+      ).toBe(true);
+    }
     for (const [slug, text] of rows) {
       if (MAP_ROWS[slug] !== undefined) {
         // A row no rule places also says why, after the row.

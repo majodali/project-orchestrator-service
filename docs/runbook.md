@@ -608,13 +608,19 @@ the coordinating repository owns.
   `blocked` hold, or a recorded dependency on a node not `done`), or
   not started and ready. Each resource of the model shows as its
   implementation-map row under the highest node that creates it,
-  modifies it, or is the parent of a node that uses it; the rest are
-  listed after the tree with the reason. The separate implementation
-  map and list of what is next are no longer on the page.
+  modifies it, or is the parent of a node that uses it. A "Problems
+  found" section at the bottom lists unplaced resources and anything
+  else that did not read as expected (iteration 3). The separate
+  implementation map and list of what is next are no longer on the
+  page.
 - **On a node page**, "Depends on" and "Needed by" add the nodes linked
   by recorded edges, each with the resource the edge runs through.
   **Resources** lists the model's entries whose edge lines name the
   node, grouped as creates, modifies and uses, each linked to its entry.
+  From iteration 3, **Tasks** is a table of each task's Cost log row,
+  with its notes beneath, whitespace kept, opening to the task's
+  journal events; a gated node gains a **Gate** field with the hold and
+  the journal's gate events.
 - **Not computable.** Where a procedure cannot finish, the page says
   so, naming the file, the line and the missing input. That happens in
   three cases only: the instance is absent at the page's SHA; an entry

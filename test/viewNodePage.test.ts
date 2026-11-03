@@ -84,9 +84,13 @@ function headingOf(fieldHtml: string): string {
   return textOf(/<h2>([\s\S]*?)<\/h2>/.exec(fieldHtml)![1]!);
 }
 
+/** The task table's rows (node P2-N023, iteration 3): each task, and
+ * whether it says it has no Cost log row. */
 function taskItems(html: string): Array<[string, boolean]> {
   return [
-    ...section(html, "tasks").matchAll(/<li data-task="([^"]+)">(.*?)<\/li>/g),
+    ...section(html, "tasks").matchAll(
+      /<tr class="task" data-task="([^"]+)"[^>]*>([\s\S]*?)<\/tr>/g,
+    ),
   ].map((m) => [m[1]!, m[2]!.includes("data-no-row")]);
 }
 
@@ -245,7 +249,11 @@ describe("V8 — the node page, seven fields in order", () => {
       ["T017", true],
       ["T018", false],
     ]);
-    expect(textOf(section(html, "tasks"))).toContain("T017 no Cost log row");
+    expect(
+      /<tr class="task" data-task="T017">[\s\S]*?data-no-row>no Cost log row<\/td>/.test(
+        section(html, "tasks"),
+      ),
+    ).toBe(true);
   });
 
   it("P2-N021: the note's node IDs linked, the nodes whose notes name it, and a line that links a specification but no plan", async () => {
@@ -493,5 +501,143 @@ describe("V2 and V10 to V13 — what the node page carries", () => {
       );
       expect(limit![1]).toContain(`href="${BLOB}/docs/backlog.md"`);
     }
+  });
+});
+
+describe("node P2-N023, iteration 3 — the task table and the Gate field", () => {
+  const COST_HEADER = [
+    "| date | task | node | stage | role | model | input tok | output tok | notes |",
+    "|---|---|---|---|---|---|---|---|---|",
+  ];
+
+  function iterationRepo(): FakeRepository {
+    const repo = new FakeRepository();
+    repo.heads.set("main", SHA_A);
+    repo.setFile(
+      SHA_A,
+      "docs/plan-register.md",
+      "- P1-N001 [planned] [gated: owner review of the plan] Root",
+    );
+    repo.setFile(
+      SHA_A,
+      "docs/cost-log.md",
+      [
+        ...COST_HEADER,
+        "| 2026-10-30 | T001 | P1-N001 | plan | planner | fake-model | 12 | 34 | first  line,   spaced |",
+      ].join("\n"),
+    );
+    repo.setFile(
+      SHA_A,
+      "orchestration/journal.jsonl",
+      [
+        {
+          ts: "2026-10-30T01:00:00Z",
+          event: "dispatched",
+          task: "T001",
+          node: "P1-N001",
+          stage: "plan",
+          role: "planner",
+          model: "fake-model",
+          ref: null,
+          note: "sent\nwith a newline",
+        },
+        {
+          ts: "2026-10-30T02:00:00Z",
+          event: "result-received",
+          task: "T001",
+          node: "P1-N001",
+          stage: "plan",
+          role: "reviewer",
+          model: "fake-model",
+          ref: "abc1234",
+          note: "done",
+        },
+        {
+          ts: "2026-10-30T03:00:00Z",
+          event: "gate-opened",
+          task: null,
+          node: "P1-N001",
+          ref: null,
+          note: "owner review asked",
+        },
+      ]
+        .map((event) => JSON.stringify(event))
+        .join("\n") + "\n",
+    );
+    return repo;
+  }
+
+  it("shows each task as a row of date, task, stage, role, model, input and output, then its notes with their whitespace, opening to its journal events", async () => {
+    const { res, html } = await getPage(iterationRepo(), "/view/node/P1-N001");
+    expect(res.status).toBe(200);
+    const tasks = section(html, "tasks");
+    expect(
+      [...tasks.matchAll(/<th>([^<]+)<\/th>/g)].map((m) => m[1]).slice(0, 7),
+    ).toEqual(["Date", "Task", "Stage", "Role", "Model", "Input", "Output"]);
+    const row = /<tr class="task" data-task="T001"[^>]*>([\s\S]*?)<\/tr>/.exec(
+      tasks,
+    )!;
+    expect(
+      [...row[1]!.matchAll(/<td data-cell="[^"]+">([\s\S]*?)<\/td>/g)].map(
+        (m) => textOf(m[1]!),
+      ),
+    ).toEqual([
+      "2026-10-30",
+      "T001",
+      "plan",
+      "planner",
+      "fake-model",
+      "12",
+      "34",
+    ]);
+    expect(hrefs(row[1]!)).toEqual(["/view/task/T001"]);
+    // The notes row spans the table, keeps the cell's spaces, and
+    // folds the journal table under it.
+    expect(tasks).toContain(
+      '<tr class="task-notes"><td colspan="7"><details><summary><span class="pre" data-notes>first  line,   spaced</span></summary><table class="journal" data-journal>',
+    );
+    expect(html).toContain(".pre{white-space:pre-wrap}");
+    const journal =
+      /<table class="journal" data-journal>([\s\S]*?)<\/table>/.exec(
+        tasks,
+      )![1]!;
+    expect(
+      [...journal.matchAll(/<th>([^<]+)<\/th>/g)].map((m) => m[1]),
+    ).toEqual(["Time", "Event", "Ref", "Note"]);
+    const events = [
+      ...journal.matchAll(/<tr data-event-line="(\d+)">([\s\S]*?)<\/tr>/g),
+    ].map((m) => [m[1], textOf(m[2]!.replace(/<\/td>/g, "|"))]);
+    // A field that differs from the task's row is added to the note.
+    expect(events).toEqual([
+      ["1", "2026-10-30T01:00:00Z|dispatched||sent\nwith a newline|"],
+      [
+        "2",
+        "2026-10-30T02:00:00Z|result-received|abc1234|done (role: reviewer)|",
+      ],
+    ]);
+    expectLinksPinned(html, undefined);
+    expectPhoneWidth(html);
+  });
+
+  it("adds a Gate field after the stage, with the hold, the gate events and an anchor the tree links to", async () => {
+    const { html } = await getPage(iterationRepo(), "/view/node/P1-N001");
+    const at = html.indexOf('<section data-field="gate" id="gate">');
+    expect(at).toBeGreaterThan(html.indexOf('<section data-field="stage">'));
+    expect(at).toBeLessThan(html.indexOf('<section data-field="outcome">'));
+    const gate = html.slice(at, html.indexOf("</section>", at));
+    expect(attributeText(gate, "data-gate-reason")).toBe(
+      "Gated: owner review of the plan",
+    );
+    expect(textOf(gate)).toContain("gate-opened");
+    expect(textOf(gate)).toContain("owner review asked");
+    expect(textOf(gate)).not.toContain("dispatched");
+  });
+
+  it("has no Gate field for a node with no gate", async () => {
+    const repo = iterationRepo();
+    repo.setFile(SHA_A, "docs/plan-register.md", "- P1-N002 [planned] Other");
+    const { res, html } = await getPage(repo, "/view/node/P1-N002");
+    expect(res.status).toBe(200);
+    expect(html).not.toContain('data-field="gate"');
   });
 });

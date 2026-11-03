@@ -123,6 +123,8 @@ export interface MapRow {
   when: string;
   status: string;
   pointer: string;
+  /** The derived state value; null when not computable. */
+  value: DerivedValue | null;
   notComputable: NotComputable | null;
 }
 
@@ -172,6 +174,7 @@ export function mapRow(
     when: "",
     status: "",
     pointer,
+    value: null,
   };
   // The lines the map reads: is, state and created-by, and modified-by
   // unless the resource is standing.
@@ -251,6 +254,7 @@ export function mapRow(
     when,
     status,
     pointer,
+    value: derived.value,
     notComputable: null,
   };
 }
