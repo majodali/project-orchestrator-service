@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build",
     "dev": "tsx src/localServer.ts",
     "view:preview": "tsx src/view/preview/preview.ts",
     "view:shots": "tsx src/view/preview/shots.ts",
@@ -38,5 +39,12 @@
     "hono": "^4.13.5",
     "universal-github-app-jwt": "^2.2.2",
     "zod": "^4.4.3"
-  }
+  },
+  "bin": {
+    "plan-state": "dist/model/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
 }

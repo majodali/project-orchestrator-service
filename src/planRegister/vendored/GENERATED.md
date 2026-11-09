@@ -1,5 +1,9 @@
-# Generated — do not edit this directory
+# Owned here since the rebuild's milestone 1
 
-Everything under this directory was copied by `sync_shared_unit.ts` from `plugin/scripts/lib/` in majodali/project-orchestrator (P1-N009, decision 1 / RU-012): `plan-register.ts`, the canonical Plan-register grammar and lifecycle-stage-vocabulary unit; `corpus/`, the conformance corpus it travels with (spec T3); and `cost-log-and-journal.ts`, the Cost log row and run-journal line grammar (P2-N021, task E2); and `project-model.ts`, the parser of the Project model instance (P2-N021, task E3).
-
-`.ts` and `.md` files under this tree carry their own "generated — do not edit here" comment; `.json`/`.jsonl` fixture and expectation files have no comment syntax to carry one in, so this file is their marker instead. Re-run the generator's `--check` mode to confirm nothing here has drifted from the primary copy.
+Until 2026-11-09 everything under this directory was copied by a
+generator from `plugin/scripts/lib/` in majodali/project-orchestrator.
+The generator is retired (the rebuild plan there,
+`docs/plans/rebuild.md`, milestone 1): these files are now authored and
+edited in this repository. The "generated, do not edit" banners inside
+them are history. The directory keeps its name so that no import
+moves.
