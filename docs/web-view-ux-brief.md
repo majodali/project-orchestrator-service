@@ -1,5 +1,7 @@
 # Brief: the web view's UX refinement (node P2-N023)
 
+Status: superseded 2026-11-09 by the rebuild (the coordinating repository's `docs/plans/rebuild.md`, milestone 2), which replaced the pages this brief refined and dropped the phone-width target. Kept as the record of iterations 1 to 3.
+
 Reader: the owner-attended Claude Code session that works node P2-N023 in this repository. The owner steers it; the Orchestrator records its results from the merged pull requests.
 
 Purpose: refine how the web view's pages read and feel until the owner decides the view can replace the coordinating repository's `docs/plan.md`. The owner's decision at V30 on 2026-11-03: "The web view is showing promise, but is not ready to replace docs/plan.md - we need to do some UX refinement first." The node ends when the owner closes that decision the other way, or at ten iterations, whichever comes first.

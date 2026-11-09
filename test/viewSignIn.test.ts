@@ -18,6 +18,7 @@ import {
   validCookie,
   viewEnv,
 } from "./support/view.js";
+import { MINIMAL_STATE } from "./support/states.js";
 
 /**
  * Sign-in and the separation of the two credentials (node P2-N021,
@@ -30,7 +31,7 @@ const ORIGINAL_ENV = { ...process.env };
 function app() {
   const repo = new FakeRepository();
   repo.heads.set("main", SHA_A);
-  repo.setFile(SHA_A, "docs/plan-register.md", "- P1-N001 [done] Root");
+  repo.setFile(SHA_A, "orchestration/state.json", MINIMAL_STATE);
   return createApp({ view: { reader: repo, now: () => NOW } });
 }
 
@@ -171,8 +172,8 @@ describe("V15 — the cookie is checked on every route but sign-in", () => {
       headers: { Cookie: validCookie() },
     });
     expect(tree.status).toBe(200);
-    // E2 adds the node page; until then a signed-in request answers 404.
-    const node = await app().request("/view/node/P1-N001", {
+    // A node the state file lacks answers 404 to a signed-in request.
+    const node = await app().request("/view/node/P1-N999", {
       headers: { Cookie: validCookie() },
     });
     expect(node.status).toBe(404);

@@ -1,11 +1,10 @@
 /**
- * What every web-view page carries (node P2-N021, the web view's first
- * version; the specification of P2-N003 in the coordinating
- * repository, "What every page carries"): the header naming the ref,
- * the full SHA and the fetch time; the line saying the page carries no
- * progress authority; document links pinned to the SHA; phone width;
- * and no script. Every value read from a file passes `escapeHtml`
- * before it reaches the page.
+ * What every web-view page carries: the header naming the ref, the
+ * full SHA and the fetch time; the source line naming the state file
+ * the page renders; document links pinned to the SHA; and no script.
+ * Since the rebuild's milestone 2 the pages target a desktop browser
+ * and read `orchestration/state.json`. Every value read from a file
+ * passes `escapeHtml` before it reaches the page.
  */
 
 import { createHash } from "node:crypto";
@@ -53,71 +52,62 @@ export function escapeHtml(value: string): string {
 export const PAGE_CSS = [
   ":root{--fg:#1f2328;--muted:#59636e;--bg:#f6f8fa;--card:#fff;--line:#d1d9e0;--soft:#eef1f4;--link:#0969da;--done:#1a7f37;--owner:#bc4c00;--progress:#0969da;--pending:#8250df;--ready:#59636e;--err:#b42318}",
   "*{box-sizing:border-box}",
-  "body{margin:0;padding:12px;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-size:16px;line-height:1.5;color:var(--fg);background:var(--bg);overflow-wrap:anywhere}",
+  "body{margin:0;padding:16px 24px 40px;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.5;color:var(--fg);background:var(--bg);overflow-wrap:anywhere}",
+  "header,main,.source{max-width:1100px;margin-left:auto;margin-right:auto}",
   "a{color:var(--link);text-decoration:none}",
   "a:hover{text-decoration:underline}",
-  "header{font-size:13px;color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:0 0 8px}",
-  "header p{margin:0 0 2px}",
-  "header p:last-child{margin:0}",
-  ".limit{font-size:13px;color:var(--muted);margin:0 0 12px;padding:6px 12px;border-left:3px solid var(--line)}",
+  "header{font-size:13px;color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:8px;display:flex;flex-wrap:wrap;gap:2px 24px}",
+  "header p{margin:0}",
+  ".source{font-size:13px;color:var(--muted);margin-bottom:14px;padding:6px 12px;border-left:3px solid var(--line)}",
   "code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}",
-  "h1{font-size:22px;line-height:1.3;margin:8px 0 6px}",
-  "h2{font-size:15px;margin:0 0 6px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}",
-  "section{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:0 0 10px}",
+  "h1{font-size:24px;line-height:1.3;margin:8px 0 10px}",
+  "h1 .id{font-size:14px;font-weight:400;margin-left:8px}",
+  "h2{font-size:14px;margin:0 0 8px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}",
+  "section{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin:0 0 12px}",
+  ".columns{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:12px;margin:0 0 12px}",
+  ".columns>section{margin:0}",
   ".note{font-size:14px;color:var(--muted)}",
   "p.note{margin:4px 0}",
+  "p.outcome{margin:4px 0 8px}",
   ".error{color:var(--err)}",
-  ".label{font-size:14px;color:var(--muted);margin:6px 0 2px}",
+  ".crumbs{font-size:13px;color:var(--muted);margin:0 0 4px}",
   "dl{display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr);margin:0 0 8px;border:1px solid var(--line);border-radius:6px;overflow:hidden;font-size:14px}",
-  "dt,dd{margin:0;padding:5px 8px;border-top:1px solid var(--line)}",
+  "dt,dd{margin:0;padding:5px 10px;border-top:1px solid var(--line)}",
   "dt:first-of-type,dt:first-of-type+dd{border-top:0}",
-  "dt{color:var(--muted);background:var(--soft);font-weight:500;max-width:150px}",
-  "ol.events{list-style:none;padding:0;margin:0}",
-  "ol.events li{margin:0 0 10px}",
+  "dt{color:var(--muted);background:var(--soft);font-weight:500;max-width:180px}",
   "section ul{padding-left:20px;margin:4px 0}",
-  ".stage,.hold,.id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}",
-  ".hold{color:var(--owner)}",
-  ".legend{list-style:none;display:flex;flex-wrap:wrap;gap:4px 14px;padding:0;margin:6px 0 10px;font-size:13px;color:var(--muted)}",
-  ".legend li{display:flex;align-items:center;gap:5px}",
-  ".icon{flex:none;vertical-align:-3px}",
-  ".s-done{color:var(--done)}.s-owner{color:var(--owner)}.s-progress{color:var(--progress)}.s-pending{color:var(--pending)}.s-ready{color:var(--ready)}",
-  ".r-built{color:var(--done)}.r-building{color:var(--progress)}.r-open{color:var(--muted)}",
+  "ul.plain{list-style:none;padding:0}",
+  "ul.plain>li{padding:6px 0;border-top:1px solid var(--line)}",
+  "ul.plain>li:first-child{border-top:0;padding-top:0}",
+  ".id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--muted)}",
+  ".stage{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}",
+  ".badge{display:inline-block;font-size:12px;line-height:1.4;padding:0 8px;border-radius:10px;border:1px solid currentColor;white-space:nowrap;vertical-align:middle}",
+  ".c-done{color:var(--done)}.c-gated{color:var(--owner)}.c-blocked{color:var(--err)}.c-in-flight,.c-in-progress{color:var(--progress)}.c-waiting{color:var(--pending)}.c-actionable{color:var(--ready)}.c-parked{color:var(--muted)}",
+  ".legend{list-style:none;display:flex;flex-wrap:wrap;gap:4px 14px;padding:0;margin:0 0 10px;font-size:13px;color:var(--muted)}",
   "ul.tree{list-style:none;margin:0;padding:0;background:var(--card);border:1px solid var(--line);border-radius:8px;overflow:hidden}",
-  "ul.tree ul{list-style:none;margin:0 0 0 4px;padding:0 0 0 6px;border-left:1px solid var(--line)}",
+  "ul.tree ul{list-style:none;margin:0 0 0 10px;padding:0 0 0 10px;border-left:1px solid var(--line)}",
   "ul.tree li{margin:0}",
   "ul.tree>li+li{border-top:1px solid var(--line)}",
-  "summary,.leaf{display:flex;align-items:baseline;padding:7px 8px;cursor:pointer;list-style:none}",
-  ".leaf{cursor:auto;padding-left:34px}",
+  "summary,.leaf{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;padding:6px 10px;cursor:pointer;list-style:none}",
+  ".leaf{cursor:auto;padding-left:36px}",
   "summary::-webkit-details-marker{display:none}",
-  "summary::before{content:'\\25B8';flex:none;width:26px;font-size:26px;line-height:24px;align-self:flex-start;color:var(--muted);transition:transform .1s}",
+  "summary::before{content:'\\25B8';flex:none;width:18px;font-size:18px;line-height:22px;color:var(--muted);transition:transform .1s}",
   "details[open]>summary::before{transform:rotate(90deg)}",
   "summary:hover,.leaf:hover{background:var(--soft)}",
-  ".row .title{font-weight:600;color:var(--fg)}",
-  ".row .meta{color:var(--muted);white-space:normal}",
-  ".fold{padding:0 8px 6px 18px}",
-  ".fold>.note{margin:0 0 6px}",
-  "ul.resources{list-style:none;padding:0;margin:4px 0 8px}",
-  "li.resource{border:1px solid var(--line);border-radius:6px;padding:5px 8px;margin:0 0 6px;background:var(--soft)}",
-  "li.resource p{margin:2px 0 0}",
-  ".resource-head{font-size:14px}",
+  ".row-title{font-weight:600}",
+  ".row-outcome{flex-basis:100%;padding-left:26px;font-size:14px;color:var(--muted)}",
+  ".leaf .row-outcome{padding-left:0}",
+  ".hold{flex-basis:100%;padding-left:26px;font-size:13px;color:var(--owner)}",
+  ".leaf .hold{padding-left:0}",
   "section.problems{border-color:var(--err)}",
   "section.problems h2{color:var(--err)}",
-  "section.problems>div+div{margin-top:10px}",
-  ".row .gate{display:block;font-size:13px;color:var(--owner);margin-top:2px}",
-  "p.gate{color:var(--owner);font-weight:500}",
   ".pre{white-space:pre-wrap}",
   ".table-wrap{max-width:100%;overflow-x:auto}",
   "table{border-collapse:collapse;width:100%;font-size:13px}",
-  "th,td{border:1px solid var(--line);padding:4px 6px;text-align:left;vertical-align:top;overflow-wrap:normal}",
+  "th,td{border:1px solid var(--line);padding:4px 8px;text-align:left;vertical-align:top}",
   "th{background:var(--soft);color:var(--muted);font-weight:600}",
-  "tr.task td{background:var(--card)}",
-  "table.tasks th,tr.task td{font-size:12px;padding:3px 4px;hyphens:auto}",
-  "tr.task-notes>td{background:var(--soft);padding:0;overflow-wrap:anywhere}",
-  "tr.task-notes summary{display:flex;align-items:baseline;padding:6px 8px;font-size:13px}",
-  "tr.task-notes summary::before{line-height:20px}",
-  "td.pre,td[data-event-field=note]{overflow-wrap:anywhere}",
-  "tr.task-notes details>table{margin:0 0 6px;font-size:12px}",
-  "tbody>tr.task:not(:first-child)>td{border-top:2px solid var(--line)}",
+  "table.tasks th,table.tasks td{white-space:nowrap;overflow-wrap:normal}",
+  "table.tasks td:nth-child(6),table.tasks td:nth-child(7),table.tasks th:nth-child(7){white-space:normal;overflow-wrap:anywhere}",
   "form p{margin:0 0 10px}",
   "input,button{font:inherit;font-size:16px;max-width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg)}",
   "button{background:var(--link);border-color:var(--link);color:#fff;cursor:pointer}",
@@ -175,28 +165,27 @@ export function viewLink(
     : `${path}?ref=${encodeURIComponent(requestedRef)}`;
 }
 
-/** The repository's Backlog, the referent of progress truth under
- * K-003 (the Backlog is the single source of progress truth) as
- * released at methodology 1.6.0. */
-export const BACKLOG_PATH = "docs/backlog.md";
-
-const LIMIT_TEXT =
-  "This page carries no progress authority. Under K-003 (the Backlog is the single source of progress truth), the Backlog is the referent";
+/** The file every page renders. */
+export const STATE_PATH = "orchestration/state.json";
 
 /**
- * The limit line (V13). With a SHA, it links the Backlog at that SHA.
- * A page with no resolved SHA (the sign-in page, or a ref that did not
- * resolve) names the Backlog without a link, since the only other link
- * would name a branch (V10).
+ * The source line: the state file the page renders, linked at the
+ * page's SHA, and its authority. During the rebuild the state file is
+ * the progress truth, under the deviation from K-003 (the Backlog is
+ * the single source of progress truth) recorded in the coordinating
+ * repository's Classification. A page with no resolved SHA names the
+ * file without a link.
  */
-export function limitLine(
+export function sourceLine(
   repo: RepoCoordinates | undefined,
   sha: string | undefined,
 ): string {
+  const authority =
+    "the progress truth during the rebuild, under the deviation from K-003 recorded in docs/classification.md";
   if (repo && sha) {
-    return `<p class="limit" data-limit>${escapeHtml(LIMIT_TEXT)}: <a href="${escapeHtml(blobUrl(repo, sha, BACKLOG_PATH))}">${escapeHtml(BACKLOG_PATH)} at ${escapeHtml(sha.slice(0, 7))}</a>.</p>`;
+    return `<p class="source" data-source>Rendered from <a href="${escapeHtml(blobUrl(repo, sha, STATE_PATH))}"><code>${escapeHtml(STATE_PATH)}</code> at ${escapeHtml(sha.slice(0, 7))}</a>, ${authority}.</p>`;
   }
-  return `<p class="limit" data-limit>${escapeHtml(LIMIT_TEXT)}: ${escapeHtml(BACKLOG_PATH)}, not linked because this page resolved no commit.</p>`;
+  return `<p class="source" data-source>Renders <code>${escapeHtml(STATE_PATH)}</code>, ${authority}. No commit resolved for this page.</p>`;
 }
 
 function refLine(

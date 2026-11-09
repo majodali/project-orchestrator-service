@@ -31,37 +31,59 @@ import {
  * it naming the file and its size. It is never read as empty.
  */
 
-const COST_LOG = [
-  "| date | task | node | stage | role | model | input tok | output tok | notes |",
-  "|---|---|---|---|---|---|---|---|---|",
-  "| 2026-10-30 | T500 | P1-N001 | execute | implementer | m | n/a | n/a | fake |",
-].join("\n");
-
-/** A journal above the base64 limit, whose last line names T500. */
-function largeJournal(): string {
-  const filler = JSON.stringify({
-    ts: "2026-10-30T00:00:00Z",
-    event: "edge-recorded",
-    task: null,
+/** A state file above the base64 limit: one task whose notes carry the
+ * padding, and a last task T500 the page must show. */
+function largeState(): string {
+  const node = {
+    id: "P1-N001",
+    title: "The root of the plan",
+    outcome: "It exists.",
+    stage: "done",
+    parent: null,
+    after: [],
+    hold: null,
+    docs: { plan: null, spec: null },
+    done: "2026-10-30",
+    note: null,
+  };
+  const task = (id: string, notes: string | null, summary: string | null) => ({
+    id,
     node: "P1-N001",
-    note: "x".repeat(900),
+    step: "execute",
+    status: "closed",
+    role: null,
+    model: null,
+    tokens: { in: null, out: null },
+    opened: null,
+    closed: "2026-10-30T01:00:00Z",
+    ref: null,
+    pr: null,
+    summary,
+    notes,
   });
-  const lines: string[] = [];
+  const tasks: unknown[] = [];
   let size = 0;
+  let n = 1;
   while (size <= CONTENTS_BASE64_LIMIT_BYTES + 4096) {
-    lines.push(filler);
-    size += filler.length + 1;
+    const t = task(`T${String(n).padStart(3, "0")}`, "x".repeat(900), null);
+    tasks.push(t);
+    size += JSON.stringify(t).length + 8;
+    n += 1;
   }
-  lines.push(
-    JSON.stringify({
-      ts: "2026-10-30T01:00:00Z",
-      event: "accepted",
-      task: "T500",
-      node: "P1-N001",
-      note: "the last line of a large journal ✓",
-    }),
+  tasks.push(task("T999", null, "the last task of a large state file ✓"));
+  return (
+    JSON.stringify(
+      {
+        schema: 0,
+        project: `${OWNER}/${REPO}`,
+        nodes: [node],
+        tasks,
+        decisions: [],
+      },
+      null,
+      2,
+    ) + "\n"
   );
-  return lines.join("\n") + "\n";
 }
 
 interface FakeGithubOptions {
@@ -138,7 +160,7 @@ afterEach(() => {
 
 async function taskPage(reader: GithubAppRegisterFetcher) {
   const app = createApp({ view: { reader, now: () => NOW } });
-  const res = await app.request("/view/task/T500", {
+  const res = await app.request("/view/task/T999", {
     headers: { Cookie: validCookie() },
   });
   expectViewHeaders(res);
@@ -147,83 +169,73 @@ async function taskPage(reader: GithubAppRegisterFetcher) {
 
 describe("V5 — a file above the contents endpoint's base64 limit", () => {
   it("is read in full with the raw media type, at the same SHA, and the page shows its last line", async () => {
-    const journal = largeJournal();
-    expect(Buffer.byteLength(journal)).toBeGreaterThan(
+    const state = largeState();
+    expect(Buffer.byteLength(state)).toBeGreaterThan(
       CONTENTS_BASE64_LIMIT_BYTES,
     );
     const { reader, contentsRequests } = fakeGithub(
-      new Map([
-        ["docs/cost-log.md", COST_LOG],
-        ["orchestration/journal.jsonl", journal],
-      ]),
+      new Map([["orchestration/state.json", state]]),
     );
     const { res, html } = await taskPage(reader);
     expect(res.status).toBe(200);
-    expect(textOf(html)).toContain("the last line of a large journal ✓");
+    expect(textOf(html)).toContain("the last task of a large state file ✓");
     expect(contentsRequests).toEqual([
-      { path: "docs/cost-log.md", accept: "application/vnd.github+json" },
       {
-        path: "orchestration/journal.jsonl",
+        path: "orchestration/state.json",
         accept: "application/vnd.github+json",
       },
       {
-        path: "orchestration/journal.jsonl",
+        path: "orchestration/state.json",
         accept: "application/vnd.github.raw+json",
       },
     ]);
     // The reader returns every byte.
     await expect(
-      reader.readFileAtSha(SHA_A, "orchestration/journal.jsonl"),
-    ).resolves.toBe(journal);
+      reader.readFileAtSha(SHA_A, "orchestration/state.json"),
+    ).resolves.toBe(state);
   });
 
   it("is read in full when GitHub answers base64 with empty content, never as empty", async () => {
-    const journal = largeJournal();
+    const state = largeState();
     const { reader } = fakeGithub(
-      new Map([["orchestration/journal.jsonl", journal]]),
+      new Map([["orchestration/state.json", state]]),
       { emptyBase64: true },
     );
     await expect(
-      reader.readFileAtSha(SHA_A, "orchestration/journal.jsonl"),
-    ).resolves.toBe(journal);
+      reader.readFileAtSha(SHA_A, "orchestration/state.json"),
+    ).resolves.toBe(state);
   });
 
   it("is refused, naming the file and its size, when the raw read comes back short", async () => {
-    const journal = largeJournal();
-    const size = Buffer.byteLength(journal);
+    const state = largeState();
+    const size = Buffer.byteLength(state);
     const { reader } = fakeGithub(
-      new Map([
-        ["docs/cost-log.md", COST_LOG],
-        ["orchestration/journal.jsonl", journal],
-      ]),
+      new Map([["orchestration/state.json", state]]),
       { truncateRawBy: 10 },
     );
     const { res, html } = await taskPage(reader);
     expect(res.status).toBe(502);
     expect(attributeText(html, "data-failing-file")).toBe(
-      "orchestration/journal.jsonl",
+      "orchestration/state.json",
     );
     expect(attributeText(html, "data-file-size")).toBe(String(size));
     expect(textOf(html)).toContain(
-      `The file orchestration/journal.jsonl is ${size} bytes at ${SHA_A}, and this page refuses it`,
+      `The file orchestration/state.json is ${size} bytes at ${SHA_A}, and this page refuses it`,
     );
-    expect(textOf(html)).not.toContain("the last line of a large journal");
+    expect(textOf(html)).not.toContain("the last task of a large state file");
     expect(html).not.toContain("data-field");
   });
 
   it("is refused, naming the file and its size, above the endpoint's 100 MB limit, without a raw read", async () => {
     const reportedSize = CONTENTS_ENDPOINT_LIMIT_BYTES + 1;
     const { reader, contentsRequests } = fakeGithub(
-      new Map([
-        ["docs/cost-log.md", COST_LOG],
-        ["orchestration/journal.jsonl", largeJournal()],
-      ]),
+      new Map([["orchestration/state.json", largeState()]]),
       { reportedSize },
     );
     const { res, html } = await taskPage(reader);
     expect(res.status).toBe(502);
     expect(attributeText(html, "data-failing-file")).toBe(
-      "orchestration/journal.jsonl",
+      "orchestration/state.json",
     );
     expect(attributeText(html, "data-file-size")).toBe(String(reportedSize));
     expect(
@@ -232,7 +244,7 @@ describe("V5 — a file above the contents endpoint's base64 limit", () => {
       ),
     ).toEqual([]);
     await expect(
-      reader.readFileAtSha(SHA_A, "orchestration/journal.jsonl"),
+      reader.readFileAtSha(SHA_A, "orchestration/state.json"),
     ).rejects.toBeInstanceOf(FileTooLargeError);
   });
 });

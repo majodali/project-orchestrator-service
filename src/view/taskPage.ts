@@ -1,156 +1,86 @@
 /**
- * The task page, `GET /view/task/<task ID>` (node P2-N021, the web
- * view's first version, task E2; the specification of P2-N003, "The
- * task page"):
- *
- *   - the task's Cost log row, all nine fields, or "no Cost log row at
- *     this commit";
- *   - the task's journal events, in file order: `ts`, `event`, `node`,
- *     `stage`, `role`, `model`, `ref` and `note`, each verbatim, or a
- *     line saying there are none;
- *   - a link to the task's node page.
- *
- * A task ID that no Cost log row and no journal event names answers
- * `404`, naming the ID and the SHA.
+ * The task page, `GET /view/task/<task ID>` (the rebuild plan,
+ * milestone 2): one task of the state file at one commit, with its
+ * node, its fields and its notes.
  */
 
+import { nodesById } from "../model/check.js";
+import type { State, Task } from "../model/schema.js";
 import type { PageCommit } from "./html.js";
 import {
+  commitUrl,
   escapeHtml,
-  limitLine,
   pageHeader,
   pageShell,
+  sourceLine,
   viewLink,
 } from "./html.js";
-import { nodePageHref } from "./registerNote.js";
-import type {
-  CostLog,
-  CostLogRow,
-  Journal,
-  JournalEntry,
-} from "./runRecords.js";
-import {
-  COST_LOG_PATH,
-  JOURNAL_PATH,
-  eventField,
-  eventString,
-  skippedNote,
-} from "./runRecords.js";
+import { nodePagePath, pullRequestUrl, taskPagePath } from "./parts.js";
 
-/** The journal fields the task page shows, in this order. */
-export const TASK_EVENT_FIELDS = [
-  "ts",
-  "event",
-  "node",
-  "stage",
-  "role",
-  "model",
-  "ref",
-  "note",
-] as const;
-
-export function taskPagePath(id: string): string {
-  return `/view/task/${encodeURIComponent(id)}`;
+function field(name: string, heading: string, body: string): string {
+  return `<dt>${escapeHtml(heading)}</dt><dd data-field="${name}">${body}</dd>`;
 }
 
-export interface TaskRecords {
-  rows: CostLogRow[];
-  events: JournalEntry[];
+function text(value: string | number | null): string {
+  return value === null
+    ? '<span class="note">none</span>'
+    : escapeHtml(String(value));
 }
 
-/** The rows and events that name `taskId`. */
-export function recordsOf(
-  taskId: string,
-  costLog: CostLog,
-  journal: Journal,
-): TaskRecords {
-  return {
-    rows: costLog.rows.filter((row) => row.task === taskId),
-    events: journal.events.filter(
-      ({ event }) => eventString(event, "task") === taskId,
-    ),
-  };
-}
-
-function rowSection(rows: CostLogRow[], header: string[]): string {
-  if (rows.length === 0) {
-    return `<section data-field="cost-log-row">\n<h2>Cost log row</h2>\n<p data-no-row>no Cost log row at this commit</p>\n</section>`;
-  }
-  const blocks = rows
-    .map((row) => {
-      const items = row.cells
-        .map(
-          (cell, i) =>
-            `<dt>${escapeHtml(header[i] ?? `field ${i + 1}`)}</dt><dd data-cell="${i + 1}">${escapeHtml(cell)}</dd>`,
-        )
-        .join("\n");
-      return `<dl data-row-line="${row.line}">\n${items}\n</dl>`;
-    })
-    .join("\n");
-  return `<section data-field="cost-log-row">\n<h2>Cost log row</h2>\n${blocks}\n</section>`;
-}
-
-function eventsSection(events: JournalEntry[], notes: string): string {
-  if (events.length === 0) {
-    return `<section data-field="events">\n<h2>Journal events</h2>\n<p data-no-events>no journal event names this task at this commit</p>${notes}\n</section>`;
-  }
-  const items = events
-    .map(({ line, event }) => {
-      const fields = TASK_EVENT_FIELDS.map(
-        (name) =>
-          `<dt>${name}</dt><dd data-event-field="${name}">${escapeHtml(eventField(event, name))}</dd>`,
-      ).join("\n");
-      return `<li data-event-line="${line}"><dl>\n${fields}\n</dl></li>`;
-    })
-    .join("\n");
-  return `<section data-field="events">\n<h2>Journal events</h2>\n<ol class="events">\n${items}\n</ol>${notes}\n</section>`;
-}
-
-function nodeSection(records: TaskRecords, commit: PageCommit): string {
-  const nodes: string[] = [];
-  for (const row of records.rows) nodes.push(row.node);
-  for (const { event } of records.events) {
-    const node = eventString(event, "node");
-    if (node !== undefined) nodes.push(node);
-  }
-  const distinct = [...new Set(nodes)];
-  const body =
-    distinct.length === 0
-      ? `<p class="note">The row and the events name no node.</p>`
-      : `<ul>\n${distinct
-          .map(
-            (id) =>
-              `<li data-task-node="${escapeHtml(id)}"><a href="${escapeHtml(nodePageHref(id, commit.requestedRef))}">${escapeHtml(id)}</a></li>`,
-          )
-          .join("\n")}\n</ul>`;
-  return `<section data-field="node">\n<h2>Node</h2>\n${body}\n</section>`;
-}
-
-/** Renders the task page from the files at `commit.sha`. */
 export function renderTaskPage(
-  taskId: string,
-  costLog: CostLog,
-  journal: Journal,
+  state: State,
+  task: Task,
   commit: PageCommit,
 ): string {
-  const records = recordsOf(taskId, costLog, journal);
-  const notes = [
-    skippedNote(COST_LOG_PATH, costLog.skippedLines),
-    skippedNote(JOURNAL_PATH, journal.skippedLines),
-  ]
-    .filter((note) => note !== "")
-    .map((note) => `\n<p class="note" data-skipped>${escapeHtml(note)}</p>`)
-    .join("");
+  const node = nodesById(state).get(task.node);
+  const nodeLink = node
+    ? `<a href="${escapeHtml(viewLink(nodePagePath(node.id), commit.requestedRef))}">${escapeHtml(node.title)}</a> <span class="id">${escapeHtml(node.id)}</span>`
+    : `<span class="id">${escapeHtml(task.node)}</span> <span class="note">(not in the state file)</span>`;
+  const pr = task.pr ? pullRequestUrl(task.pr) : null;
+  const ref = task.ref
+    ? /^[0-9a-f]{7,40}$/.test(task.ref)
+      ? `<a href="${escapeHtml(commitUrl(commit, task.ref))}"><code>${escapeHtml(task.ref)}</code></a>`
+      : `<code>${escapeHtml(task.ref)}</code>`
+    : '<span class="note">none</span>';
+  const tokens =
+    task.tokens.in === null && task.tokens.out === null
+      ? '<span class="note">not recorded</span>'
+      : `${text(task.tokens.in)} in, ${text(task.tokens.out)} out`;
   const body = [
-    pageHeader(commit, taskPagePath(taskId)),
-    limitLine(commit, commit.sha),
+    pageHeader(commit, taskPagePath(task.id)),
+    sourceLine(commit, commit.sha),
     "<main>",
-    `<p><a href="${escapeHtml(viewLink("/view", commit.requestedRef))}">Plan tree</a></p>`,
-    `<h1>Task <span data-task-id>${escapeHtml(taskId)}</span></h1>`,
-    rowSection(records.rows, costLog.header),
-    eventsSection(records.events, notes),
-    nodeSection(records, commit),
+    `<p class="crumbs"><a href="${escapeHtml(viewLink("/view", commit.requestedRef))}">Plan</a> › ${nodeLink}</p>`,
+    `<h1 data-title>Task <span data-task-id>${escapeHtml(task.id)}</span></h1>`,
+    task.summary
+      ? `<p class="outcome" data-summary>${escapeHtml(task.summary)}</p>`
+      : "",
+    "<section>",
+    "<dl>",
+    field("node", "Node", nodeLink),
+    field("step", "Step", escapeHtml(task.step)),
+    field("status", "Status", escapeHtml(task.status)),
+    field("role", "Role", text(task.role)),
+    field("model", "Model", text(task.model)),
+    field("tokens", "Tokens", tokens),
+    field("opened", "Opened", text(task.opened)),
+    field("closed", "Closed", text(task.closed)),
+    field("ref", "Commit", ref),
+    field(
+      "pr",
+      "Pull request",
+      task.pr
+        ? pr
+          ? `<a href="${escapeHtml(pr)}">${escapeHtml(task.pr)}</a>`
+          : escapeHtml(task.pr)
+        : '<span class="note">none</span>',
+    ),
+    "</dl>",
+    "</section>",
+    task.notes
+      ? `<section data-notes><h2>Notes</h2><p class="pre">${escapeHtml(task.notes)}</p></section>`
+      : "",
     "</main>",
   ].join("\n");
-  return pageShell(`${taskId}: task`, body);
+  return pageShell(`Task ${task.id}`, body);
 }

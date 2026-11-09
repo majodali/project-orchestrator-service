@@ -483,18 +483,19 @@ measurement.
 
 ## The web view (node P2-N021)
 
-The service also serves the plan as web pages, for reading in a
-browser on any device. The pages read the coordinating repository at
-one commit, through the same GitHub App `plan_read` uses. They change
-nothing. Tasks E1 to E3 serve five routes:
+The service also serves the plan as web pages, for a desktop browser.
+Since the rebuild's milestone 2 (the coordinating repository's
+`docs/plans/rebuild.md`) the pages read one file of the coordinating
+repository at one commit, `orchestration/state.json`, through the same
+GitHub App `plan_read` uses. They change nothing. Five routes:
 
-| Method and path            | Answers                                                                                                                                     |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /view/sign-in`        | the sign-in form                                                                                                                            |
-| `POST /view/sign-in`       | the exchange of the view token for the view cookie                                                                                          |
-| `GET /view`                | the tree page: the plan tree, foldable, with status icons and the Project model resources in it; `?ref=<branch, tag or SHA>` reads that ref |
-| `GET /view/node/<node ID>` | a node page, from the register, the plan it links, the Cost log, the journal and the Project model                                          |
-| `GET /view/task/<task ID>` | a task page, from the Cost log and the journal                                                                                              |
+| Method and path            | Answers                                                                                                                                                                                               |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /view/sign-in`        | the sign-in form                                                                                                                                                                                      |
+| `POST /view/sign-in`       | the exchange of the view token for the view cookie                                                                                                                                                    |
+| `GET /view`                | the tree page: what waits on the owner, what is ready, what is in flight, every node in its tree with its class and outcome, the problems `check` reports; `?ref=<branch, tag or SHA>` reads that ref |
+| `GET /view/node/<node ID>` | a node page: class and stage, outcome, position, dependencies, documents, decisions and tasks                                                                                                         |
+| `GET /view/task/<task ID>` | a task page: the task's fields and notes                                                                                                                                                              |
 
 The view has its own credential, the **view token**. It is held in
 Secrets Manager apart from the MCP bearer token, and `/mcp` refuses
@@ -580,57 +581,50 @@ live now points at version 8 (promoted from 7).
 The SHA is the coordinating repository's `main`, the tree the view
 read. This repository's `main` was at `22fa51d`.
 
-### Signing in on a phone
+### Signing in
 
 1. Open `$ENDPOINT/view/sign-in`, the production endpoint from Step 3
    with `/view/sign-in` added.
-2. Paste the view token into the one field and tap **Sign in**. The
+2. Paste the view token into the one field and press **Sign in**. The
    page goes to the plan tree.
 3. The cookie lasts 30 days on that browser. After that, or after a
    rotation, the tree sends you back to sign-in.
 
 Each page names the ref you asked for, the full commit SHA and the
 fetch time. Reloading follows a branch to its newest commit. Add
-`?ref=<SHA>` to stay on one commit. Each node ID links to its node
-page at the same `ref`. Node and task pages arrive with task E2, so
-until then the link answers "No page here yet".
+`?ref=<SHA>` to stay on one commit. Each title links to its node page
+at the same `ref`.
 
-### What the model adds to the pages (task E3)
+### What the pages show
 
-The tree page and every node page also read `docs/project-model.md`,
-the coordinating repository's Project model instance, at the same SHA
-as the register. The vendored `project-model.ts` parses it, the parser
-the coordinating repository owns.
+Every page renders `orchestration/state.json`, the state file, at the
+page's SHA, through the model package `src/model/` that also provides
+`plan-state check`. The state file is the progress truth during the
+rebuild, under the deviation from K-003 (the Backlog is the single
+source of progress truth) recorded in the coordinating repository's
+Classification; each page's source line says so and links the file at
+the SHA.
 
-- **In the tree** (node P2-N023, iteration 2), each node carries an
-  icon for its aggregate status over its subtree: all done, waiting on
-  the owner (a `gated` hold), in progress, pending dependencies (a
-  `blocked` hold, or a recorded dependency on a node not `done`), or
-  not started and ready. Each resource of the model shows as its
-  implementation-map row under the highest node that creates it,
-  modifies it, or is the parent of a node that uses it. A "Problems
-  found" section at the bottom lists unplaced resources and anything
-  else that did not read as expected (iteration 3). The separate
-  implementation map and list of what is next are no longer on the
-  page.
-- **On a node page**, "Depends on" and "Needed by" add the nodes linked
-  by recorded edges, each with the resource the edge runs through.
-  **Resources** lists the model's entries whose edge lines name the
-  node, grouped as creates, modifies and uses, each linked to its entry.
-  From iteration 3, **Tasks** is a table of each task's Cost log row,
-  with its notes beneath, whitespace kept, opening to the task's
-  journal events; a gated node gains a **Gate** field with the hold and
-  the journal's gate events.
-- **Not computable.** Where a procedure cannot finish, the page says
-  so, naming the file, the line and the missing input. That happens in
-  three cases only: the instance is absent at the page's SHA; an entry
-  departs from the type's entry grammar on a line the procedure reads;
-  or a `state:` line disagrees with the stages. A line that reads `not
-yet derived` carries that note, and the rest still renders. Any other
-  failed read of the instance fails the page, as for the register.
+- **The tree page** leads with what waits on the owner: the open
+  decisions, each with its default and its node, and the gated nodes
+  with their reasons. Then the nodes ready to start, in flight (with
+  their open tasks) and waiting on a dependency (with what they wait
+  for). Then every node in its tree, the roots open and the rest
+  folded, each row a badge for the node's class, its title linked to
+  its node page, its identifier small, its stage or its done date, its
+  one-sentence outcome, and its hold when it has one. A "Problems
+  found" section at the bottom lists what `plan-state check` reports
+  for the file at that commit. A file that is not JSON or fails the
+  schema shows the problems and nothing else.
+- **A node page** shows the node's place: its parents as crumbs, its
+  class and stage, its outcome and note, its parent, children and
+  documents at the SHA, what it waits on and what waits on it, its
+  decisions open and closed, and its tasks as a table with pull
+  request links.
+- **A task page** shows the task's fields and its notes.
 
-Nothing here carries progress authority. The Backlog stays the
-referent, as each page's limit line says.
+The Markdown registers are not read: they are renderings of the same
+file, made by `plan-state render` in the coordinating repository.
 
 ### Rotating the view token: O-view-1 and O-view-3 again
 

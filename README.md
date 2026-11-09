@@ -116,62 +116,45 @@ so far:
 
 ### HTTP routes
 
-| Method and path            | Auth                        | Answers                                                                                                                                                                                                      |
-| -------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /health`              | none                        | liveness, as JSON                                                                                                                                                                                            |
-| `ANY /mcp`                 | `Authorization: Bearer`     | the MCP endpoint and its six tools                                                                                                                                                                           |
-| `GET /view/sign-in`        | none                        | the web view's sign-in form                                                                                                                                                                                  |
-| `POST /view/sign-in`       | the view token, in the form | `303` to `/view` with the view cookie, or `401`                                                                                                                                                              |
-| `GET /view`                | the view cookie             | the plan tree of the coordinating repository at one commit, foldable, each node marked with its aggregate status and holding the Project model resources placed under it; `?ref=` picks a branch, tag or SHA |
-| `GET /view/node/<node ID>` | the view cookie             | a node page: stage, gate, outcome, depends on, needed by, documents, resources and a task table with each task's notes and journal events, at one commit; `404` for an ID the register lacks                 |
-| `GET /view/task/<task ID>` | the view cookie             | a task page: the task's Cost log row and journal events, at one commit; `404` for an ID neither file names                                                                                                   |
+| Method and path            | Auth                        | Answers                                                                                                                                                                                                                                                                    |
+| -------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /health`              | none                        | liveness, as JSON                                                                                                                                                                                                                                                          |
+| `ANY /mcp`                 | `Authorization: Bearer`     | the MCP endpoint and its six tools                                                                                                                                                                                                                                         |
+| `GET /view/sign-in`        | none                        | the web view's sign-in form                                                                                                                                                                                                                                                |
+| `POST /view/sign-in`       | the view token, in the form | `303` to `/view` with the view cookie, or `401`                                                                                                                                                                                                                            |
+| `GET /view`                | the view cookie             | the plan of the coordinating repository at one commit, from `orchestration/state.json`: what waits on the owner, what is ready, what is in flight, every node in its tree with its class and outcome, and the problems `check` reports; `?ref=` picks a branch, tag or SHA |
+| `GET /view/node/<node ID>` | the view cookie             | a node page: class and stage, outcome, position in the tree, what it waits on and what waits on it, documents at the SHA, decisions and tasks; `404` for an ID the state file lacks                                                                                        |
+| `GET /view/task/<task ID>` | the view cookie             | a task page: the task's fields and notes from the state file; `404` for an ID it lacks                                                                                                                                                                                     |
 
-The `/view` routes are the web view's first version (node P2-N021,
-tasks E1 to E3): server-rendered HTML with no script, readable at
-phone width.
-Each page resolves its ref to one commit SHA and reads every file at
-that SHA through the GitHub App; it names the ref, the SHA and the
-fetch time, and links documents to GitHub's file view at that SHA. The
-view has its own credential, the view token, which `/mcp` refuses, and
-the MCP bearer token does not open `/view`. Only `POST /view/sign-in`
-accepts a method other than `GET`, and it changes only the caller's
-cookie. See `src/view/` and `docs/runbook.md`, "The web view".
+The `/view` routes are the web view: server-rendered HTML with no
+script, for a desktop browser (the rebuild plan, decision 9). Since
+the rebuild's milestone 2 every page reads one file,
+`orchestration/state.json`, at one commit, through the GitHub App, and
+renders the planning/execution model it holds (`src/model/`); the
+Markdown registers are no longer read. Each page resolves its ref to
+one commit SHA, names the ref, the SHA and the fetch time, and links
+documents to GitHub's file view at that SHA. The view has its own
+credential, the view token, which `/mcp` refuses, and the MCP bearer
+token does not open `/view`. Only `POST /view/sign-in` accepts a
+method other than `GET`, and it changes only the caller's cookie. See
+`src/view/` and `docs/runbook.md`, "The web view".
 
-The node and task pages read `docs/cost-log.md` and
-`orchestration/journal.jsonl` through the vendored
-`cost-log-and-journal.ts` (below), the same code the coordinating
-repository's form checker runs. A file above 1 MB, the contents
-endpoint's base64 limit, is read again with the raw media type, in
-full; one above the endpoint's 100 MB limit, or one whose raw read
-comes back short, is refused by name and size
-(`src/planRegister/registerFetcher.ts`).
+The tree page leads with what waits on the owner, open decisions and
+gated nodes, then what is ready to start, in flight and waiting on a
+dependency, then every node in its tree, folded below the roots, each
+with a badge for its class (waiting on the owner, blocked, in flight,
+in progress, waiting on a dependency, ready, done, parked), its title,
+its identifier and its one-sentence outcome. A "Problems found"
+section at the bottom lists what `plan-state check` reports for the
+file at that commit; a file that fails the schema shows the problems
+and nothing else. Each page's source line names the state file at the
+SHA as the progress truth during the rebuild, under the deviation from
+K-003 recorded in the coordinating repository's Classification.
 
-The tree page and the node page also read `docs/project-model.md`, the
-coordinating repository's Project model instance, at the page's SHA,
-through the vendored `project-model.ts` (below), the parser that
-repository owns (task E3). Since node P2-N023's iteration 2, the tree
-folds, and each row leads with the node's title and an icon for its
-aggregate status: all done, waiting on the owner, in progress, pending
-dependencies, or not started and ready. Each resource of the model
-sits in the tree as its implementation-map row, under the highest
-node that creates it, modifies it, or is the parent of a node that
-uses it. A gated node shows its gate on its own line, linked to the
-Gate field of its node page. From iteration 3, a "Problems found"
-section at the bottom lists what did not read as expected: register
-lines that did not parse, Project model lines that depart from the
-entry grammar, rows that are not computable, and resources no rule
-places, with the reason. The map rows and the dependencies behind "pending" follow the
-procedure of the Project model type (`docs/process/project-model.md`
-there). The status and placement rules are the owner's
-(`src/view/treeModel.ts`). The node page adds, to "depends on" and "needed by",
-the nodes linked by recorded edges under the type's node-to-node
-dependency rule, and lists the entries whose edge lines name the node,
-grouped by label. Where a procedure cannot finish, the page marks the
-item **not computable**, naming the file, the line and the missing
-input: the instance absent at the SHA, an entry that fails the type's
-entry grammar on a line the procedure reads, or a `state:` line the
-stages contradict. Neither rendering carries progress authority
-(`src/view/modelRenderings.ts`, `src/view/projectModel.ts`).
+A file above 1 MB, the contents endpoint's base64 limit, is read again
+with the raw media type, in full; one above the endpoint's 100 MB
+limit, or one whose raw read comes back short, is refused by name and
+size (`src/planRegister/registerFetcher.ts`).
 
 ### The shared grammar unit, now this repository's own
 
@@ -231,34 +214,30 @@ curl -i -X POST http://localhost:8787/mcp \
 
 The web view normally reads the coordinating repository through the
 GitHub App. With `VIEW_FIXTURE_DIR` set, `npm run dev` reads that
-directory instead: the files at their repository paths
-(`docs/plan-register.md`, `docs/cost-log.md`,
-`orchestration/journal.jsonl`, `docs/project-model.md`, and any plan a
-register line links). A local checkout of the coordinating repository
-works. Every ref resolves to one pretend SHA, or to
-`VIEW_FIXTURE_SHA` when set, so the page header still carries a
-40-character SHA. Sign-in is unchanged: sign in with the local
-`VIEW_TOKEN`.
+directory instead: `orchestration/state.json` at its repository path.
+A local checkout of the coordinating repository works. Every ref
+resolves to one pretend SHA, or to `VIEW_FIXTURE_SHA` when set, so the
+page header still carries a 40-character SHA. Sign-in is unchanged:
+sign in with the local `VIEW_TOKEN`.
 
 ```
-VIEW_TOKEN=local-preview npm run view:preview   # the 2da1843 fixtures, at http://localhost:8787/view
+VIEW_TOKEN=local-preview npm run view:preview   # the 325c502 fixture, at http://localhost:8787/view
 VIEW_TOKEN=local-preview VIEW_FIXTURE_DIR=../project-orchestrator npm run dev
-npm run view:shots -- --iteration 2 --label before
+npm run view:shots -- --iteration 4 --label after
 ```
 
-`npm run view:preview` assembles the test fixtures at commit 2da1843
-into the gitignored `.preview/` directory and serves them.
+`npm run view:preview` assembles the test fixture at commit 325c502
+into the gitignored `.preview/` directory and serves it.
 `npm run view:shots` starts that preview on a free port, signs in with
 Playwright, and writes full-page PNGs of the tree page, the node page
-for `P2-N021` and the task page for `T094`, at 390 by 844 and at
-1440 by 900, to `src/view/preview/shots/`, named
-`ux-<NN>-<label>-<page>-<width>.png`, as 64-colour palette PNGs. That
-directory is committed, so each pull request's body can show its
-before and after shots. It fails when a page scrolls
-horizontally. Playwright is not a dependency: Claude Code sessions
-have it installed; elsewhere, `npm install --no-save playwright` and
-`npx playwright install chromium` provide it. Lambda never reads
-`VIEW_FIXTURE_DIR`; only `src/localServer.ts` does.
+for `P2-N021` and the task page for `T094` at 1440 by 900 to
+`src/view/preview/shots/`, named `ux-<NN>-<label>-<page>-desktop.png`,
+as 64-colour palette PNGs. That directory is committed, so each pull
+request's body can show its before and after shots. Playwright is not
+a dependency: Claude Code sessions have it installed; elsewhere,
+`npm install --no-save playwright` and `npx playwright install
+chromium` provide it. Lambda never reads `VIEW_FIXTURE_DIR`; only
+`src/localServer.ts` does.
 
 The `.mcp.json` shape a Claude Code session enlists with — including
 where it goes and why it is not committed here or in the coordinating

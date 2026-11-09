@@ -5,10 +5,12 @@
  *
  *   GET  /view/sign-in  the sign-in form
  *   POST /view/sign-in  the exchange of the view token for the view cookie
- *   GET  /view          the tree page, with the Project model's two
- *                       renderings beside it (task E3)
- *   GET  /view/node/<node ID>  a node page (task E2)
- *   GET  /view/task/<task ID>  a task page (task E2)
+ *   GET  /view          the tree page over the state file
+ *   GET  /view/node/<node ID>  a node page
+ *   GET  /view/task/<task ID>  a task page
+ *
+ * Since the rebuild's milestone 2 every page reads one file,
+ * `orchestration/state.json`, at the page's commit (./stateRead.ts).
  *
  * Every other `/view` route requires a valid view cookie and refuses a
  * request without one by a `303` to the sign-in page. No `/view` route
@@ -33,34 +35,22 @@ import {
   FileTooLargeError,
   GithubFetchError,
 } from "../planRegister/registerFetcher.js";
-import { parseRegister } from "../planRegister/parser.js";
-import {
-  PageReadError,
-  ShaPathCache,
-  readMoreAtPageSha,
-  readOptionalAtPageSha,
-  readPageFiles,
-} from "./commitRead.js";
+import { PageReadError, ShaPathCache, readPageFiles } from "./commitRead.js";
 import type { PageFiles } from "./commitRead.js";
 import type { ErrorPageCommit, PageCommit } from "./html.js";
 import {
   VIEW_SECURITY_HEADERS,
   escapeHtml,
-  limitLine,
   pageHeader,
   pageShell,
+  sourceLine,
   viewLink,
 } from "./html.js";
-import { nodePagePath, planLink, renderNodePage } from "./nodePage.js";
-import { MODEL_PATH, modelAtPage } from "./projectModel.js";
-import {
-  COST_LOG_PATH,
-  JOURNAL_PATH,
-  readCostLog,
-  readJournal,
-} from "./runRecords.js";
-import { recordsOf, renderTaskPage, taskPagePath } from "./taskPage.js";
-import { REGISTER_PATH, renderTreePage } from "./treePage.js";
+import { renderNodePage } from "./nodePage.js";
+import { nodePagePath, taskPagePath } from "./parts.js";
+import { STATE_PATH, stateAtPage } from "./stateRead.js";
+import { renderTaskPage } from "./taskPage.js";
+import { renderTreePage } from "./treePage.js";
 import {
   VIEW_COOKIE_NAME,
   loadViewTokenConfig,
@@ -101,7 +91,7 @@ function simplePage(
   status: 401 | 404 | 405 | 500,
 ): Response {
   const body = [
-    limitLine(undefined, undefined),
+    sourceLine(undefined, undefined),
     "<main>",
     `<h1>${escapeHtml(title)}</h1>`,
     `<p class="error">${escapeHtml(message)}</p>`,
@@ -112,7 +102,7 @@ function simplePage(
 
 function signInPage(message: string | undefined): string {
   const body = [
-    limitLine(undefined, undefined),
+    sourceLine(undefined, undefined),
     "<main>",
     "<h1>Sign in to the plan view</h1>",
     message ? `<p class="error">${escapeHtml(message)}</p>` : "",
@@ -172,7 +162,7 @@ function errorPage(
       : `<p>GitHub status: <span data-github-status>${status}</span></p>`;
   const body = [
     pageHeader(commit, selfPath),
-    limitLine(commit, commit.sha),
+    sourceLine(commit, commit.sha),
     "<main>",
     "<h1>The page could not be read</h1>",
     `<p class="error">${escapeHtml(what)}</p>`,
@@ -223,7 +213,7 @@ function notFoundPage(
 ): Response {
   const body = [
     pageHeader(commit, selfPath),
-    limitLine(commit, commit.sha),
+    sourceLine(commit, commit.sha),
     "<main>",
     `<p><a href="${escapeHtml(viewLink("/view", commit.requestedRef))}">Plan tree</a></p>`,
     "<h1>Not found at this commit</h1>",
@@ -326,153 +316,103 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
     return c.redirect("/view", 303);
   });
 
-  app.get("/view", async (c) => {
-    // An empty `ref` names no ref, the same as an absent one.
-    const requestedRef = c.req.query("ref") || undefined;
+  /** Reads the state file at the requested ref, or answers the error
+   * page. */
+  async function statePage(
+    c: Context,
+    requestedRef: string | undefined,
+    selfPath: string,
+  ): Promise<
+    | { ok: true; source: CommitReader; page: PageFiles; commit: PageCommit }
+    | { ok: false; response: Response }
+  > {
     let source: CommitReader;
     try {
       source = reader();
     } catch (err) {
-      return errorPage(
-        c,
-        err,
-        requestedRef,
-        { owner: "(not configured)", repo: "(not configured)" },
-        now,
-      );
+      return {
+        ok: false,
+        response: errorPage(
+          c,
+          err,
+          requestedRef,
+          { owner: "(not configured)", repo: "(not configured)" },
+          now,
+          selfPath,
+        ),
+      };
     }
     try {
       const page = await readPageFiles(
         source,
         cache,
         requestedRef,
-        [REGISTER_PATH],
+        [STATE_PATH],
         now,
       );
-      // The instance, at the SHA the register was read at (V1); absent
-      // there, the renderings say so (decision 11, case (a)).
-      const model = modelAtPage(
-        page.sha,
-        await readOptionalAtPageSha(source, cache, page, MODEL_PATH),
-      );
-      const html = renderTreePage(page.files.get(REGISTER_PATH)!, model, {
-        owner: source.owner,
-        repo: source.repo,
-        requestedRef,
-        resolvedRef: page.resolvedRef,
-        sha: page.sha,
-        fetchedAt: page.fetchedAt,
-      });
-      return htmlResponse(c, html, 200);
+      return {
+        ok: true,
+        source,
+        page,
+        commit: pageCommit(source, requestedRef, page),
+      };
     } catch (err) {
-      return errorPage(c, err, requestedRef, source, now);
+      return {
+        ok: false,
+        response: errorPage(c, err, requestedRef, source, now, selfPath),
+      };
     }
+  }
+
+  app.get("/view", async (c) => {
+    // An empty `ref` names no ref, the same as an absent one.
+    const requestedRef = c.req.query("ref") || undefined;
+    const read = await statePage(c, requestedRef, "/view");
+    if (!read.ok) return read.response;
+    const state = stateAtPage(read.page.files.get(STATE_PATH)!);
+    return htmlResponse(c, renderTreePage(state, read.commit), 200);
   });
 
   app.get("/view/node/:id", async (c) => {
     const requestedRef = c.req.query("ref") || undefined;
     const id = c.req.param("id");
     const selfPath = nodePagePath(id);
-    let source: CommitReader;
-    try {
-      source = reader();
-    } catch (err) {
-      return errorPage(
+    const read = await statePage(c, requestedRef, selfPath);
+    if (!read.ok) return read.response;
+    const { state } = stateAtPage(read.page.files.get(STATE_PATH)!);
+    const node = state?.nodes.find((n) => n.id === id);
+    if (state === null || node === undefined) {
+      return notFoundPage(
         c,
-        err,
-        requestedRef,
-        { owner: "(not configured)", repo: "(not configured)" },
-        now,
+        read.commit,
         selfPath,
+        state === null
+          ? `${STATE_PATH} at ${read.page.sha} does not validate; the plan tree lists the problems.`
+          : `No node ${id} in ${STATE_PATH} at ${read.page.sha}.`,
       );
     }
-    try {
-      const page = await readPageFiles(
-        source,
-        cache,
-        requestedRef,
-        [REGISTER_PATH],
-        now,
-      );
-      const commit = pageCommit(source, requestedRef, page);
-      const parsed = parseRegister(page.files.get(REGISTER_PATH)!);
-      const node = parsed.nodes.get(id);
-      if (node === undefined) {
-        return notFoundPage(
-          c,
-          commit,
-          selfPath,
-          `No node ${id} in ${REGISTER_PATH} at ${page.sha}.`,
-        );
-      }
-      // Every further read is pinned to the SHA the register was read
-      // at (V1).
-      const costLog = readCostLog(
-        await readMoreAtPageSha(source, cache, page, COST_LOG_PATH),
-      );
-      const journal = readJournal(
-        await readMoreAtPageSha(source, cache, page, JOURNAL_PATH),
-      );
-      const plan = planLink(node);
-      const planText =
-        plan === undefined
-          ? undefined
-          : await readMoreAtPageSha(source, cache, page, plan.path);
-      const model = modelAtPage(
-        page.sha,
-        await readOptionalAtPageSha(source, cache, page, MODEL_PATH),
-      );
-      const html = renderNodePage(
-        { parsed, node, costLog, journal, planText, model },
-        commit,
-      );
-      return htmlResponse(c, html, 200);
-    } catch (err) {
-      return errorPage(c, err, requestedRef, source, now, selfPath);
-    }
+    return htmlResponse(c, renderNodePage(state, node, read.commit), 200);
   });
 
   app.get("/view/task/:id", async (c) => {
     const requestedRef = c.req.query("ref") || undefined;
     const id = c.req.param("id");
     const selfPath = taskPagePath(id);
-    let source: CommitReader;
-    try {
-      source = reader();
-    } catch (err) {
-      return errorPage(
+    const read = await statePage(c, requestedRef, selfPath);
+    if (!read.ok) return read.response;
+    const { state } = stateAtPage(read.page.files.get(STATE_PATH)!);
+    const task = state?.tasks.find((t) => t.id === id);
+    if (state === null || task === undefined) {
+      return notFoundPage(
         c,
-        err,
-        requestedRef,
-        { owner: "(not configured)", repo: "(not configured)" },
-        now,
+        read.commit,
         selfPath,
+        state === null
+          ? `${STATE_PATH} at ${read.page.sha} does not validate; the plan tree lists the problems.`
+          : `No task ${id} in ${STATE_PATH} at ${read.page.sha}.`,
       );
     }
-    try {
-      const page = await readPageFiles(
-        source,
-        cache,
-        requestedRef,
-        [COST_LOG_PATH, JOURNAL_PATH],
-        now,
-      );
-      const commit = pageCommit(source, requestedRef, page);
-      const costLog = readCostLog(page.files.get(COST_LOG_PATH)!);
-      const journal = readJournal(page.files.get(JOURNAL_PATH)!);
-      const records = recordsOf(id, costLog, journal);
-      if (records.rows.length === 0 && records.events.length === 0) {
-        return notFoundPage(
-          c,
-          commit,
-          selfPath,
-          `No task ${id} in ${COST_LOG_PATH} or ${JOURNAL_PATH} at ${page.sha}.`,
-        );
-      }
-      return htmlResponse(c, renderTaskPage(id, costLog, journal, commit), 200);
-    } catch (err) {
-      return errorPage(c, err, requestedRef, source, now, selfPath);
-    }
+    return htmlResponse(c, renderTaskPage(state, task, read.commit), 200);
   });
 
   // A signed-in request for any other `/view` path answers this page.
