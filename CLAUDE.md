@@ -8,7 +8,7 @@ document lifecycles and workflows. Read it before any work; nothing
 in this file overrides it.
 
 Classification: C1 / S1 / backend-service / serverless-aws
-Deviations: none
+Deviations: K-003 (the Backlog is the single source of progress truth), recorded in docs/classification.md for the rebuild
 
 ## Reporting and writing — cached from W-008; do not edit here
 
