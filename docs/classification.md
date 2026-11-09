@@ -62,7 +62,15 @@ multi-repo relationship").
 
 ## Deviation register
 
-No deviations recorded.
+- **K-003 (the Backlog is the single source of progress truth)** —
+  recorded 2026-11-09, with the same deviation in the coordinating
+  repository. During the rebuild
+  ([plan](https://github.com/majodali/project-orchestrator/blob/main/docs/plans/rebuild.md)),
+  the progress truth for work on this repository is the coordinating
+  repository's `orchestration/state.json` and that plan's checklists.
+  This repository's Backlog is frozen and becomes a rendering at the
+  plan's milestone 6. Ends when the K-003 amendment is released and
+  pinned here.
 
 ## Custom definitions
 
