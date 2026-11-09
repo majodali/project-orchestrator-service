@@ -173,47 +173,48 @@ entry grammar on a line the procedure reads, or a `state:` line the
 stages contradict. Neither rendering carries progress authority
 (`src/view/modelRenderings.ts`, `src/view/projectModel.ts`).
 
-### The vendored register grammar unit, and its drift check
+### The shared grammar unit, now this repository's own
 
-`src/planRegister/vendored/` (`plan-register.ts` plus its conformance
-corpus; `cost-log-and-journal.ts`, the Cost log row and run-journal
-line grammar the web view reads, since node P2-N021's task E2; and
-`project-model.ts`, the parser of the Project model instance, since
-task E3) is vendored, byte-for-byte, from the coordinating repository's canonical
-copies under `plugin/scripts/lib/` — ruling
-[RU-012](https://github.com/majodali/project-orchestrator/blob/main/docs/rulings.md):
-one canonical copy, vendored outward by a generator with a `--check`
-drift mode, the consumer never edits its copy. This repository's own
-`src/planRegister/parser.ts` and `types.ts` are thin re-exports of it
-(they used to carry a second, hand-maintained copy of the same grammar
-— node P2-N009 — until node P2-N010 adopted the shared unit instead);
-`src/planRegister/transitions.ts` (the node-lifecycle table, chunk 1
-child D) is built on the same unit's `STAGES` vocabulary, so the write
-path enforces the exact stage set the grammar carries rather than a
-second guess at it — see that file's doc comment for the P2-N009
-stage-vocabulary finding this closes (`STAGES`
-carries the vocabulary as data; nothing in `src/` accepts a stage
-outside it).
+`src/planRegister/vendored/` holds `plan-register.ts` (the Plan
+register grammar and the stage vocabulary), `cost-log-and-journal.ts`
+(the Cost log row and run-journal line grammar) and `project-model.ts`
+(the Project model parser), with the conformance corpus they travel
+with. Until the rebuild's milestone 1 these were vendored
+byte-for-byte from the coordinating repository by a generator; the
+generator is retired and these files are now owned and edited here.
+The coordinating repository's plugin keeps its own copies for its form
+checker until that checker is retired at milestone 6
+(docs/plans/rebuild.md there). The directory keeps its name so that no
+import moves; it stays excluded from this repository's ESLint and
+Prettier configs so that the diff against the plugin's copies stays
+readable while both exist.
 
-`src/planRegister/vendored/` is excluded from this repository's own
-ESLint and Prettier configs (`eslint.config.js`'s `ignores`,
-`.prettierignore`) — it is generated, not authored here, and
-reformatting it would make it drift from the canonical copy for no
-reason but this repository's own style. To re-vendor after the
-canonical copy changes, or to check for drift without changing
-anything, run from a checkout of
-[majodali/project-orchestrator](https://github.com/majodali/project-orchestrator):
+### The state file and `plan-state`
+
+`src/model/` is the planning/execution model of the rebuild
+(majodali/project-orchestrator `docs/plans/rebuild.md`, "The data
+model"): a `zod` schema (`schema.ts`) for one file per managed
+project, `orchestration/state.json`, holding nodes, tasks and
+decisions; the invariants over it (`check.ts`); the renderings of it
+to `docs/plan-register.md` and `docs/plan.md` (`render.ts`); and a
+one-time importer from the frozen Markdown registers
+(`importState.ts`). The schema is the type's definition; the Markdown
+files are renderings and are never hand-edited.
+
+The command line, `plan-state`, is this package's `bin`:
 
 ```sh
-# from a checkout of majodali/project-orchestrator:
-node plugin/scripts/sync_shared_unit.ts --check /path/to/project-orchestrator-service/src/planRegister/vendored
-# drop --check to actually re-vendor
+plan-state check  --repo /path/to/managed/repo          # schema, invariants, documents exist, renderings current
+plan-state render --repo /path/to/managed/repo --write  # rewrite docs/plan-register.md and docs/plan.md
+plan-state import --repo /path/to/managed/repo --project owner/name \
+  --accepted docs/plans/rebuild.md=2026-11-09 --overrides orchestration/import-overrides.json --write
 ```
 
-Exit 0 (`"in sync"`) confirms nothing has drifted; this repository has
-no CI that runs it automatically today (see the coordinating
-repository's Backlog, "CI for project-orchestrator-service" /
-"Automate the vendored shared unit's drift check").
+A managed repository depends on this package by commit, through npm's
+git support (`"project-orchestrator-service":
+"github:majodali/project-orchestrator-service#<sha>"`), and runs
+`plan-state check` in its CI. `npm install` of a git dependency runs
+this package's `prepare` script, which builds `dist/`.
 
 ### Trying it locally
 
