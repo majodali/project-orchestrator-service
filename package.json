@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && node -e \"require('node:fs').chmodSync('dist/model/cli.js', 0o755)\"",
-    "prepare": "npm run build",
+    "prepare": "node scripts/prepare.mjs",
     "dev": "tsx src/localServer.ts",
     "view:preview": "tsx src/view/preview/preview.ts",
     "view:shots": "tsx src/view/preview/shots.ts",
