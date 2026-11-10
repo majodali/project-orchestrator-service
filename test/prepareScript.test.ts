@@ -35,13 +35,14 @@ describe("scripts/prepare.mjs", () => {
     // A copy of the script under a package root with no node_modules.
     const dir = mkdtempSync(path.join(tmpdir(), "prepare-"));
     dirs.push(dir);
+    mkdirSync(path.join(dir, "scripts"));
     cpSync(
       path.join(REPO_ROOT, "scripts", "prepare.mjs"),
-      path.join(dir, "prepare.mjs"),
+      path.join(dir, "scripts", "prepare.mjs"),
     );
     const result = spawnSync(
       process.execPath,
-      [path.join(dir, "prepare.mjs")],
+      [path.join(dir, "scripts", "prepare.mjs")],
       {
         cwd: dir,
         encoding: "utf-8",
