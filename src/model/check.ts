@@ -10,6 +10,7 @@ import path from "node:path";
 
 import type { ZodError } from "zod";
 
+import { isOrdered, orderSiblingsByDependency } from "./order.js";
 import { renderPlan, renderRegister } from "./render.js";
 import {
   INTERIOR_STAGES,
@@ -27,7 +28,7 @@ export type Severity = "violation" | "warning";
 
 export interface Finding {
   severity: Severity;
-  /** The invariant's number, 1 to 9, as the plan lists them. */
+  /** The invariant's number, 1 to 10, as the plan lists them. */
   invariant: number;
   /** The node, task or decision identifier, when one applies. */
   subject: string | null;
@@ -238,6 +239,21 @@ export function checkState(value: unknown): {
         `title "${n.title}" is an identifier, a child letter or a chunk number`,
       );
     }
+    // The "<noun phrase>, <past participle>" idiom ("The facts,
+    // verified") says what was done to a thing instead of naming the
+    // thing; a title is read in its tree, so it names the thing
+    // (owner, 2026-11-10).
+    if (
+      n.title.includes(",") &&
+      /\b[a-z]+(?:ed|en|own|ilt|ade|ught)(?:,|\s*$)/i.test(n.title)
+    ) {
+      find(
+        "warning",
+        4,
+        n.id,
+        `title "${n.title}" reads as "<noun phrase>, <verb>"; name the thing instead`,
+      );
+    }
     if (n.stage !== "identified" && n.stage !== "parked") {
       if (n.outcome === null) {
         find("violation", 4, n.id, `is ${n.stage} and has no outcome sentence`);
@@ -349,6 +365,18 @@ export function checkState(value: unknown): {
     } else if (d.decided === null) {
       find("violation", 7, d.id, "is closed and has no decision date");
     }
+  }
+
+  // 10. Siblings follow the siblings they depend on.
+  if (!isOrdered(state)) {
+    const ordered = orderSiblingsByDependency(state);
+    const first = ordered.find((n, i) => state.nodes[i] !== n);
+    find(
+      "violation",
+      10,
+      first?.id ?? null,
+      "nodes are not in canonical order (siblings after the siblings they depend on); run plan-state render --write",
+    );
   }
 
   return { state, findings };

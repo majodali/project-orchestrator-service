@@ -27,6 +27,7 @@ import {
   renderImportRecord,
   type Overrides,
 } from "./importState.js";
+import { orderSiblingsByDependency } from "./order.js";
 import { renderPlan, renderRegister } from "./render.js";
 import { formatState } from "./schema.js";
 
@@ -125,7 +126,7 @@ function main(argv: string[]): number {
           readFileSync(path.resolve(values.overrides), "utf-8"),
         ) as Overrides)
       : null;
-    const { state, record } = importState({
+    const { state: imported, record } = importState({
       project,
       register,
       costLog: readOptional(root, "docs/cost-log.md"),
@@ -136,6 +137,7 @@ function main(argv: string[]): number {
       exists: (rel) => existsSync(path.join(root, rel)),
       overrides,
     });
+    const state = { ...imported, nodes: orderSiblingsByDependency(imported) };
     const today = new Date().toISOString().slice(0, 10);
     const recordText = renderImportRecord(record, today);
     if (values.write) {
@@ -182,10 +184,11 @@ function main(argv: string[]): number {
   }
 
   if (command === "render") {
-    const register = renderRegister(state);
-    const plan = renderPlan(state);
+    const ordered = { ...state, nodes: orderSiblingsByDependency(state) };
+    const register = renderRegister(ordered);
+    const plan = renderPlan(ordered);
     if (values.write) {
-      writeFileSync(path.join(root, STATE_PATH), formatState(state));
+      writeFileSync(path.join(root, STATE_PATH), formatState(ordered));
       writeFileSync(path.join(root, REGISTER_PATH), register);
       writeFileSync(path.join(root, PLAN_PATH), plan);
       console.log(`plan-state: wrote ${REGISTER_PATH} and ${PLAN_PATH}`);
