@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../src/httpApp.js";
 import {
-  COMMIT_325C502,
-  repository325c502,
-} from "./support/fixtures325c502.js";
+  COMMIT_D4CBB7E,
+  repositoryd4cbb7e,
+} from "./support/fixturesd4cbb7e.js";
 import { node, sampleState, stateJson, task } from "./support/states.js";
 import {
   FakeRepository,
@@ -393,22 +393,22 @@ describe("the task page", () => {
   });
 });
 
-describe("over the coordinating repository's state file at 325c502", () => {
-  it("renders the tree with 59 nodes, two gated nodes, no open decision, and no problem", async () => {
-    const { res, html } = await get(appOver(repository325c502()), "/view");
+describe("over the coordinating repository's state file at d4cbb7e", () => {
+  it("renders the tree with 57 nodes, one gated node, no open decision, and no problem", async () => {
+    const { res, html } = await get(appOver(repositoryd4cbb7e()), "/view");
     expect(res.status).toBe(200);
-    expect(attributeText(html, "data-sha")).toBe(COMMIT_325C502);
+    expect(attributeText(html, "data-sha")).toBe(COMMIT_D4CBB7E);
     expect(
       all(html.slice(html.indexOf("data-tree")), "data-node-id"),
-    ).toHaveLength(59);
-    expect(html).toContain('data-count-owner="2"');
+    ).toHaveLength(57);
+    expect(html).toContain('data-count-owner="1"');
     expect(html).toContain('data-count-decisions="0"');
     expect(html).not.toContain("data-open-decision");
     expect(html).not.toContain("data-problems");
   });
 
   it("renders the node page of P2-N021 and the task page of T094", async () => {
-    const app = appOver(repository325c502());
+    const app = appOver(repositoryd4cbb7e());
     const node = await get(app, "/view/node/P2-N021");
     expect(node.res.status).toBe(200);
     expect(attributeText(node.html, "data-crumbs")).toContain(
