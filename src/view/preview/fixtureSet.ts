@@ -1,8 +1,8 @@
 /**
  * The preview's default fixture directory: the coordinating
- * repository's state file at commit 325c502, the fixture the view's
+ * repository's state file at commit d4cbb7e, the fixture the view's
  * tests hold under `test/fixtures/`. It is copied to its repository
- * path under `.preview/325c502/`, which is gitignored, so
+ * path under `.preview/d4cbb7e/`, which is gitignored, so
  * `VIEW_FIXTURE_DIR` can point at it. The SHA is the commit's own, so
  * document links on the preview open the real files on GitHub.
  */
@@ -18,16 +18,16 @@ export const REPO_ROOT = path.resolve(
   "..",
 );
 
-export const FIXTURE_SET_SHA = "325c5029b7479524a239f6f3e858263533dd6d2a";
+export const FIXTURE_SET_SHA = "d4cbb7e8d06b87279000bbcb62a9cab661e86995";
 
 /** Fixture file under `test/fixtures/` → its repository path. */
 const FIXTURE_SET: ReadonlyArray<readonly [string, string]> = [
-  ["state.325c502.json", "orchestration/state.json"],
+  ["state.d4cbb7e.json", "orchestration/state.json"],
 ];
 
-/** Writes the fixture set to `.preview/325c502/` and answers its path. */
+/** Writes the fixture set to `.preview/d4cbb7e/` and answers its path. */
 export function assembleFixtureSet(): { dir: string; sha: string } {
-  const dir = path.join(REPO_ROOT, ".preview", "325c502");
+  const dir = path.join(REPO_ROOT, ".preview", "d4cbb7e");
   for (const [fixture, repoPath] of FIXTURE_SET) {
     const target = path.join(dir, repoPath);
     mkdirSync(path.dirname(target), { recursive: true });

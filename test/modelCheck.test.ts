@@ -135,14 +135,15 @@ describe("checkState", () => {
 
   it("requires a title of three words and an outcome from planned on, within the bound", () => {
     const s = state();
-    s.nodes[2]!.title = "Child C";
+    s.nodes[2]!.title = "Parser";
     s.nodes[2]!.outcome = null;
     s.nodes[1]!.outcome = Array.from({ length: 41 }, () => "word").join(" ");
     const found = messages(checkState(s).findings, "violation");
     expect(found).toContainEqual(
-      expect.stringContaining("4 P1-N003 title has 2 word(s)"),
+      expect.stringContaining("4 P1-N003 title has 1 word(s)"),
     );
-    expect(found).toContainEqual(
+    s.nodes[2]!.title = "Child C";
+    expect(messages(checkState(s).findings, "violation")).toContainEqual(
       expect.stringContaining('4 P1-N003 title "Child C" is an identifier'),
     );
     expect(found).toContainEqual(

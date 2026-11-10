@@ -4,12 +4,13 @@
   "nodes": [
     {
       "id": "P1-N001",
-      "title": "Orchestrator v1: the process specification and the Claude Code plugin",
+      "title": "Orchestrator v1: process specification and plugin",
       "outcome": "A process specification and a Claude Code plugin run role-based agent sessions through the methodology on managed projects, at the least cost that does the job.",
       "stage": "broken-down",
       "parent": null,
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/orchestrator-v1.md",
         "spec": null
@@ -19,12 +20,13 @@
     },
     {
       "id": "P1-N002",
-      "title": "The repository bootstrapped and the founding plan written",
+      "title": "Repository bootstrap and founding plan",
       "outcome": "The repository exists, is enrolled under the methodology, and holds the founding plan with its six chunks.",
       "stage": "done",
       "parent": "P1-N001",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": null
@@ -34,12 +36,13 @@
     },
     {
       "id": "P1-N003",
-      "title": "The orchestration process specification, version 1",
+      "title": "Process specification v1",
       "outcome": "The process specification under docs/process/ states the plan model, the Plan register, the dispatch loop, the roles, the profiles, the Cost log, auditing and observability.",
       "stage": "done",
       "parent": "P1-N001",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": null
@@ -49,12 +52,13 @@
     },
     {
       "id": "P1-N004",
-      "title": "The role contracts written, version 1",
+      "title": "Role contracts v1",
       "outcome": "Six role contracts under .claude/agents/, each bound to a model tier, with the Orchestrator as single writer of the registers.",
       "stage": "done",
       "parent": "P1-N001",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": null
@@ -64,12 +68,13 @@
     },
     {
       "id": "P1-N005",
-      "title": "The plugin built and tried on this repository",
+      "title": "Plugin v1 and self-hosted trial",
       "outcome": "The Claude Code plugin with the orchestrate and enroll skills, the form checker and the billing hook, tried in four trials on this repository.",
       "stage": "done",
       "parent": "P1-N001",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": null
@@ -79,12 +84,13 @@
     },
     {
       "id": "P1-N008",
-      "title": "mtool checker extension-point proposal",
+      "title": "Proposal: mtool checker extension point",
       "outcome": "A decision-ready proposal to methodology-tools for one generic capability: a checker that a project declares beside its custom type and that mtool audit form runs.",
       "stage": "done",
       "parent": "P1-N001",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p1-n008-mtool-checker-extension-point.md",
         "spec": "docs/specs/p1-n008-mtool-checker-extension-point.md"
@@ -100,6 +106,7 @@
       "parent": "P1-N001",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p1-n009-plugin-tooling-portfolio-stack.md",
         "spec": "docs/specs/p1-n009-plugin-tooling-portfolio-stack.md"
@@ -109,12 +116,13 @@
     },
     {
       "id": "P1-N010",
-      "title": "Node toolchain and the shared register grammar, proven by journal_tail",
+      "title": "Node toolchain and shared register grammar",
       "outcome": "The plugin's tooling runs on Node, and the Plan register grammar has one TypeScript implementation, proven by the journal_tail port.",
       "stage": "done",
       "parent": "P1-N009",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": null
@@ -124,12 +132,13 @@
     },
     {
       "id": "P1-N011",
-      "title": "The travelling package: conformance corpus, recorded expectations, vendoring generator",
+      "title": "Conformance corpus and vendoring generator",
       "outcome": "A conformance corpus of fixtures with recorded expectations, and a generator that vendors the shared grammar unit into the service repository.",
       "stage": "done",
       "parent": "P1-N009",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": null
@@ -139,12 +148,13 @@
     },
     {
       "id": "P1-N012",
-      "title": "The form checker on the shared unit, proven finding-for-finding",
+      "title": "Form checker ported to TypeScript",
       "outcome": "The form checker ported to TypeScript on the shared grammar unit, reproducing the Python checker's findings one for one.",
       "stage": "done",
       "parent": "P1-N009",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": null
@@ -154,12 +164,13 @@
     },
     {
       "id": "P1-N013",
-      "title": "The cutover: sync_agents ported, every invocation site moved, the Python retired",
+      "title": "Cutover to the TypeScript tools",
       "outcome": "The Python scripts retired, sync_agents ported, and every invocation site moved to the TypeScript tools.",
       "stage": "done",
       "parent": "P1-N009",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": null
@@ -175,6 +186,7 @@
       "parent": "P1-N001",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p1-n014-role-contracts-adopt-v140-rules.md",
         "spec": "docs/specs/p1-n014-role-contracts-adopt-conduct-rules.md"
@@ -184,12 +196,13 @@
     },
     {
       "id": "P1-N015",
-      "title": "Methodology amendments for delegated, multi-agent work",
+      "title": "Methodology amendments for delegated multi-agent work",
       "outcome": "Four adjudicable amendment proposals to majodali/methodology, drafted in this repository and hand-carried upstream by the owner.",
       "stage": "done",
       "parent": "P1-N001",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p1-n015-methodology-amendments-delegated-work.md",
         "spec": "docs/specs/p1-n015-methodology-amendments-delegated-work.md"
@@ -199,12 +212,13 @@
     },
     {
       "id": "P1-N016",
-      "title": "Process spec maintenance: branch lifecycle, PR citation, packet table",
+      "title": "Process specification maintenance",
       "outcome": "Every Backlog row routed to this node is either landed in the process specification, or closed with a stated reason.",
       "stage": "done",
       "parent": "P1-N001",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p1-n016-process-spec-maintenance.md",
         "spec": null
@@ -213,43 +227,14 @@
       "note": "plan gate crossed 2026-11-03, the plan's criteria are its specification (decision 2); does not wait on P3-N009 (decision 3); E1 (T103) accepted 2026-11-03, E2 (T104) accepted 2026-11-05 under the owner's rulings A26 to A28; verifying gate crossed 2026-11-08"
     },
     {
-      "id": "P1-N006",
-      "title": "The pilot on a real project, superseded by the service's migration and pilot",
-      "outcome": null,
-      "stage": "identified",
-      "parent": "P1-N001",
-      "after": [],
-      "hold": null,
-      "docs": {
-        "plan": null,
-        "spec": null
-      },
-      "done": null,
-      "note": "Chunk 5 of the parent plan; superseded in place by P2-N006; kept until the founding plan closes out"
-    },
-    {
-      "id": "P1-N007",
-      "title": "Cost reporting and the founding plan's close-out",
-      "outcome": null,
-      "stage": "identified",
-      "parent": "P1-N001",
-      "after": [],
-      "hold": null,
-      "docs": {
-        "plan": null,
-        "spec": null
-      },
-      "done": null,
-      "note": "Chunk 6 of the parent plan"
-    },
-    {
       "id": "P2-N001",
-      "title": "Orchestration service: the MCP service and the web view",
+      "title": "Orchestration service",
       "outcome": "A service that Claude Code sessions call over MCP for plan state, coordination and owner questions, with a web view of the plan, and git as the only source of truth.",
       "stage": "broken-down",
       "parent": null,
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/orchestration-service.md",
         "spec": null
@@ -259,12 +244,13 @@
     },
     {
       "id": "P2-N002",
-      "title": "The service skeleton, and plan state read and updated through it",
+      "title": "Service skeleton and plan state",
       "outcome": "A deployed MCP service reads and validates the Plan register through a GitHub App, and a session updates plan state under an advisory lease.",
       "stage": "done",
       "parent": "P2-N001",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p2-n002-service-skeleton.md",
         "spec": "docs/specs/p2-n002-service-skeleton.md"
@@ -274,12 +260,13 @@
     },
     {
       "id": "P2-N007",
-      "title": "The service repository bootstrapped and classified",
+      "title": "Service repository bootstrap",
       "outcome": "The service repository exists with its Classification, its Node toolchain, its README and its Backlog.",
       "stage": "done",
       "parent": "P2-N002",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": null
@@ -289,12 +276,13 @@
     },
     {
       "id": "P2-N008",
-      "title": "Reachability slice: a deployed MCP server a session can call",
+      "title": "Deployed MCP server (reachability slice)",
       "outcome": "A deployed MCP server on Lambda answers service_identity over HTTP with bearer-token auth, enlisted from a checked-in .mcp.json.",
       "stage": "done",
       "parent": "P2-N002",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": null
@@ -304,12 +292,13 @@
     },
     {
       "id": "P2-N009",
-      "title": "Plan-state read through the GitHub App",
+      "title": "Plan state read",
       "outcome": "plan_read returns the coordinating repository's Plan register at a named ref through an installed GitHub App, with the commit SHA on every answer.",
       "stage": "done",
       "parent": "P2-N002",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": null
@@ -319,12 +308,13 @@
     },
     {
       "id": "P2-N010",
-      "title": "Plan-state update, git-authoritative, with the advisory lease",
+      "title": "Plan state update with advisory lease",
       "outcome": "A session moves a node through a legal stage transition: it takes the lease, receives the exact edit, commits it, and the service confirms the commit carries it.",
       "stage": "done",
       "parent": "P2-N002",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": null
@@ -334,12 +324,13 @@
     },
     {
       "id": "P2-N011",
-      "title": "Degrade to git-only, and enlistment documentation",
+      "title": "Git-only fallback and enlistment documentation",
       "outcome": "A session works with the service unreachable, and the enlistment documentation says how a repository enlists.",
       "stage": "done",
       "parent": "P2-N002",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": null
@@ -349,12 +340,13 @@
     },
     {
       "id": "P2-N012",
-      "title": "Deploy the service from CI on merge",
+      "title": "Deploy from CI on merge",
       "outcome": "A merge to main in the service repository deploys the service, proves it against a real endpoint, and only then promotes it, with a red workflow on failure.",
       "stage": "done",
       "parent": "P2-N001",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p2-n012-deploy-from-ci-on-merge.md",
         "spec": "docs/specs/p2-n012-deploy-from-ci-on-merge.md"
@@ -364,12 +356,13 @@
     },
     {
       "id": "P2-N013",
-      "title": "Alias assumptions verified against AWS documentation",
+      "title": "Lambda alias assumptions check",
       "outcome": "The Lambda alias assumptions the deploy relies on are verified against AWS documentation and recorded.",
       "stage": "done",
       "parent": "P2-N012",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": null
@@ -379,12 +372,13 @@
     },
     {
       "id": "P2-N014",
-      "title": "Pull-request checks that cannot deploy",
+      "title": "Pull request checks",
       "outcome": "Pull-request checks build, lint and test without any deploy credential.",
       "stage": "done",
       "parent": "P2-N012",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": null
@@ -394,12 +388,13 @@
     },
     {
       "id": "P2-N015",
-      "title": "Alias-aware lease-table selection, failing closed",
+      "title": "Alias-aware lease table selection",
       "outcome": "The lease table is selected by the invoked alias, and an unknown alias fails closed.",
       "stage": "done",
       "parent": "P2-N012",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": null
@@ -409,12 +404,13 @@
     },
     {
       "id": "P2-N016",
-      "title": "Deploy, smoke and promote on merge to main",
+      "title": "Deploy, smoke test and promote pipeline",
       "outcome": "A merge to main deploys a version to the preprod alias, smoke-tests it, and promotes live only on a pass.",
       "stage": "done",
       "parent": "P2-N012",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": null
@@ -423,91 +419,14 @@
       "note": null
     },
     {
-      "id": "P2-N003",
-      "title": "Owner questions and the plan view",
-      "outcome": "The owner sees this project's plan in a browser on any device, and later answers gate decisions there.",
-      "stage": "broken-down",
-      "parent": "P2-N001",
-      "after": [],
-      "hold": null,
-      "docs": {
-        "plan": "docs/plans/p2-n003-owner-questions-and-plan-view.md",
-        "spec": "docs/specs/p2-n003-owner-questions-and-plan-view.md"
-      },
-      "done": null,
-      "note": "Chunk 2 of the parent plan; split into the web view's first version and the owner question queue (owner, 2026-10-29)"
-    },
-    {
-      "id": "P2-N021",
-      "title": "The web view's first version: the plan tree from commits, drilling to node and task",
-      "outcome": "A signed-in owner sees the plan tree at one commit and drills to node and task pages, with the Project model's renderings beside them.",
-      "stage": "done",
-      "parent": "P2-N003",
-      "after": [],
-      "hold": null,
-      "docs": {
-        "plan": null,
-        "spec": "docs/specs/p2-n003-owner-questions-and-plan-view.md"
-      },
-      "done": "2026-11-02",
-      "note": "independent of P2-N005 and P2-N004 (RU-018; owner, 2026-10-29); its task E3 waits on P3-N007 done, its tasks E1 and E2 do not (plan decision 8)"
-    },
-    {
-      "id": "P2-N022",
-      "title": "The owner question queue: gate decisions answered in the web view, picked up through the task-pull loop",
-      "outcome": "The owner answers gates and asks on a phone, in the web view.",
-      "stage": "identified",
-      "parent": "P2-N003",
-      "after": ["P2-N021", "P2-N005"],
-      "hold": null,
-      "docs": {
-        "plan": "docs/plans/p2-n022-owner-question-queue.md",
-        "spec": "docs/specs/p2-n003-owner-questions-and-plan-view.md"
-      },
-      "done": null,
-      "note": "depends on P2-N021, done 2026-11-03, and on P2-N005 for its final slice only; no longer follows P2-N006 (owner, 2026-11-03)"
-    },
-    {
-      "id": "P2-N023",
-      "title": "Web view UX refinement: an owner-attended loop on the service repository until the view can replace docs/plan.md, at most ten iterations",
-      "outcome": "At V30 the owner decided that the web view does not replace docs/plan.md yet.",
-      "stage": "verifying",
-      "parent": "P2-N003",
-      "after": ["P2-N021"],
-      "hold": {
-        "kind": "gated",
-        "reason": "owner review at verifying, U1 on the owner's decision to end the loop at three iterations"
-      },
-      "docs": {
-        "plan": "docs/plans/p2-n023-web-view-ux-refinement.md",
-        "spec": null
-      },
-      "done": null,
-      "note": "depends on P2-N021, done 2026-11-03; independent of P2-N022 and does not block it (RU-018; owner, 2026-11-03); iterations 1 to 3 (T097 to T099) accepted 2026-11-03; the owner ended the loop on 2026-11-07, and T100 shipped nothing"
-    },
-    {
-      "id": "P2-N004",
-      "title": "Topics for coordination between enlisted sessions",
-      "outcome": null,
-      "stage": "identified",
-      "parent": "P2-N001",
-      "after": ["P2-N006"],
-      "hold": null,
-      "docs": {
-        "plan": null,
-        "spec": null
-      },
-      "done": null,
-      "note": "Chunk 3 of the parent plan; after P2-N006, built only on a shown need (owner, 2026-10-29)"
-    },
-    {
       "id": "P2-N005",
-      "title": "The task-pull loop: sessions claim tasks from the service",
+      "title": "Task pull loop",
       "outcome": "A session asks the service for the next task in its role, claims it, reports progress, and reports completion.",
       "stage": "broken-down",
       "parent": "P2-N001",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p2-n005-task-pull-loop.md",
         "spec": "docs/specs/p2-n005-task-pull-loop.md"
@@ -517,12 +436,13 @@
     },
     {
       "id": "P2-N017",
-      "title": "The platform facts, verified",
+      "title": "Platform capability checks",
       "outcome": "A committed finding, docs/findings/p2-n005-platform-facts.md, answers five facts yes or no.",
       "stage": "identified",
       "parent": "P2-N005",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p2-n017-platform-facts.md",
         "spec": "docs/specs/p2-n005-task-pull-loop.md"
@@ -532,12 +452,13 @@
     },
     {
       "id": "P2-N018",
-      "title": "The loop in git alone",
+      "title": "Task claiming in git",
       "outcome": null,
       "stage": "identified",
       "parent": "P2-N005",
       "after": ["P2-N017"],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": "docs/specs/p2-n005-task-pull-loop.md"
@@ -547,12 +468,13 @@
     },
     {
       "id": "P2-N019",
-      "title": "Role-aware session identity for the service",
+      "title": "Role-aware session identity",
       "outcome": null,
       "stage": "identified",
       "parent": "P2-N005",
       "after": ["P2-N017"],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": "docs/specs/p2-n005-task-pull-loop.md"
@@ -562,12 +484,13 @@
     },
     {
       "id": "P2-N020",
-      "title": "The task tools of the service",
+      "title": "Task tools",
       "outcome": null,
       "stage": "identified",
       "parent": "P2-N005",
       "after": ["P2-N018", "P2-N019"],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": "docs/specs/p2-n005-task-pull-loop.md"
@@ -576,19 +499,100 @@
       "note": "depends on P2-N018 and P2-N019"
     },
     {
+      "id": "P2-N003",
+      "title": "Owner questions and the plan view",
+      "outcome": "The owner sees this project's plan in a browser on any device, and later answers gate decisions there.",
+      "stage": "broken-down",
+      "parent": "P2-N001",
+      "after": [],
+      "hold": null,
+      "start": "auto",
+      "docs": {
+        "plan": "docs/plans/p2-n003-owner-questions-and-plan-view.md",
+        "spec": "docs/specs/p2-n003-owner-questions-and-plan-view.md"
+      },
+      "done": null,
+      "note": "Chunk 2 of the parent plan; split into the web view's first version and the owner question queue (owner, 2026-10-29)"
+    },
+    {
+      "id": "P2-N021",
+      "title": "Web view v1",
+      "outcome": "A signed-in owner sees the plan tree at one commit and drills to node and task pages, with the Project model's renderings beside them.",
+      "stage": "done",
+      "parent": "P2-N003",
+      "after": [],
+      "hold": null,
+      "start": "auto",
+      "docs": {
+        "plan": null,
+        "spec": "docs/specs/p2-n003-owner-questions-and-plan-view.md"
+      },
+      "done": "2026-11-02",
+      "note": "independent of P2-N005 and P2-N004 (RU-018; owner, 2026-10-29); its task E3 waits on P3-N007 done, its tasks E1 and E2 do not (plan decision 8)"
+    },
+    {
+      "id": "P2-N022",
+      "title": "Owner question queue",
+      "outcome": "The owner answers gates and asks on a phone, in the web view.",
+      "stage": "identified",
+      "parent": "P2-N003",
+      "after": ["P2-N021", "P2-N005"],
+      "hold": null,
+      "start": "auto",
+      "docs": {
+        "plan": "docs/plans/p2-n022-owner-question-queue.md",
+        "spec": "docs/specs/p2-n003-owner-questions-and-plan-view.md"
+      },
+      "done": null,
+      "note": "depends on P2-N021, done 2026-11-03, and on P2-N005 for its final slice only; no longer follows P2-N006 (owner, 2026-11-03)"
+    },
+    {
+      "id": "P2-N023",
+      "title": "Web view UX refinement",
+      "outcome": "At V30 the owner decided that the web view does not replace docs/plan.md yet.",
+      "stage": "done",
+      "parent": "P2-N003",
+      "after": ["P2-N021"],
+      "hold": null,
+      "start": "auto",
+      "docs": {
+        "plan": "docs/plans/p2-n023-web-view-ux-refinement.md",
+        "spec": null
+      },
+      "done": "2026-11-07",
+      "note": "Iterations 1 to 3 accepted 2026-11-03; the owner ended the loop on 2026-11-07, and the rebuild's milestone 2 superseded the view (owner, 2026-11-10)"
+    },
+    {
       "id": "P2-N006",
-      "title": "This repository migrates onto the service, then the pilot runs on methodology-tools",
+      "title": "Migration onto the service and pilot on methodology-tools",
       "outcome": null,
       "stage": "identified",
       "parent": "P2-N001",
       "after": ["P2-N005", "P2-N021", "P2-N003"],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": null
       },
       "done": null,
       "note": "Chunk 5 of the parent plan; depends on P2-N005 and on P2-N021, the web view's first version, done 2026-11-03, not on P2-N003 as a whole (owner, 2026-10-29)"
+    },
+    {
+      "id": "P2-N004",
+      "title": "Coordination between enlisted sessions",
+      "outcome": null,
+      "stage": "identified",
+      "parent": "P2-N001",
+      "after": ["P2-N006"],
+      "hold": null,
+      "start": "auto",
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": null,
+      "note": "Chunk 3 of the parent plan; after P2-N006, built only on a shown need (owner, 2026-10-29)"
     },
     {
       "id": "P3-N001",
@@ -598,6 +602,7 @@
       "parent": null,
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/comprehension-and-continuous-implementation.md",
         "spec": "docs/specs/p3-n001-comprehension-and-continuous-implementation.md"
@@ -607,12 +612,13 @@
     },
     {
       "id": "P3-N002",
-      "title": "The comprehension model: resources, edges and renderings",
+      "title": "Comprehension model",
       "outcome": "One comprehension model, defined as an extension of the planning and execution model this project already has, plus one instance of it over this repository, populated from documents that already exist here.",
       "stage": "broken-down",
       "parent": "P3-N001",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p3-n002-comprehension-model.md",
         "spec": "docs/specs/p3-n002-comprehension-model.md"
@@ -622,12 +628,13 @@
     },
     {
       "id": "P3-N006",
-      "title": "The thin end-to-end slice: five real parts all the way through, and both renderings",
+      "title": "Thin end-to-end slice of the model",
       "outcome": "Five real parts of this repository carried through the model, the navigation bound and both renderings, in one commit, so that P3-N007 can define the type against content that has already pushed back.",
       "stage": "done",
       "parent": "P3-N002",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p3-n006-thin-end-to-end-slice.md",
         "spec": "docs/specs/p3-n002-comprehension-model.md"
@@ -637,12 +644,13 @@
     },
     {
       "id": "P3-N007",
-      "title": "The type declared, the arguments written, the K-003 amendment drafted",
+      "title": "Project model type and K-003 amendment draft",
       "outcome": "The Project model becomes a declared type of this repository, and the K-003 (the Backlog is the single source of progress truth) amendment exists as a reviewed proposal ready for the owner to carry.",
       "stage": "done",
       "parent": "P3-N002",
       "after": ["P3-N006"],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p3-n007-type-declared-amendment-drafted.md",
         "spec": "docs/specs/p3-n002-comprehension-model.md"
@@ -652,7 +660,7 @@
     },
     {
       "id": "P3-N008",
-      "title": "The instance, over this repository",
+      "title": "Project model instance for this repository",
       "outcome": "The instance describes every current part of the project.",
       "stage": "planned",
       "parent": "P3-N002",
@@ -661,6 +669,7 @@
         "kind": "gated",
         "reason": "owner review of the plan"
       },
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p3-n008-instance-over-this-repository.md",
         "spec": "docs/specs/p3-n002-comprehension-model.md"
@@ -670,12 +679,13 @@
     },
     {
       "id": "P3-N009",
-      "title": "Sibling ordering retired, and the checks that replace it",
+      "title": "Replacement of sibling ordering by recorded dependencies",
       "outcome": null,
       "stage": "identified",
       "parent": "P3-N002",
       "after": ["P3-N008"],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": null
@@ -685,12 +695,13 @@
     },
     {
       "id": "P3-N003",
-      "title": "The common risk catalogue",
+      "title": "Common risk catalogue",
       "outcome": "A catalogue of recurring risk classes, each carried from one instance to a check that reads the Risk register's class lines.",
       "stage": "broken-down",
       "parent": "P3-N001",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p3-n003-common-risk-catalogue.md",
         "spec": "docs/specs/p3-n003-common-risk-catalogue.md"
@@ -700,12 +711,13 @@
     },
     {
       "id": "P3-N010",
-      "title": "One class, carried end to end",
+      "title": "First risk class end to end",
       "outcome": "The catalogue exists with one entry.",
       "stage": "done",
       "parent": "P3-N003",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p3-n010-one-class-end-to-end.md",
         "spec": "docs/specs/p3-n003-common-risk-catalogue.md"
@@ -715,12 +727,13 @@
     },
     {
       "id": "P3-N011",
-      "title": "The sweep, the rest of the catalogue, and the omission list",
+      "title": "Catalogue sweep and omission list",
       "outcome": "Every candidate in the five sources that criterion B1 (one recorded pass per source) names is dispositioned on the record.",
       "stage": "done",
       "parent": "P3-N003",
       "after": ["P3-N010"],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p3-n011-sweep-and-omission-list.md",
         "spec": "docs/specs/p3-n003-common-risk-catalogue.md"
@@ -730,12 +743,13 @@
     },
     {
       "id": "P3-N012",
-      "title": "The Article 8 proposal, written IR first and reviewed",
+      "title": "Article 8 amendment proposal",
       "outcome": null,
       "stage": "identified",
       "parent": "P3-N003",
       "after": ["P3-N011"],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": null
@@ -745,12 +759,13 @@
     },
     {
       "id": "P3-N004",
-      "title": "Reversibility, and the measurement that says whether it pays",
+      "title": "Reversibility and its measurement",
       "outcome": null,
       "stage": "identified",
       "parent": "P3-N001",
       "after": ["P3-N002"],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": null
@@ -760,12 +775,13 @@
     },
     {
       "id": "P3-N005",
-      "title": "Sequence mode: the loop runs W-001's pre-ratified mode",
+      "title": "Sequence mode",
       "outcome": "This project's own dispatch loop runs methodology W-001's pre-ratified sequence mode, and the four conditions that stop a sequence are applied mechanically by the roles that meet them.",
       "stage": "broken-down",
       "parent": "P3-N001",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p3-n005-sequence-mode.md",
         "spec": "docs/specs/p3-n005-sequence-mode.md"
@@ -775,12 +791,13 @@
     },
     {
       "id": "P3-N013",
-      "title": "The four stop conditions, decidable, evidenced, and related to the meta-review signals",
+      "title": "Decidable stop conditions",
       "outcome": "W-001's four stop conditions exist as committed predicates that two blind readings apply identically to this project's past task results.",
       "stage": "done",
       "parent": "P3-N005",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p3-n013-stop-conditions-decidable.md",
         "spec": "docs/specs/p3-n005-sequence-mode.md"
@@ -790,12 +807,13 @@
     },
     {
       "id": "P3-N014",
-      "title": "The loop runs sequence mode, and the roles meet the conditions without looking",
+      "title": "Sequence mode in the dispatch loop",
       "outcome": "This project's dispatch loop can run methodology W-001 (two delivery modes, human-gated)'s pre-ratified sequence.",
       "stage": "done",
       "parent": "P3-N005",
       "after": ["P3-N013", "P1-N014"],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p3-n014-loop-runs-sequence-mode.md",
         "spec": "docs/specs/p3-n005-sequence-mode.md"
@@ -805,12 +823,13 @@
     },
     {
       "id": "P3-N015",
-      "title": "The demonstration: a ratified sequence lands two chunks and stops on asks",
+      "title": "Sequence mode demonstration",
       "outcome": "The owner ratifies a sequence of four members once.",
       "stage": "broken-down",
       "parent": "P3-N005",
       "after": ["P3-N014"],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p3-n015-sequence-demonstration.md",
         "spec": "docs/specs/p3-n005-sequence-mode.md"
@@ -820,12 +839,13 @@
     },
     {
       "id": "P3-N017",
-      "title": "The process specification cites the methodology at its pin",
+      "title": "Methodology citations pinned in the process specification",
       "outcome": "The owner ratifies a sequence of four members once.",
       "stage": "done",
       "parent": "P3-N015",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p3-n015-sequence-demonstration.md",
         "spec": null
@@ -835,12 +855,13 @@
     },
     {
       "id": "P3-N018",
-      "title": "Risk register entries can be linked one by one",
+      "title": "Anchors on Risk register entries",
       "outcome": "The owner ratifies a sequence of four members once.",
       "stage": "done",
       "parent": "P3-N015",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p3-n015-sequence-demonstration.md",
         "spec": null
@@ -850,12 +871,13 @@
     },
     {
       "id": "P3-N019",
-      "title": "The checker extension-point proposal is ready to carry",
+      "title": "Checker extension-point proposal ready to carry",
       "outcome": "The owner ratifies a sequence of four members once.",
       "stage": "done",
       "parent": "P3-N015",
       "after": [],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p3-n015-sequence-demonstration.md",
         "spec": null
@@ -865,12 +887,13 @@
     },
     {
       "id": "P3-N020",
-      "title": "The plugin tools are tested the way they run",
+      "title": "Plugin tools tested as run",
       "outcome": "The owner ratifies a sequence of four members once.",
       "stage": "specified",
       "parent": "P3-N015",
       "after": ["P3-N019"],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": "docs/plans/p3-n015-sequence-demonstration.md",
         "spec": null
@@ -880,12 +903,13 @@
     },
     {
       "id": "P3-N016",
-      "title": "The determination on W-001, and the artifact or the argument",
+      "title": "Determination on W-001 sequence mode",
       "outcome": null,
       "stage": "identified",
       "parent": "P3-N005",
       "after": ["P3-N015"],
       "hold": null,
+      "start": "auto",
       "docs": {
         "plan": null,
         "spec": null

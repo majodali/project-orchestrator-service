@@ -63,8 +63,9 @@ export const OUTCOME_MAX_WORDS = 40;
 /** A task summary is at most this many words. Imported narrative goes
  * in `notes`, which is unbounded and null for tool-written tasks. */
 export const SUMMARY_MAX_WORDS = 60;
-/** A title has at least this many words (invariant 4). */
-export const TITLE_MIN_WORDS = 3;
+/** A title has at least this many words (invariant 4). Titles are read
+ * in their tree, so two words can be enough: "Sequence mode". */
+export const TITLE_MIN_WORDS = 2;
 
 export const NODE_ID = /^P\d+-N\d+$/;
 export const TASK_ID = /^T\d{3,}$/;

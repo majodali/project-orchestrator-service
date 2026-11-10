@@ -1,6 +1,6 @@
 /**
- * The coordinating repository's state file at commit 325c502 (the head
- * of `main` after the rebuild's milestone 1 merged), as the view's
+ * The coordinating repository's state file at commit d4cbb7e (the
+ * owner's first review pass of 2026-11-10, on the rebuild branch), as the view's
  * fixture: `orchestration/state.json`, copied byte for byte except that
  * each model identifier (`claude-` and what follows) is replaced by
  * `recorded-model`, so no model identifier is held in this repository's
@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 
 import { FakeRepository } from "./view.js";
 
-export const COMMIT_325C502 = "325c5029b7479524a239f6f3e858263533dd6d2a";
+export const COMMIT_D4CBB7E = "d4cbb7e9b7479524a239f6f3e858263533dd6d2a";
 
 function fixture(name: string): string {
   return readFileSync(
@@ -27,17 +27,17 @@ function fixture(name: string): string {
   );
 }
 
-export const FILES_325C502: ReadonlyMap<string, string> = new Map([
-  ["orchestration/state.json", fixture("state.325c502.json")],
+export const FILES_D4CBB7E: ReadonlyMap<string, string> = new Map([
+  ["orchestration/state.json", fixture("state.d4cbb7e.json")],
 ]);
 
-/** A fake repository whose `main` head sits at 325c502, holding the
+/** A fake repository whose `main` head sits at d4cbb7e, holding the
  * state file there. */
-export function repository325c502(): FakeRepository {
+export function repositoryd4cbb7e(): FakeRepository {
   const repo = new FakeRepository();
-  repo.heads.set("main", COMMIT_325C502);
-  for (const [p, content] of FILES_325C502) {
-    repo.setFile(COMMIT_325C502, p, content);
+  repo.heads.set("main", COMMIT_D4CBB7E);
+  for (const [p, content] of FILES_D4CBB7E) {
+    repo.setFile(COMMIT_D4CBB7E, p, content);
   }
   return repo;
 }
