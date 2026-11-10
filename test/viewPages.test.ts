@@ -214,6 +214,17 @@ describe("the tree page", () => {
         summary: null,
       }),
     );
+    // A second root with nothing waiting below it folds in the default mode.
+    state.nodes.push(
+      node({
+        id: "P2-N002",
+        title: "A quiet part of the second line",
+        stage: "identified",
+        parent: "P2-N001",
+        outcome: null,
+      }),
+    );
+    state.nodes.find((n) => n.id === "P2-N001")!.stage = "broken-down";
     const repo = new FakeRepository();
     repo.heads.set("main", SHA_A);
     repo.setFile(SHA_A, "orchestration/state.json", stateJson(state));
@@ -225,6 +236,7 @@ describe("the tree page", () => {
 
     const owner = (await get(app, "/view")).html;
     expect(detailsOf(owner, "P1-N001")).toBe("<details open>");
+    expect(detailsOf(owner, "P2-N001")).toBe("<details>");
     expect(detailsOf(owner, "P1-N010")).toBe("<details open>");
     expect(detailsOf(owner, "P1-N012")).toBe("<details>");
     expect(owner).toContain('<strong data-open-mode="owner">');
