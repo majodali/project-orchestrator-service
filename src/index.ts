@@ -7,8 +7,8 @@
  * smoke test; it is not part of the running service. The MCP server
  * itself now lives in src/mcpServer.ts + src/httpApp.ts, run locally
  * via src/localServer.ts and deployed via src/lambda.ts (chunk 1
- * child B, node P2-N008 — see ../docs/backlog.md). Later children add
- * `plan_read` / `plan_lease_acquire` / `plan_update` / `plan_confirm`.
+ * child B, node P2-N008 — see ../docs/backlog.md). The tools over the
+ * state file live in src/stateTools.ts.
  */
 
 export const SERVICE_NAME = "project-orchestrator-service";

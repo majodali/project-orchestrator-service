@@ -10,6 +10,8 @@
 
 import { loadGithubAppConfig } from "../githubAppConfig.js";
 import { createInstallationTokenProvider } from "./githubAppAuth.js";
+import { GithubAppGitWriter } from "./gitWriter.js";
+import type { GitWriter } from "./gitWriter.js";
 import { GithubAppRegisterFetcher } from "./registerFetcher.js";
 import type { CommitReader, RegisterFetcher } from "./registerFetcher.js";
 
@@ -33,6 +35,30 @@ export class GithubAppNotConfiguredError extends Error {
 // cached token — instead of re-reading configuration and starting a
 // fresh cache on every call.
 let cached: GithubAppRegisterFetcher | null = null;
+let cachedWriter: GithubAppGitWriter | null = null;
+
+/** The writer the state store commits through: the same App and the
+ * same token as the reads (the rebuild, milestone 3). */
+export function getDefaultGitWriter(
+  env: NodeJS.ProcessEnv = process.env,
+): GitWriter {
+  if (cachedWriter) return cachedWriter;
+  const result = loadGithubAppConfig(env);
+  if (!result.ok) {
+    throw new GithubAppNotConfiguredError(result.missing);
+  }
+  const tokenProvider = createInstallationTokenProvider({
+    appId: result.config.appId,
+    installationId: result.config.installationId,
+    privateKey: result.config.privateKey,
+  });
+  cachedWriter = new GithubAppGitWriter(
+    result.config.owner,
+    result.config.repo,
+    tokenProvider,
+  );
+  return cachedWriter;
+}
 
 export function getDefaultRegisterFetcher(
   env: NodeJS.ProcessEnv = process.env,
@@ -79,4 +105,5 @@ function getDefaultGithubFetcher(
  * production code path. */
 export function resetDefaultRegisterFetcherForTests(): void {
   cached = null;
+  cachedWriter = null;
 }

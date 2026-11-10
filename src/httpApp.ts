@@ -1,24 +1,24 @@
 /**
- * The HTTP surface — chunk 1 child B, node P2-N008. One Hono app,
- * shared byte-for-byte between the local dev server (src/localServer.ts)
- * and the Lambda handler (src/lambda.ts), so what is verified locally
- * is what is deployed (no separate code path to drift).
+ * The HTTP surface. One Hono app, shared byte-for-byte between the
+ * local dev server (src/localServer.ts) and the Lambda handler
+ * (src/lambda.ts), so what is verified locally is what is deployed.
  *
  * Routes:
- *   GET  /health  — unauthenticated liveness check (no MCP framing;
- *                   for isolating "is anything listening" from "is
- *                   MCP answering" while working through the runbook).
+ *   GET  /health  — unauthenticated liveness check (no MCP framing).
  *   ALL  /mcp     — the MCP endpoint, bearer-token authenticated.
  *                   Stateless streamable HTTP: a fresh McpServer and
  *                   transport per request (no session store), and
  *                   `enableJsonResponse: true` so every response is a
  *                   single JSON body rather than an SSE stream — the
  *                   shape a buffered Lambda-proxy response can carry.
- *   GET  /view/sign-in, POST /view/sign-in, GET /view
- *                 — the web view (node P2-N021, task E1): server-rendered
- *                   pages of the coordinating repository's plan at one
- *                   commit, behind the view cookie, never the MCP bearer
- *                   token. See src/view/routes.ts.
+ *                   The tools read and write orchestration/state.json
+ *                   of the coordinating repository through the GitHub
+ *                   App (src/stateTools.ts).
+ *   GET  /view/sign-in, POST /view/sign-in, GET /view, GET /view/node/*,
+ *   GET  /view/task/*
+ *                 — the web view: server-rendered pages of the state
+ *                   file at one commit, behind the view cookie, never
+ *                   the MCP bearer token. See src/view/routes.ts.
  */
 
 import { Hono } from "hono";
@@ -28,83 +28,35 @@ import type { LambdaContext } from "hono/aws-lambda";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 
 import { requireBearerToken } from "./auth.js";
+import { parseInvokedQualifier } from "./lambdaQualifier.js";
 import { createMcpServer } from "./mcpServer.js";
 import type { CreateMcpServerOptions } from "./mcpServer.js";
 import { getServiceIdentity } from "./serviceInfo.js";
-import {
-  parseInvokedQualifier,
-  resolveAliasLeaseTable,
-} from "./planRegister/aliasLeaseTable.js";
-import { LazyAliasLeaseBackend } from "./planRegister/defaultLeaseBackend.js";
-import type { LeaseBackend } from "./planRegister/leaseBackend.js";
+import type { InvokedQualifierInfo } from "./serviceInfo.js";
 import { isViewPath, registerViewRoutes } from "./view/routes.js";
 import type { ViewOptions } from "./view/routes.js";
 
 export interface CreateAppOptions {
-  /** Forwarded to createMcpServer — test-only, see src/mcpServer.ts. */
-  planRegisterFetcher?: CreateMcpServerOptions["planRegisterFetcher"];
-  /**
-   * Forwarded to createMcpServer — test-only (used when this request
-   * carries no Lambda context; see resolveLambdaAliasContext below,
-   * which takes over entirely under real Lambda invocation, node
-   * P2-N015, I7).
-   */
-  planLeaseBackend?: CreateMcpServerOptions["planLeaseBackend"];
+  /** Test-only: the state tools' store and clock (src/stateTools.ts). */
+  state?: CreateMcpServerOptions["state"];
   /** Test-only: the web view's reader and clock (src/view/routes.ts). */
   view?: ViewOptions;
 }
 
-/** The shape `hono/aws-lambda`'s `handle()` puts on `c.env` — see
- * node_modules/hono/dist/adapter/aws-lambda/handler.js and child A's
- * finding (docs/findings/alias-assumptions.md, assumption 2). Neither
- * the local dev server (src/localServer.ts) nor `app.request()` calls
- * with no third `env` argument (every test in this repository) ever
- * populate this — `c.env` is `{}` for both. */
+/** The shape `hono/aws-lambda`'s `handle()` puts on `c.env`. Neither
+ * the local dev server nor `app.request()` calls with no third `env`
+ * argument ever populate this: `c.env` is `{}` for both. */
 interface LambdaEnvBindings {
   lambdaContext?: LambdaContext;
 }
 
-interface LambdaAliasContext {
-  qualifier: string;
-  /** `null` when the qualifier was refused (fail-closed). */
-  leaseTable: string | null;
-  leaseBackend: LeaseBackend;
-}
-
-/**
- * Reads the invoked Lambda qualifier from `c.env.lambdaContext.invokedFunctionArn`
- * (present only under a real `hono/aws-lambda` invocation — src/lambda.ts)
- * and resolves it to a lease table, failing closed. Returns `undefined`
- * — not a default — when there is no Lambda context at all, which is
- * exactly what scopes the fail-closed rule to Lambda (I7): the local
- * dev server and every test in this repository call `createApp()`
- * directly or use `app.request()` with no `env` argument, so this
- * always returns `undefined` for them and `options.planLeaseBackend` /
- * `LEASE_TABLE_NAME` keep resolving the table exactly as before.
- */
-function resolveLambdaAliasContext(c: Context): LambdaAliasContext | undefined {
+/** The invoked Lambda qualifier, for `service_identity`; undefined
+ * when there is no Lambda context at all. */
+function invokedQualifier(c: Context): InvokedQualifierInfo | undefined {
   const invokedFunctionArn = (c.env as LambdaEnvBindings | undefined)
     ?.lambdaContext?.invokedFunctionArn;
-  if (!invokedFunctionArn) {
-    return undefined;
-  }
-  // One lazy backend regardless of outcome (success or refusal) — it
-  // re-resolves on first actual use and throws the same fail-closed
-  // error every write tool would hit, so there is exactly one place
-  // the qualifier-to-table decision is made (aliasLeaseTable.ts), not
-  // two copies that could disagree.
-  const leaseBackend = new LazyAliasLeaseBackend(invokedFunctionArn);
-  try {
-    const resolved = resolveAliasLeaseTable(invokedFunctionArn);
-    return {
-      qualifier: resolved.qualifier,
-      leaseTable: resolved.tableName,
-      leaseBackend,
-    };
-  } catch {
-    const qualifier = parseInvokedQualifier(invokedFunctionArn) ?? "$LATEST";
-    return { qualifier, leaseTable: null, leaseBackend };
-  }
+  if (!invokedFunctionArn) return undefined;
+  return { qualifier: parseInvokedQualifier(invokedFunctionArn) ?? "$LATEST" };
 }
 
 export function createApp(options: CreateAppOptions = {}): Hono {
@@ -122,7 +74,7 @@ export function createApp(options: CreateAppOptions = {}): Hono {
     exposeHeaders: ["mcp-session-id", "mcp-protocol-version"],
   });
   // The web view is same-origin pages, not a cross-origin API: it gets
-  // no CORS headers and answers no preflight (node P2-N021, V17).
+  // no CORS headers.
   app.use("*", (c, next) =>
     isViewPath(c.req.path) ? next() : corsMiddleware(c, next),
   );
@@ -140,25 +92,13 @@ export function createApp(options: CreateAppOptions = {}): Hono {
     "/mcp",
     requireBearerToken(() => process.env.MCP_AUTH_TOKEN),
     async (c) => {
-      const aliasContext = resolveLambdaAliasContext(c);
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: undefined, // stateless: no session store
         enableJsonResponse: true, // single JSON response, not SSE
       });
       const server = createMcpServer({
-        planRegisterFetcher: options.planRegisterFetcher,
-        // Under real Lambda invocation, the alias-aware backend always
-        // wins — never falls back to options.planLeaseBackend, so a
-        // fail-closed refusal can never be masked by a test/dev
-        // override that happens to also be set (I3).
-        planLeaseBackend:
-          aliasContext?.leaseBackend ?? options.planLeaseBackend,
-        lambdaAliasInfo: aliasContext
-          ? {
-              qualifier: aliasContext.qualifier,
-              leaseTable: aliasContext.leaseTable,
-            }
-          : undefined,
+        state: options.state,
+        lambdaQualifier: invokedQualifier(c),
       });
       await server.connect(transport);
       try {

@@ -38,35 +38,16 @@ export interface ServiceIdentity {
   project: string;
   /**
    * The Lambda qualifier this request was invoked through ("live" /
-   * "preprod"), or the qualifier a fail-closed refusal saw (node
-   * P2-N015) — deliberately **absent** (not `null`; the key itself is
-   * omitted) rather than a placeholder value when this process is not
-   * running under Lambda at all (local dev server, the test suite),
-   * since there is no qualifier to report in that case. This is what
-   * turns "the right table was chosen" from an inference into one
-   * authenticated call (G3, G4 of the p2-n012 specification).
+   * "preprod" / "$LATEST"), deliberately absent, not null, when this
+   * process is not running under Lambda at all (the local dev server,
+   * the test suite). The smoke test reads it to know which alias
+   * answered.
    */
   invokedQualifier?: string;
-  /**
-   * The lease table *name* this request's qualifier resolved to.
-   * Absent whenever `invokedQualifier` is absent, and also absent when
-   * the qualifier was refused (fail-closed — an unrecognized qualifier
-   * resolves to no table). Deliberately the table's name only, never
-   * its ARN or any account identifier (S-001).
-   */
-  leaseTable?: string;
 }
 
-/**
- * Per-request Lambda-alias context, computed once in src/httpApp.ts
- * from `c.env.lambdaContext.invokedFunctionArn` and threaded through
- * src/mcpServer.ts to this module — see
- * src/planRegister/aliasLeaseTable.ts for how it is resolved.
- */
 export interface InvokedQualifierInfo {
   qualifier: string;
-  /** `null` when the qualifier was refused — no table was resolved. */
-  leaseTable: string | null;
 }
 
 const DEFAULT_PROJECT = "majodali/project-orchestrator";
@@ -81,12 +62,7 @@ export function getServiceIdentity(
     commit: env.SERVICE_COMMIT?.trim() || "unknown",
     project: env.MCP_PROJECT?.trim() || DEFAULT_PROJECT,
     ...(invokedQualifierInfo
-      ? {
-          invokedQualifier: invokedQualifierInfo.qualifier,
-          ...(invokedQualifierInfo.leaseTable !== null
-            ? { leaseTable: invokedQualifierInfo.leaseTable }
-            : {}),
-        }
+      ? { invokedQualifier: invokedQualifierInfo.qualifier }
       : {}),
   };
 }

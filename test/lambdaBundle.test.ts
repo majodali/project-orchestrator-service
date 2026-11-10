@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
  * every route, including the unauthenticated `GET /health`, returned
  * API Gateway's own `{"message":"Internal Server Error"}` — meaning
  * the Lambda function never initialized. Root cause:
- * `@aws-sdk/client-dynamodb` (introduced by the write path) reaches
+ * a CommonJS dependency (once `@aws-sdk/client-dynamodb`, since removed) reaches
  * `@smithy/node-http-handler`, which is CommonJS and `require()`s
  * Node builtins (`node:https`, etc.). `package.json`'s `bundle:lambda`
  * — and `template.yaml`'s `BuildProperties`, what `sam build` actually

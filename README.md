@@ -88,38 +88,37 @@ this checkout.
 This repository ships a real MCP server, served over streamable HTTP
 with bearer-token auth, runnable locally (`npm run dev`) and
 deployable to Lambda behind an HTTP API (`template.yaml`,
-`scripts/deploy.sh`, [`docs/runbook.md`](docs/runbook.md)). Six tools
-so far:
+`scripts/deploy.sh`, [`docs/runbook.md`](docs/runbook.md)). Seven
+tools, all over `orchestration/state.json` of the coordinating
+repository, the state file (the rebuild plan there,
+`docs/plans/rebuild.md`, milestone 3):
 
-- `service_identity` (chunk 1 child B, node P2-N008, the reachability
-  slice) — name, version, build commit, configured project;
-  deliberately near-empty of content, to prove the round trip before
-  any plan-state logic existed.
-- `plan_read` (chunk 1 child C, node P2-N009) — reads the coordinating
-  repository's real Plan register (`docs/plan-register.md`) at a git
-  ref, through an installed GitHub App (`contents: read`, never a
-  personal access token — decision 6 of the p2-n002 plan), and answers
-  whole-tree or subtree queries with the source commit SHA and fetch
-  time on every response. See `src/planReadTool.ts` and
-  `src/planRegister/`.
-- `plan_lease_acquire` / `plan_update` / `plan_confirm` /
-  `plan_lease_release` (chunk 1 child D, node P2-N010) — the
-  git-authoritative write path: acquire the project's single advisory
-  write lease (TTL-expiring; decision 7), get back the _exact_ register
-  edit for a legal stage transition (never applied by this service,
-  which holds no repository write credential — G4), apply it and push
-  it yourself, then confirm the commit actually carries it — a mismatch
-  is reported as a divergence naming the file and the line (I3, the R10
-  detection), not silently accepted. See `src/planWriteTools.ts` and
-  `src/planRegister/transitions.ts` / `updateEngine.ts` /
-  `leaseBackend.ts`.
+- `service_identity` — name, version, build commit, configured
+  project, and the Lambda alias that answered.
+- `plan_read` — the state file at a ref (default: the default
+  branch): every node with its class, the open decisions and tasks,
+  and the commit SHA; or one node in full with its tasks and
+  decisions.
+- `node_update`, `task_open`, `task_close`, `decision_open`,
+  `decision_close` — the writes. Each applies one change to the state
+  read at the branch head, checks the result against the model's
+  invariants and refuses a violation with nothing committed, renders
+  `docs/plan-register.md` and `docs/plan.md` from the new state,
+  appends one `state-written` event to `orchestration/journal.jsonl`,
+  and makes one commit on the default branch through the GitHub App,
+  with the head it read as the parent. The branch moving meanwhile
+  is the concurrency check: the ref update is refused, the store
+  reads again and retries once (`src/model/store.ts`,
+  `src/planRegister/gitWriter.ts`, `src/stateTools.ts`). The service
+  writes only those four paths; nothing else holds state, and there
+  is no lease.
 
 ### HTTP routes
 
 | Method and path            | Auth                        | Answers                                                                                                                                                                                                                                                                                                  |
 | -------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /health`              | none                        | liveness, as JSON                                                                                                                                                                                                                                                                                        |
-| `ANY /mcp`                 | `Authorization: Bearer`     | the MCP endpoint and its six tools                                                                                                                                                                                                                                                                       |
+| `ANY /mcp`                 | `Authorization: Bearer`     | the MCP endpoint and its seven tools                                                                                                                                                                                                                                                                     |
 | `GET /view/sign-in`        | none                        | the web view's sign-in form                                                                                                                                                                                                                                                                              |
 | `POST /view/sign-in`       | the view token, in the form | `303` to `/view` with the view cookie, or `401`                                                                                                                                                                                                                                                          |
 | `GET /view`                | the view cookie             | the plan of the coordinating repository at one commit, from `orchestration/state.json`: every node in its tree with its class and outcome, what waits on the owner marked in context and unfolded, and the problems `check` reports; `?ref=` picks a branch, tag or SHA; `?open=` picks what is unfolded |
@@ -254,40 +253,32 @@ repository by this task — is documented in
 
 ### Trying the write path locally
 
-The write-path tools need a lease backend and a register fetcher; a
-plain `npm run dev` has neither `LEASE_TABLE_NAME` nor the
-`GITHUB_APP_*` variables set, so `plan_lease_acquire` and `plan_read`
-both answer with a clear tool error rather than a crash. Every
-automated test in `test/` instead injects
-`src/planRegister/inMemoryLeaseBackend.ts` and a stub/fake
-`RegisterFetcher` through `createApp`'s `planLeaseBackend` /
-`planRegisterFetcher` options (`src/httpApp.ts` → `src/mcpServer.ts`)
-— see `test/planWriteTools.test.ts` for the MCP-level tool contract
-and `test/planUpdateGitExercise.test.ts` for the full
-lease-acquire → update → apply → commit → confirm round trip against a
-real, throwaway local git repository (the I1/I3 exercises,
-[docs/specs/p2-n002-service-skeleton.md](https://github.com/majodali/project-orchestrator/blob/main/docs/specs/p2-n002-service-skeleton.md)
-in the coordinating repository). There is no production code path that
-uses either injected implementation — `src/planRegister/defaultLeaseBackend.ts`
-and `src/planRegister/defaultFetcher.ts` are what a real deployment
-gets.
+The write tools need the GitHub App; a plain `npm run dev` has no
+`GITHUB_APP_*` variables set, so `plan_read` and the writes answer
+with a clear tool error rather than a crash. Every automated test in
+`test/` instead injects a `StateStore` over a fake repository through
+`createApp`'s `state` option (`test/stateTools.test.ts` for the tool
+contract and the store's conflict retry; `test/gitWriter.test.ts` for
+the Git Data API sequence against a fake GitHub). There is no
+production code path that uses the fake: a deployment gets
+`src/planRegister/defaultFetcher.ts`'s reader and writer over the
+App.
 
 ## Configuration and secrets
 
-| Variable                     | Required                | Meaning                                                                                                                                                                                                                                                                                                                                                                                                          |
-| ---------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MCP_AUTH_TOKEN`             | yes                     | The bearer token clients must present. No default — the server refuses every `/mcp` call with 500 if this is unset, rather than accepting all callers.                                                                                                                                                                                                                                                           |
-| `VIEW_TOKEN`                 | yes, for `/view`        | The web view's token (owner action O-view-1). A real secret, resolved from Secrets Manager at deploy time. Every `/view` route answers 500 if it is unset or equal to `MCP_AUTH_TOKEN`; `/mcp` is unaffected.                                                                                                                                                                                                    |
-| `PORT`                       | no (local only)         | Port `npm run dev` listens on. Default `8787`.                                                                                                                                                                                                                                                                                                                                                                   |
-| `SERVICE_COMMIT`             | no                      | Reported by `service_identity`. Set by `scripts/deploy.sh` from `git rev-parse HEAD`; unset locally defaults to `"unknown"`.                                                                                                                                                                                                                                                                                     |
-| `MCP_PROJECT`                | no                      | Reported by `service_identity`; also which `<owner>/<repo>` `plan_read` reads. Defaults to `majodali/project-orchestrator`.                                                                                                                                                                                                                                                                                      |
-| `GITHUB_APP_ID`              | yes, for `plan_read`    | The installed GitHub App's numeric ID (owner action O3). Not secret. `plan_read` fails with a clear tool error, not a crash, if unset.                                                                                                                                                                                                                                                                           |
-| `GITHUB_APP_INSTALLATION_ID` | yes, for `plan_read`    | The App's installation ID for `MCP_PROJECT` (owner action O3). Not secret.                                                                                                                                                                                                                                                                                                                                       |
-| `GITHUB_APP_PRIVATE_KEY`     | yes, for `plan_read`    | The App's PEM private key (owner action O3). A real secret — resolved from Secrets Manager at deploy time, see `template.yaml`.                                                                                                                                                                                                                                                                                  |
-| `LEASE_TABLE_NAME`           | yes, for the write path | The advisory write-lease DynamoDB table's name. Not secret — wired automatically by `template.yaml`'s `LeaseTable` resource on every deploy (node P2-N010); no owner action. `plan_lease_acquire` / `plan_update` / `plan_confirm` / `plan_lease_release` fail with a clear tool error, not a crash, if unset (e.g. a local `npm run dev` session with no override — see "Trying the write path locally" below). |
+| Variable                     | Required             | Meaning                                                                                                                                                                                                       |
+| ---------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MCP_AUTH_TOKEN`             | yes                  | The bearer token clients must present. No default — the server refuses every `/mcp` call with 500 if this is unset, rather than accepting all callers.                                                        |
+| `VIEW_TOKEN`                 | yes, for `/view`     | The web view's token (owner action O-view-1). A real secret, resolved from Secrets Manager at deploy time. Every `/view` route answers 500 if it is unset or equal to `MCP_AUTH_TOKEN`; `/mcp` is unaffected. |
+| `PORT`                       | no (local only)      | Port `npm run dev` listens on. Default `8787`.                                                                                                                                                                |
+| `SERVICE_COMMIT`             | no                   | Reported by `service_identity`. Set by `scripts/deploy.sh` from `git rev-parse HEAD`; unset locally defaults to `"unknown"`.                                                                                  |
+| `MCP_PROJECT`                | no                   | Reported by `service_identity`; also which `<owner>/<repo>` `plan_read` reads. Defaults to `majodali/project-orchestrator`.                                                                                   |
+| `GITHUB_APP_ID`              | yes, for `plan_read` | The installed GitHub App's numeric ID (owner action O3). Not secret. `plan_read` fails with a clear tool error, not a crash, if unset.                                                                        |
+| `GITHUB_APP_INSTALLATION_ID` | yes, for `plan_read` | The App's installation ID for `MCP_PROJECT` (owner action O3). Not secret.                                                                                                                                    |
+| `GITHUB_APP_PRIVATE_KEY`     | yes, for `plan_read` | The App's PEM private key (owner action O3). A real secret — resolved from Secrets Manager at deploy time, see `template.yaml`.                                                                               |
 
 `service_identity` alone (chunk 1 child B) needs none of the three
-`GITHUB_APP_*` variables, nor `LEASE_TABLE_NAME`; a deployment made
+`GITHUB_APP_*` variables; a deployment made
 before owner action O3 is complete still serves it, and `plan_read` /
 the write-path tools report a tool error naming what is missing rather
 than crashing the server. The convention, fixed from the start:

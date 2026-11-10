@@ -7,11 +7,12 @@ Transform: AWS::Serverless-2016-10-31
 Description: >
   project-orchestrator-service: one Lambda function behind an HTTP
   API, serving MCP over streamable HTTP — `service_identity`,
-  `plan_read`, and the advisory-lease write path (chunk 1). Node
-  P2-N015 (chunk 2) adds alias-aware lease-table selection: one
-  published version answers two Lambda aliases, `live` (production,
+  `plan_read`, and the write tools over the coordinating repository's
+  state file (the rebuild plan's milestone 3; no lease, no table).
+  Node P2-N015 (chunk 2): one published version answers two Lambda
+  aliases, `live` (production,
   bound to the HTTP API) and `preprod` (its own Function URL) — see
-  LiveAlias, PreprodAlias, and src/planRegister/aliasLeaseTable.ts
+  LiveAlias and PreprodAlias
   below for how. See docs/runbook.md for the deploy procedure and
   https://github.com/majodali/project-orchestrator/blob/main/docs/plans/p2-n012-deploy-from-ci-on-merge.md
   for why.
@@ -214,9 +215,9 @@ Resources:
         OutExtension:
           - .js=.mjs
         # Node P2-N010 rework (post-deploy 500 on every route,
-        # including /health): @aws-sdk/client-dynamodb pulls in
-        # @smithy/node-http-handler, which is CommonJS and
-        # require()s Node builtins (e.g. "node:https"). Under
+        # including /health): a CommonJS dependency (then
+        # @aws-sdk/client-dynamodb, since removed with the lease table
+        # at the rebuild's milestone 3) require()d Node builtins. Under
         # --format=esm there is no `require`, so esbuild's own
         # dynamic-require shim throws at import time and the Lambda
         # function never initializes — API Gateway's own 500, not the
@@ -257,35 +258,6 @@ Resources:
           # routes refuse to run when it is unset or equal to
           # MCP_AUTH_TOKEN (src/view/viewAuth.ts).
           VIEW_TOKEN: !Sub "{{resolve:secretsmanager:${ViewTokenSecretName}:SecretString}}"
-          # The write path (chunk 1 child D, node P2-N010) — the
-          # advisory write lease's only storage when invoked
-          # unqualified (local dev, tests) or via the `live` alias
-          # (node P2-N015 — see src/planRegister/aliasLeaseTable.ts).
-          # Never register content, only the lease; see LeaseTable
-          # below.
-          LEASE_TABLE_NAME: !Ref LeaseTable
-          # node P2-N015: the `preprod` alias's own lease table — see
-          # PreprodLeaseTable below. Read only through the qualifier
-          # read (src/planRegister/aliasLeaseTable.ts); never touched
-          # when this process has no invoked qualifier at all (I7).
-          PREPROD_LEASE_TABLE_NAME: !Ref PreprodLeaseTable
-      Policies:
-        # Scoped exactly to LeaseTable and PreprodLeaseTable — no other
-        # DynamoDB table this function's role can touch.
-        # src/planRegister/dynamoLeaseBackend.ts only ever calls
-        # GetItem/PutItem/DeleteItem, all of which this SAM policy
-        # template covers. One function, one execution role, serving
-        # both aliases (environment variables are per-version, not
-        # per-alias — docs/findings/alias-assumptions.md, assumption
-        # 1) — so the role needs both tables' worth of access; the
-        # qualifier read at request time (I3) is what keeps a `preprod`
-        # invocation from ever touching LeaseTable and vice versa, not
-        # a narrower IAM grant (IAM here cannot see which alias
-        # invoked it).
-        - DynamoDBCrudPolicy:
-            TableName: !Ref LeaseTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref PreprodLeaseTable
       # No Events: here (node P2-N015) — SAM's `HttpApi` event-source
       # sugar always binds to the function's own unqualified ARN
       # ($LATEST), which is exactly the untested-code-served-on-every-
@@ -296,59 +268,6 @@ Resources:
       # LiveInvokePermission) instead.
       Tags:
         Stage: !Ref Stage
-
-  LeaseTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      # Chunk 1 scope (plan decision 4): plan state for this
-      # repository only — a single fixed lease item
-      # (src/planRegister/leaseBackend.ts's LEASE_KEY), never one
-      # table per project or per node. Contention under multiple live
-      # sessions is deferred to chunk 4 (decision 7); this table's
-      # shape does not need to anticipate it.
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: pk
-          AttributeType: S
-      KeySchema:
-        - AttributeName: pk
-          KeyType: HASH
-      TimeToLiveSpecification:
-        # Best-effort cleanup only — AWS documents native TTL deletion
-        # as running within (not guaranteed under) about 48 hours of
-        # expiry. The authoritative expiry check is application-level,
-        # in src/planRegister/dynamoLeaseBackend.ts's acquireLease
-        # ConditionExpression (expiresAt < :now), not this attribute.
-        AttributeName: ttl
-        Enabled: true
-      Tags:
-        - Key: Stage
-          Value: !Ref Stage
-
-  PreprodLeaseTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      # node P2-N015 — the `preprod` alias's own lease table, the same
-      # shape as LeaseTable above (matching key schema, deliberately:
-      # both are the same DynamoLeaseBackend code, just pointed at
-      # different tables by the qualifier read). Permanent, not
-      # created per run — the same "one fixed lease item, not one
-      # table per project or per node" scope decision LeaseTable's own
-      # comment states, and the same reason: contention handling is
-      # chunk 4, not this node's to anticipate.
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: pk
-          AttributeType: S
-      KeySchema:
-        - AttributeName: pk
-          KeyType: HASH
-      TimeToLiveSpecification:
-        AttributeName: ttl
-        Enabled: true
-      Tags:
-        - Key: Stage
-          Value: !Ref Stage
 
   LiveAlias:
     Type: AWS::Lambda::Alias
@@ -597,16 +516,3 @@ Outputs:
   McpFunctionName:
     Description: The deployed Lambda function's name (for `aws logs tail`, etc.).
     Value: !Ref McpFunction
-  LeaseTableName:
-    Description: >
-      The production (`live`) advisory write-lease table's name (for
-      `aws dynamodb get-item`, etc., if a lease ever needs inspecting
-      by hand).
-    Value: !Ref LeaseTable
-  PreprodLeaseTableName:
-    Description: >
-      The `preprod` advisory write-lease table's name (node P2-N015) —
-      what G3's two-tables-one-observation check reads directly to
-      confirm a preprod-invoked lease acquire did not land in the
-      production table.
-    Value: !Ref PreprodLeaseTable
