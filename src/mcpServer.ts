@@ -1,12 +1,9 @@
 /**
- * The MCP server itself. `service_identity` (chunk 1 child B, node
- * P2-N008, the reachability slice) proves a session can call this
- * service at all, over an authenticated transport, and get a real
- * answer back. `plan_read` (chunk 1 child C, node P2-N009) is the
- * first real plan-state tool — see src/planReadTool.ts.
- * `plan_lease_acquire` / `plan_update` / `plan_confirm` /
- * `plan_lease_release` (chunk 1 child D, node P2-N010) are the write
- * path — see src/planWriteTools.ts.
+ * The MCP server: `service_identity`, and the state tools of
+ * src/stateTools.ts, which read and write orchestration/state.json of
+ * the coordinating repository through the installed GitHub App (the
+ * rebuild plan, milestone 3). Nothing else holds state: no lease, no
+ * table.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -14,10 +11,8 @@ import { z } from "zod";
 
 import { getServiceIdentity } from "./serviceInfo.js";
 import type { InvokedQualifierInfo } from "./serviceInfo.js";
-import { registerPlanReadTool } from "./planReadTool.js";
-import { registerPlanWriteTools } from "./planWriteTools.js";
-import type { RegisterFetcher } from "./planRegister/registerFetcher.js";
-import type { LeaseBackend } from "./planRegister/leaseBackend.js";
+import { registerStateTools } from "./stateTools.js";
+import type { StateToolsOptions } from "./stateTools.js";
 
 const identityOutputShape = {
   service: z.string().describe("The service's own name."),
@@ -34,58 +29,31 @@ const identityOutputShape = {
     .string()
     .optional()
     .describe(
-      'The Lambda alias this request was invoked through ("live" / "preprod"), ' +
-        "or the qualifier a fail-closed refusal saw. Absent when this process is not " +
-        "running under Lambda at all (local dev server, test suite) — node P2-N015.",
-    ),
-  leaseTable: z
-    .string()
-    .optional()
-    .describe(
-      "The lease table name invokedQualifier resolved to. Absent when " +
-        "invokedQualifier is absent, or when the qualifier was refused " +
-        "(fail-closed — no table was resolved). Never an ARN or account " +
-        "identifier.",
+      'The Lambda alias this request was invoked through ("live" / "preprod" / "$LATEST"). ' +
+        "Absent when this process is not running under Lambda at all.",
     ),
 } as const;
 
 const identityOutputSchema = z.object(identityOutputShape);
 
 export interface CreateMcpServerOptions {
-  /**
-   * Overrides `plan_read` and the write path's GitHub fetcher —
-   * test-only. Production call sites (src/httpApp.ts) omit this and
-   * get the real, GitHub-App-backed fetcher built lazily from
-   * environment configuration (src/planRegister/defaultFetcher.ts).
-   */
-  planRegisterFetcher?: RegisterFetcher;
-  /**
-   * Overrides the write path's lease backend — test-only (and used by
-   * a local `npm run dev` session with no DynamoDB configured, via
-   * src/planRegister/inMemoryLeaseBackend.ts), **or** the real
-   * alias-aware backend src/httpApp.ts builds for a genuine Lambda
-   * invocation (node P2-N015 — see
-   * src/planRegister/defaultLeaseBackend.ts's `LazyAliasLeaseBackend`).
-   * Production call sites with no Lambda context (should not occur
-   * outside Lambda) omit this and get the real, DynamoDB-backed
-   * backend built lazily from `LEASE_TABLE_NAME`
-   * (src/planRegister/defaultLeaseBackend.ts's `getDefaultLeaseBackend`).
-   */
-  planLeaseBackend?: LeaseBackend;
-  /**
-   * The invoked Lambda qualifier and the lease table it resolved to
-   * (or `undefined` for both when it was refused) — forwarded
-   * verbatim into `service_identity`'s response (node P2-N015, G3/G4).
-   * `undefined` when this process is not running under Lambda at all.
-   */
-  lambdaAliasInfo?: InvokedQualifierInfo;
+  /** Test-only: the state tools' store and clock. */
+  state?: StateToolsOptions;
+  /** The invoked Lambda qualifier, forwarded into `service_identity`;
+   * undefined outside Lambda. */
+  lambdaQualifier?: InvokedQualifierInfo;
 }
 
-/**
- * Builds a fresh `McpServer` instance. Called once per request in
- * stateless mode (see `src/httpApp.ts`) — the server carries no state
- * of its own, so there is nothing to share or clean up between calls.
- */
+export const TOOL_NAMES = [
+  "service_identity",
+  "plan_read",
+  "node_update",
+  "task_open",
+  "task_close",
+  "decision_open",
+  "decision_close",
+] as const;
+
 export function createMcpServer(
   options: CreateMcpServerOptions = {},
 ): McpServer {
@@ -100,16 +68,13 @@ export function createMcpServer(
       title: "Service identity",
       description:
         "Returns this service's own name, version, build commit, and configured " +
-        "project — the reachability slice's proof that a session can reach the " +
-        "deployed, authenticated MCP server at all (R11). Carries no plan state.",
+        "project — the proof that a session can reach the deployed, authenticated " +
+        "MCP server at all. Carries no plan state.",
       inputSchema: {},
       outputSchema: identityOutputShape,
     },
     () => {
-      const identity = getServiceIdentity(process.env, options.lambdaAliasInfo);
-      // Validated against outputSchema by the SDK before it leaves the
-      // process; parsing here as well only to get a fully-typed value
-      // for the structuredContent field.
+      const identity = getServiceIdentity(process.env, options.lambdaQualifier);
       const structuredContent = identityOutputSchema.parse(identity);
       return {
         content: [
@@ -120,11 +85,7 @@ export function createMcpServer(
     },
   );
 
-  registerPlanReadTool(server, options.planRegisterFetcher);
-  registerPlanWriteTools(server, {
-    fetcherOverride: options.planRegisterFetcher,
-    leaseBackendOverride: options.planLeaseBackend,
-  });
+  registerStateTools(server, options.state);
 
   return server;
 }

@@ -6,6 +6,14 @@
 
 import { expect } from "vitest";
 
+import { createHash } from "node:crypto";
+
+import type {
+  CommitRequest,
+  CommitResult,
+  GitWriter,
+} from "../../src/planRegister/gitWriter.js";
+import { GitConflictError } from "../../src/planRegister/gitWriter.js";
 import type {
   CommitReader,
   ResolvedCommit,
@@ -31,7 +39,7 @@ export const NOW_SECONDS = Math.floor(NOW.getTime() / 1000);
  * A `CommitReader` over an in-memory repository: branch heads that a
  * test can move, and file content by SHA. It records every call.
  */
-export class FakeRepository implements CommitReader {
+export class FakeRepository implements CommitReader, GitWriter {
   readonly owner = OWNER;
   readonly repo = REPO;
   readonly defaultBranch = "main";
@@ -67,6 +75,45 @@ export class FakeRepository implements CommitReader {
     }
     this.afterResolve?.();
     return { ref: name, sha };
+  }
+
+  /** Every commit made through `commitFiles`, oldest first. */
+  readonly commits: Array<{
+    sha: string;
+    parent: string;
+    message: string;
+    files: Map<string, string>;
+  }> = [];
+
+  /** A fast-forward commit on `branch`, as the GitHub writer makes it:
+   * refused with `GitConflictError` when the head is not the expected
+   * one. The new SHA is a hash of the parent and the files. */
+  async commitFiles(request: CommitRequest): Promise<CommitResult> {
+    const head = this.heads.get(request.branch);
+    if (head !== request.expectedHeadSha) {
+      throw new GitConflictError(
+        request.branch,
+        request.expectedHeadSha,
+        head ?? null,
+      );
+    }
+    const hash = createHash("sha1").update(
+      request.expectedHeadSha + request.message,
+    );
+    for (const [path, content] of request.files)
+      hash.update(path).update(content);
+    const sha = hash.digest("hex");
+    const files = new Map(this.files.get(request.expectedHeadSha) ?? []);
+    for (const [path, content] of request.files) files.set(path, content);
+    this.files.set(sha, files);
+    this.heads.set(request.branch, sha);
+    this.commits.push({
+      sha,
+      parent: request.expectedHeadSha,
+      message: request.message,
+      files: new Map(request.files),
+    });
+    return { sha };
   }
 
   async readFileAtSha(sha: string, path: string): Promise<string> {

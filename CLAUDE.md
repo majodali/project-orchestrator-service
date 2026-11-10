@@ -41,10 +41,12 @@ cache — amend it upstream, never here.
 
 An MCP service that lets a Claude Code session read and update the
 plan state of
-[majodali/project-orchestrator](https://github.com/majodali/project-orchestrator) —
-deployed on AWS Lambda / HTTP API / DynamoDB, enlisted from a
-checked-in `.mcp.json`. Git remains the only source of truth; this
-service is a projection and a validator, never a second writer. See
+[majodali/project-orchestrator](https://github.com/majodali/project-orchestrator),
+the state file `orchestration/state.json` — deployed on AWS Lambda
+and HTTP API, enlisted from a checked-in `.mcp.json`. Git remains the
+only source of truth: the service validates every change and commits
+it to the repository through its GitHub App; it holds no state of its
+own. See
 README.md for the full picture and the coordinating repository's
 [orchestration-service plan](https://github.com/majodali/project-orchestrator/blob/main/docs/plans/orchestration-service.md)
 for why it exists.
@@ -61,21 +63,24 @@ npm run lint            # eslint .
 npm run format           # prettier --check .
 ```
 
-Node 22+. A real MCP server exists — `service_identity` (chunk 1 child
-B, node P2-N008) and `plan_read` (chunk 1 child C, node P2-N009,
-through an installed GitHub App) — runnable locally and deployable to
-Lambda — see README.md "Build / run / test" and docs/runbook.md.
+Node 22+. A real MCP server exists — `service_identity`, `plan_read`
+and the five write tools over the state file, through an installed
+GitHub App — runnable locally and deployable to Lambda — see README.md
+"Build / run / test" and docs/runbook.md.
 Nothing is deployed by cloning this repository; deployment is an owner
 action (docs/runbook.md). See docs/backlog.md for what has shipped and
 what is next.
 
 ## Architecture at a glance
 
-`src/` holds the service implementation: `mcpServer.ts` (the
-`service_identity` tool), `httpApp.ts` (the Hono app: auth + `/mcp` +
-`/health`, shared by both entry points below), `auth.ts` (bearer-token
-check), `serviceInfo.ts` (identity payload), `localServer.ts` (local
-dev entry point), `lambda.ts` (AWS Lambda entry point). `template.yaml`
+`src/` holds the service implementation: `model/` (the state file's
+schema, invariants, renderings, importer, store and the `plan-state`
+CLI), `stateTools.ts` (the MCP tools over it), `mcpServer.ts`,
+`httpApp.ts` (the Hono app: auth + `/mcp` + `/view` + `/health`,
+shared by both entry points below), `planRegister/` (the GitHub App
+reader and writer), `view/` (the web view), `auth.ts`,
+`serviceInfo.ts`, `localServer.ts` (local dev entry point), `lambda.ts`
+(AWS Lambda entry point). `template.yaml`
 and `scripts/deploy.sh` are the infrastructure and the one-command
 deploy. `docs/` holds this repository's own Classification, Backlog,
 the deploy runbook, and the `.mcp.json` enlistment template. This
@@ -94,9 +99,11 @@ entries live there (docs/classification.md § Custom definitions).
 - No secret is ever committed. Configuration and credentials arrive
   only through environment variables (README.md "Configuration and
   secrets").
-- This service never writes git. A session with the service
-  unreachable degrades to the v1 process cleanly (standing constraint
-  of the parent plan).
+- This service writes git only under the allowlist in
+  `src/model/store.ts`: the state file, its two renderings and the
+  journal, one commit per change, on the default branch, as its
+  GitHub App (the rebuild plan, decision 2). It never writes anything
+  else, and nothing else holds state.
 
 ## Pointers
 

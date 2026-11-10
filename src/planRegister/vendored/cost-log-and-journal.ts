@@ -62,6 +62,8 @@ export const JOURNAL_EVENT_KINDS: ReadonlySet<string> = new Set([
   "edge-recorded",
   "unblocked",
   "risk-opened",
+  // A write of the state file by the service (the rebuild, milestone 3).
+  "state-written",
 ]);
 
 // ---- Cost log -------------------------------------------------------------

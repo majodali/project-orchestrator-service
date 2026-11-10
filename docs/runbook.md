@@ -12,14 +12,15 @@ to a deployed, authenticated MCP endpoint answering the
 `service_identity` tool (chunk 1 child B, node P2-N008 — the
 reachability slice), the `plan_read` tool (chunk 1 child C, node
 P2-N009 — the first real plan-state read, through an installed GitHub
-App), and the write path — `plan_lease_acquire` / `plan_update` /
-`plan_confirm` / `plan_lease_release` (chunk 1 child D, node P2-N010).
-**This service itself never writes to git** — the write path validates
-a transition and returns the exact edit to make; the calling session
-applies it, commits it, and pushes (G4). No owner action changes for
-child D: the advisory lease's DynamoDB table (`LeaseTable` in
-`template.yaml`) is provisioned by the same `sam deploy` Step 3
-already runs, with no secret and no new required environment
+App), and the write path — `node_update`, `task_open`, `task_close`,
+`decision_open`, `decision_close` (the rebuild plan's milestone 3).
+**The service writes git only under its allowlist** (the state file,
+its two renderings and the journal, `src/model/store.ts`): each write
+tool validates the result, refuses a violation with nothing
+committed, and otherwise makes one commit on the default branch as
+the installed GitHub App. The one owner action the write path adds
+is the App's `Contents: Read and write` permission (Step 2); there is
+no lease, no DynamoDB table, and no new secret or environment
 variable.
 
 ## What you need before you start
@@ -61,14 +62,18 @@ aws secretsmanager create-secret \
 
 ## Step 2 — Configure GitHub App access (O3)
 
-`plan_read` reads the coordinating repository's Plan register through
-a GitHub App installation with `contents: read` — decision 6 of the
-p2-n002 plan, never a personal access token.
+`plan_read` reads the coordinating repository's state file, and the
+write tools commit to it, through a GitHub App installation with
+`contents: read and write` — decision 6 of the p2-n002 plan and
+decision 2 of the rebuild plan, never a personal access token.
 
 1. Create the App: GitHub → **Settings → Developer settings → GitHub
    Apps → New GitHub App**. Repository permissions: **Contents:
-   Read-only**. No webhook is needed for chunk 1 — uncheck "Active"
-   under Webhook, or leave the URL blank.
+   Read and write** (read-only was enough until the rebuild's
+   milestone 3; an App created earlier needs the permission raised
+   and the new permission approved on its installation). No webhook
+   is needed — uncheck "Active" under Webhook, or leave the URL
+   blank.
 2. Generate a private key for the App (App settings → **Generate a
    private key**) — this downloads a `.pem` file once; it cannot be
    downloaded again later.
@@ -113,10 +118,8 @@ the missing `ViewTokenSecretName` parameter, which has no default.
 
 It builds with esbuild (`template.yaml`'s `Metadata.BuildMethod`,
 bundling `src/lambda.ts`), deploys via CloudFormation
-(`--resolve-s3`, so no bucket needs to exist beforehand — this also
-provisions `LeaseTable`, the advisory write lease's DynamoDB table,
-node P2-N010; nothing extra to configure for it), and prints the
-stack's `Endpoint` output. **Report that URL** — it is the value
+(`--resolve-s3`, so no bucket needs to exist beforehand), and prints
+the stack's `Endpoint` output. **Report that URL** — it is the value
 `.mcp.json` needs (Step 6) and what this runbook's verification steps
 below call `$ENDPOINT`.
 
@@ -124,7 +127,7 @@ below call `$ENDPOINT`.
 `https://…execute-api…amazonaws.com` URL — no stage segment (see "Why
 the endpoint has no stage segment" below).
 
-### Alias-aware lease-table selection (node P2-N015)
+### The `live` and `preprod` aliases (node P2-N015)
 
 `$ENDPOINT` now resolves through the `live` Lambda alias, not the
 function's bare `$LATEST` — see "Why `live` is a plain alias, and why
@@ -138,8 +141,7 @@ real version, not `$LATEST`.** A first-ever deploy of this node's
 bootstrap" for what that state actually requires before the next
 deploy. A second, permanent Lambda alias, `preprod`, is also
 provisioned, with its own Function URL (`PreprodEndpoint` in the stack
-outputs) and its own DynamoDB table (`PreprodLeaseTable`) — this is
-what child D's CI pipeline (node P2-N016) deploys and smoke-tests
+outputs) — this is what child D's CI pipeline (node P2-N016) deploys and smoke-tests
 against before promoting `live`. Promotion itself — repointing `live`
 to a tested version — is not part of this script; it is a direct
 `aws lambda update-alias` call child D's pipeline makes, never a
@@ -246,7 +248,8 @@ read-back and risk resetting `live`. Promotion is always a direct
 `bundle:lambda` script, the identical bundle for local checking) defines
 a real `require` via `node:module`'s `createRequire` before any bundled
 code runs. This was added as node P2-N010 rework, fixing a post-deploy
-outage: `@aws-sdk/client-dynamodb` (the write path) reaches
+outage: `@aws-sdk/client-dynamodb` (then the write path's lease
+store; removed with the lease at the rebuild's milestone 3) reached
 `@smithy/node-http-handler`, which is CommonJS and `require()`s Node
 builtins; under this template's `--format=esm` there is no ambient
 `require`, so esbuild's own dynamic-require shim threw
@@ -331,20 +334,10 @@ curl -sS -i -X POST "$ENDPOINT/mcp" \
   -H "Authorization: Bearer $MCP_AUTH_TOKEN" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"plan_read","arguments":{}}}'
 
-# The write path's lease, exercised without touching the real
-# register (a full plan_update/plan_confirm round trip against real
-# content is the gate demonstration itself — see the p2-n002
-# specification's G3). Expect 200 and a token in structuredContent,
-# then a second 200 with {"released": true}.
-curl -sS -i -X POST "$ENDPOINT/mcp" \
-  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
-  -H "Authorization: Bearer $MCP_AUTH_TOKEN" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"plan_lease_acquire","arguments":{"holder":"runbook-verification"}}}'
-# copy the "token" field from the response above into $LEASE_TOKEN
-curl -sS -i -X POST "$ENDPOINT/mcp" \
-  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
-  -H "Authorization: Bearer $MCP_AUTH_TOKEN" \
-  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"plan_lease_release\",\"arguments\":{\"leaseToken\":\"$LEASE_TOKEN\"}}}"
+# There is no write-path check here on purpose: every write tool
+# commits to the coordinating repository's default branch, so the
+# write path is exercised only by Step 7's real change, never by a
+# verification curl.
 ```
 
 The `service_identity` call's `structuredContent` should report
@@ -359,8 +352,8 @@ branch HEAD at the moment you ran it — cross-check on GitHub.
 was run without Step 2's values (or they do not match what
 `template.yaml`'s parameters resolved) — re-run Step 3 with them set.
 **If it returns a tool error citing a GitHub API status (401/403/404):**
-recheck Step 2 — the App's installation, its `Contents: Read-only`
-permission, and the installation ID all matter; the private key in
+recheck Step 2 — the App's installation, its `Contents: Read and
+write` permission, and the installation ID all matter; the private key in
 Secrets Manager must be the one downloaded for this same App.
 
 ## Step 7 — Enlist a session
@@ -389,20 +382,20 @@ Clone the coordinating repository fresh in both a local terminal
 session and a Claude Code web session, with only `MCP_AUTH_TOKEN` set
 in the environment (no other configuration). In each:
 
-1. List tools — `service_identity`, `plan_read`, `plan_lease_acquire`,
-   `plan_update`, `plan_confirm`, and `plan_lease_release` should all
-   appear.
+1. List tools — `service_identity`, `plan_read`, `node_update`,
+   `task_open`, `task_close`, `decision_open`, and `decision_close`
+   should all appear.
 2. Call `service_identity` — it should return within the configured
    timeout, matching Step 6's `curl` output.
 3. Call `plan_read` — it should return within the configured timeout,
    matching Step 6's `curl` output, and match what the coordinating
    repository's `docs/plan-register.md` shows on GitHub at the
    reported SHA.
-4. Move a real node through a real stage transition end to end
-   (`plan_lease_acquire` -> `plan_update` -> apply the returned edit,
-   commit, push -> `plan_confirm`) — the gate demonstration itself
-   (p2-n002 specification, G3/G4); not a routine part of this runbook,
-   named here so it is not missed.
+4. Move a real node through a stage with one `node_update` call —
+   the commit appears on the coordinating repository's `main` as the
+   App, and `/view` shows the node at the new SHA (the rebuild plan's
+   milestone 3 acceptance); not a routine part of this runbook, named
+   here so it is not missed.
 
 **If the web surface cannot reach the endpoint** (a platform egress
 block, not an auth or deploy problem — distinguishable because the
@@ -952,8 +945,8 @@ and the production endpoint, not from anyone's report:
   > returned 200, expected 204 — DELIBERATE: node P2-N016 criterion G5,
   > task T037.
 
-  Check 1 of 3, so no lease was ever acquired against the preprod
-  table during the demonstration.
+  Check 1 of 3, so checks 2 and 3 never ran during the
+  demonstration.
 
 - **Promotion never happened.** Step 14, "Promote — repoint live",
   conclusion `skipped`. The steps share one job, so a non-zero exit
@@ -1097,58 +1090,33 @@ cloudformation:CreateChangeSet action`** — the deploying principal's
   the Lambda never calls Secrets Manager itself).
 - **`plan_read` returns a tool error naming missing `GITHUB_APP_*`
   variables** — see Step 6's troubleshooting note above.
-- **`plan_lease_acquire` / `plan_update` / `plan_confirm` /
-  `plan_lease_release` return a tool error naming `LEASE_TABLE_NAME`**
-  — this should not happen from a stack deployed by `scripts/deploy.sh`
-  (`template.yaml` always wires `LEASE_TABLE_NAME` from `LeaseTable`);
-  if it does, the deployed function's environment does not match this
-  template — re-run Step 3. A tool error citing an AWS/DynamoDB error
-  instead (rather than naming the missing variable) means
-  `LeaseTable` exists but the function's role cannot reach it — check
-  `template.yaml`'s `McpFunction.Properties.Policies` (a
-  `DynamoDBCrudPolicy` scoped to `LeaseTable`) actually deployed
-  (`aws cloudformation describe-stack-resources`).
-- **`plan_confirm` (or `plan_lease_release`) returns `confirmed, but
-could not release the lease: could not reach the write-lease store:
-... Invalid ConditionExpression: Attribute name is a reserved
-keyword; reserved keyword: <name>`** — a real production defect
-  (node P2-N010 rework, T027), already fixed for `token` in
-  `src/planRegister/dynamoLeaseBackend.ts`'s `releaseLease`: DynamoDB
-  rejects an attribute name used bare in an expression when that name
-  is one of its reserved words (the full list runs to several
-  hundred; `AND`, `NAME`, `DATE`, `SIZE`, `TOKEN`, `STATUS`, and
-  `TYPE` are common collisions), unless it is aliased through
-  `ExpressionAttributeNames`. If this recurs — a new attribute name
-  added to this file's `ConditionExpression` /
-  `KeyConditionExpression` / `ProjectionExpression` without checking
-  it against `src/planRegister/dynamoReservedWords.ts` first — the
-  confirmation or update itself still succeeded (this message only
-  ever follows a successful write); the lease is left to expire by
-  TTL rather than at risk. Fix the expression the same way, and see
-  `test/dynamoExpressionSafety.test.ts`, which checks every expression
-  this file builds against that reserved-word list without needing a
-  real DynamoDB table.
+- **A write tool (`node_update` etc.) returns a tool error citing
+  GitHub status 403 on `git/blobs`, `git/trees`, `git/commits` or the
+  ref update** — the App's installation lacks `Contents: Read and
+write` (Step 2): raise the permission on the App, approve it on the
+  installation, and retry; nothing was committed.
+- **A write tool reports that `main` moved since it was read** —
+  the concurrency check (`src/planRegister/gitWriter.ts`): the store
+  already re-read and retried once; a second conflict in a row means
+  another writer is active. Call the tool again; nothing was
+  committed.
+- **A write tool reports `refused: the change would violate the
+state's invariants`** — the state at `main` plus this change fails
+  `plan-state check`; the message names each violation. Fix the
+  change (or the state, in the coordinating repository) and retry;
+  nothing was committed.
 - **Local surface works, web surface does not** — this is O5, not a
   deploy defect; see Step 7.
-- **A write-path tool (`plan_lease_acquire` etc.) returns `could not
-reach the write-lease store: refusing to select a lease table: the
-invoked Lambda qualifier "..." is neither "live" nor "preprod" —
-failing closed...`** (node P2-N015) — this call was invoked through
-  something other than the `live` or `preprod` alias (`$LATEST`
-  included). It should not be reachable from either the production
-  endpoint (bound to `live`) or the preprod Function URL (bound to
-  `preprod`) — if you see this against `$ENDPOINT` or
-  `$PREPROD_ENDPOINT` specifically, the template's alias binding has
-  drifted from what is deployed (check
+- **`service_identity`'s `invokedQualifier` is neither `live` nor
+  `preprod`** (node P2-N015) — the call was invoked through something
+  other than the two aliases (`$LATEST` included). It should not be
+  reachable from either the production endpoint (bound to `live`) or
+  the preprod Function URL (bound to `preprod`); if you see this
+  against `$ENDPOINT` or `$PREPROD_ENDPOINT` specifically, the
+  template's alias binding has drifted from what is deployed (check
   `template.yaml`'s `McpIntegration`/`LiveInvokePermission` still
   target `LiveAlias`, and `PreprodFunctionUrl` still carries
-  `Qualifier: preprod`); if you see it while invoking the function
-  directly by ARN or version number (e.g. via `aws lambda invoke`),
-  this is the fail-closed rule working exactly as designed, not a
-  defect — invoke through one of the two aliases instead.
-  `service_identity`'s `invokedQualifier` / `leaseTable` fields (also
-  node P2-N015) report exactly what qualifier a given call was seen
-  with, which is the fastest way to confirm which case you are in.
+  `Qualifier: preprod`).
 - **The preprod Function URL's `/health` (or any route) returns 403,
   with an `x-amzn-ErrorType` response header and a Lambda
   function-URL-troubleshooting link in the body** (node P2-N016,

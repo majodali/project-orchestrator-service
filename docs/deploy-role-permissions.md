@@ -14,6 +14,15 @@ it is derived from reading both, resource by resource, on
 2026-09-01, against `template.yaml` as it stands on this branch
 (after node P2-N015).
 
+> **Amended at the rebuild's milestone 3 (K-011).** `template.yaml`
+> no longer declares `LeaseTable` or `PreprodLeaseTable`, and the
+> function's execution role no longer carries any `DynamoDBCrudPolicy`.
+> The `DynamoDbLeaseTables` statement below is still needed for the
+> one stack update that deletes the two tables (`dynamodb:DeleteTable`
+> and `DescribeTable`); after that deploy succeeds it grants nothing
+> the stack uses and may be removed from the role. The text below is
+> otherwise left as written on 2026-09-01.
+
 ## What this policy does not grant
 
 Read this before applying it, so the blast radius is visible:

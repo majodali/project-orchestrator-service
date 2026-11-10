@@ -3,8 +3,8 @@
 # Smoke test for project-orchestrator-service (node P2-N016, chunk 2
 # child D of docs/specs/p2-n012-deploy-from-ci-on-merge.md in the
 # coordinating repository). Four checks, in order: `/health` returns
-# 200; `tools/list` carries all six tools; a full
-# plan_lease_acquire/plan_lease_release cycle succeeds; and (node
+# 200; `tools/list` carries the seven tools; `plan_read` answers the
+# state file at a commit (a read: the smoke test never writes); and (node
 # P2-N021, the web view) signing in with the view token and reading
 # `/view` returns 200 with a 40-character SHA in the page's header.
 # Any failure
@@ -110,16 +110,17 @@ fi
 echo "OK — /health returned 200."
 
 echo
-echo "== Check 2/4: tools/list carries all six tools =="
+echo "== Check 2/4: tools/list carries the seven tools =="
 TOOLS_RESPONSE="$(mcp_call '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}')"
 MISSING_TOOLS="$(TOOLS_RESPONSE="$TOOLS_RESPONSE" node -e '
   const required = [
     "service_identity",
     "plan_read",
-    "plan_lease_acquire",
-    "plan_update",
-    "plan_confirm",
-    "plan_lease_release",
+    "node_update",
+    "task_open",
+    "task_close",
+    "decision_open",
+    "decision_close",
   ];
   let body;
   try {
@@ -136,51 +137,31 @@ if [ -n "$MISSING_TOOLS" ]; then
   echo "Full response: ${TOOLS_RESPONSE}" >&2
   exit 1
 fi
-echo "OK — tools/list carries all six tools."
+echo "OK — tools/list carries the seven tools."
 
 echo
-echo "== Check 3/4: full lease acquire-and-release cycle =="
-ACQUIRE_RESPONSE="$(mcp_call '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"plan_lease_acquire","arguments":{"holder":"ci-smoke-test"}}}')"
-LEASE_TOKEN="$(ACQUIRE_RESPONSE="$ACQUIRE_RESPONSE" node -e '
+echo "== Check 3/4: plan_read answers the state file at a commit =="
+# A read only: the smoke test never writes the coordinating repository.
+READ_RESPONSE="$(mcp_call '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"plan_read","arguments":{}}}')"
+READ_SHA="$(READ_RESPONSE="$READ_RESPONSE" node -e '
   let body;
   try {
-    body = JSON.parse(process.env.ACQUIRE_RESPONSE);
+    body = JSON.parse(process.env.READ_RESPONSE);
   } catch {
     process.exit(0);
   }
-  const token = body.result?.structuredContent?.token;
-  if (typeof token === "string") process.stdout.write(token);
+  const content = body.result?.structuredContent;
+  if (body.result?.isError || !content) process.exit(0);
+  const sha = content.sha;
+  const nodes = Array.isArray(content.nodes) ? content.nodes.length : 0;
+  if (typeof sha === "string" && /^[0-9a-f]{40}$/.test(sha) && nodes > 0) process.stdout.write(sha);
 ')"
-if [ -z "$LEASE_TOKEN" ]; then
-  echo "SMOKE FAILURE (check 3/4, plan_lease_acquire): no lease token in the response." >&2
-  echo "Full response: ${ACQUIRE_RESPONSE}" >&2
+if [ -z "$READ_SHA" ]; then
+  echo "SMOKE FAILURE (check 3/4, plan_read): no 40-character SHA with nodes in the response." >&2
+  echo "Full response: ${READ_RESPONSE}" >&2
   exit 1
 fi
-
-RELEASE_BODY="$(LEASE_TOKEN="$LEASE_TOKEN" node -e '
-  process.stdout.write(JSON.stringify({
-    jsonrpc: "2.0",
-    id: 1,
-    method: "tools/call",
-    params: { name: "plan_lease_release", arguments: { leaseToken: process.env.LEASE_TOKEN } },
-  }));
-')"
-RELEASE_RESPONSE="$(mcp_call "$RELEASE_BODY")"
-RELEASED="$(RELEASE_RESPONSE="$RELEASE_RESPONSE" node -e '
-  let body;
-  try {
-    body = JSON.parse(process.env.RELEASE_RESPONSE);
-  } catch {
-    process.exit(0);
-  }
-  process.stdout.write(body.result?.structuredContent?.released === true ? "true" : "");
-')"
-if [ "$RELEASED" != "true" ]; then
-  echo "SMOKE FAILURE (check 3/4, plan_lease_release): did not report {\"released\": true}." >&2
-  echo "Full response: ${RELEASE_RESPONSE}" >&2
-  exit 1
-fi
-echo "OK — lease acquired and released against ${BASE_URL}."
+echo "OK — plan_read answered the state file at commit ${READ_SHA}."
 
 echo
 echo "== Check 4/4: sign in to the web view and read the tree page =="
