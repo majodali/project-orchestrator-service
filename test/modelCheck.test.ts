@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  attentionReason,
   checkRepository,
   checkState,
   classifyAll,
@@ -17,6 +18,7 @@ function node(
     parent: null,
     after: [],
     hold: null,
+    start: "auto",
     docs: { plan: null, spec: null },
     done: null,
     note: null,
@@ -208,6 +210,17 @@ describe("checkState", () => {
     expect(classes.get("P1-N005")).toBe("gated");
     expect(classes.get("P1-N006")).toBe("blocked");
     expect(messages(checkState(s).findings, "violation")).toEqual([]);
+  });
+
+  it("classifies a ready node whose start needs approval as waiting on the owner", () => {
+    const s = state();
+    s.nodes[2]!.start = "approve";
+    expect(classifyAll(s).get("P1-N003")).toBe("gated");
+    expect(attentionReason(s.nodes[2]!)).toBe(
+      "start needs the owner's approval",
+    );
+    s.nodes[2]!.hold = { kind: "gated", reason: "the plan gate" };
+    expect(attentionReason(s.nodes[2]!)).toBe("the plan gate");
   });
 
   it("warns when a hold and an open task compete for a node's class", () => {

@@ -97,6 +97,10 @@ export const nodeSchema = z.object({
   /** Nodes this one waits for. Sibling order implies nothing. */
   after: z.array(nodeId),
   hold: holdSchema.nullable(),
+  /** How the node starts once it is ready: `auto`, the loop takes it
+   * (the default); `approve`, it waits for the owner's go-ahead and
+   * counts as waiting on the owner (owner, 2026-11-10). */
+  start: z.enum(["auto", "approve"]).default("auto"),
   docs: z.object({
     plan: z.string().min(1).nullable(),
     spec: z.string().min(1).nullable(),

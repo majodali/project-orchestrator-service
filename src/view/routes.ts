@@ -50,7 +50,7 @@ import { renderNodePage } from "./nodePage.js";
 import { nodePagePath, taskPagePath } from "./parts.js";
 import { STATE_PATH, stateAtPage } from "./stateRead.js";
 import { renderTaskPage } from "./taskPage.js";
-import { renderTreePage } from "./treePage.js";
+import { openMode, renderTreePage } from "./treePage.js";
 import {
   VIEW_COOKIE_NAME,
   loadViewTokenConfig,
@@ -370,7 +370,8 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
     const read = await statePage(c, requestedRef, "/view");
     if (!read.ok) return read.response;
     const state = stateAtPage(read.page.files.get(STATE_PATH)!);
-    return htmlResponse(c, renderTreePage(state, read.commit), 200);
+    const mode = openMode(c.req.query("open") || undefined);
+    return htmlResponse(c, renderTreePage(state, read.commit, mode), 200);
   });
 
   app.get("/view/node/:id", async (c) => {

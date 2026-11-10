@@ -121,7 +121,9 @@ describe("renderPlan", () => {
       expect(i, s).toBeGreaterThanOrEqual(0);
       return i;
     };
-    expect(at("## Waiting on the owner")).toBeLessThan(at("## Ready to start"));
+    expect(at("## Waiting on the owner")).toBeLessThan(
+      at("## Ready, starting automatically when the loop runs"),
+    );
     expect(text).toContain(
       "- D001 on The second part gated (P1-N003): Which colour? Default: red",
     );
@@ -151,7 +153,9 @@ describe("renderPlan", () => {
     };
     const text = renderPlan(empty);
     expect(text).toContain("## Waiting on the owner\n\nNothing.");
-    expect(text).toContain("## Ready to start\n\nNone.");
+    expect(text).toContain(
+      "## Ready, starting automatically when the loop runs\n\nNone.",
+    );
     expect(text).toContain("## Decisions taken\n\nNone.");
   });
 });

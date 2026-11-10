@@ -1,15 +1,26 @@
 /**
- * The tree page, `GET /view` (the rebuild plan, milestone 2). It
- * renders `orchestration/state.json` at one commit for a desktop
- * browser: first what waits on the owner, then what is ready to start
- * and what is in flight, then every node in its tree with its title,
- * its class, its identifier and its one-sentence outcome, and last the
- * problems `check` would report. The page runs no script: the folding
- * is HTML's own `details` element. Titles read in the context of their
- * parent and siblings, so a node is always shown in its tree.
+ * The tree page, `GET /view` (the rebuild plan, milestone 2, as the
+ * owner directed on 2026-11-10). The plan hierarchy is the primary
+ * view: every node in its tree, read in the context of its parent and
+ * siblings. What needs attention shows in that context, not in lists:
+ *
+ * - a node waiting on the owner (a hold, or a ready node whose start
+ *   needs approval) is marked, and every ancestor carries a flag with
+ *   the count of such nodes below it;
+ * - the paths to those nodes are unfolded on load, and everything
+ *   else is folded, roots included, so a large plan opens small;
+ * - open decisions sit under the node they belong to;
+ * - `?open=` picks what is unfolded: `owner` (the default), `active`
+ *   (also in flight), `all`, or `roots`. The page runs no script, so
+ *   the unfold is the server's.
+ *
+ * "Ready" is not a category of its own: a ready node starts
+ * automatically unless its `start` is `approve`, and then it waits on
+ * the owner.
  */
 
 import {
+  attentionReason,
   childrenOf,
   classifyAll,
   nodesById,
@@ -22,6 +33,15 @@ import { escapeHtml, pageHeader, pageShell, sourceLine } from "./html.js";
 import { classBadge, nodeHref } from "./parts.js";
 import type { StateAtPage } from "./stateRead.js";
 import { STATE_PATH } from "./stateRead.js";
+
+export const OPEN_MODES = ["owner", "active", "all", "roots"] as const;
+export type OpenMode = (typeof OPEN_MODES)[number];
+
+export function openMode(value: string | undefined): OpenMode {
+  return (OPEN_MODES as readonly string[]).includes(value ?? "")
+    ? (value as OpenMode)
+    : "owner";
+}
 
 function titleLink(n: Node, commit: PageCommit): string {
   return `<a class="row-title" data-node-link href="${escapeHtml(nodeHref(n.id, commit.requestedRef))}">${escapeHtml(n.title)}</a> <span class="id" data-node-id>${escapeHtml(n.id)}</span>`;
@@ -45,82 +65,185 @@ export function problemsSection(findings: Finding[]): string {
   ].join("\n");
 }
 
-function decisionItem(
-  d: Decision,
-  byId: Map<string, Node>,
-  commit: PageCommit,
-): string {
-  const node = d.node ? byId.get(d.node) : undefined;
-  const where = node
-    ? ` on <a href="${escapeHtml(nodeHref(node.id, commit.requestedRef))}">${escapeHtml(node.title)}</a> <span class="id">${escapeHtml(node.id)}</span>`
-    : d.node
-      ? ` on <span class="id">${escapeHtml(d.node)}</span>`
-      : "";
+function decisionLine(d: Decision): string {
   const dflt = d.default
     ? ` <span class="note">Default: ${escapeHtml(d.default)}</span>`
     : "";
-  return `<li data-open-decision="${escapeHtml(d.id)}"><span class="id">${escapeHtml(d.id)}</span>${where}: ${escapeHtml(d.question)}${dflt}</li>`;
+  return `<li data-open-decision="${escapeHtml(d.id)}"><span class="id">${escapeHtml(d.id)}</span> ${escapeHtml(d.question)}${dflt}</li>`;
 }
 
-function waitingSection(
+/** Counts over a node's subtree, the node itself included. */
+interface Below {
+  owner: number;
+  inFlight: number;
+  decisions: number;
+}
+
+function countBelow(
   state: State,
   classes: Map<string, NodeClass>,
-  commit: PageCommit,
-): string {
-  const byId = nodesById(state);
-  const open = state.decisions.filter((d) => d.chosen === null);
-  const gated = state.nodes.filter((n) => classes.get(n.id) === "gated");
-  const lines = ["<section data-waiting>", "<h2>Waiting on you</h2>"];
-  if (open.length === 0 && gated.length === 0) {
-    lines.push('<p class="note" data-empty>Nothing.</p>');
-  }
-  if (open.length > 0) {
-    lines.push(
-      `<p class="note">${open.length} open decision${open.length === 1 ? "" : "s"}:</p>`,
-      '<ul class="plain">',
-    );
-    for (const d of open) lines.push(decisionItem(d, byId, commit));
-    lines.push("</ul>");
-  }
-  if (gated.length > 0) {
-    lines.push(
-      `<p class="note">${gated.length} gated node${gated.length === 1 ? "" : "s"}:</p>`,
-      '<ul class="plain">',
-    );
-    for (const n of gated) {
-      lines.push(
-        `<li data-gated="${escapeHtml(n.id)}">${titleLink(n, commit)}<br><span class="hold">${escapeHtml(n.hold!.reason)}</span></li>`,
-      );
+  openDecisions: Map<string, Decision[]>,
+): Map<string, Below> {
+  const children = childrenOf(state);
+  const out = new Map<string, Below>();
+  const visit = (n: Node): Below => {
+    const own: Below = {
+      owner: classes.get(n.id) === "gated" ? 1 : 0,
+      inFlight: classes.get(n.id) === "in-flight" ? 1 : 0,
+      decisions: openDecisions.get(n.id)?.length ?? 0,
+    };
+    for (const c of children.get(n.id) ?? []) {
+      const b = visit(c);
+      own.owner += b.owner;
+      own.inFlight += b.inFlight;
+      own.decisions += b.decisions;
     }
-    lines.push("</ul>");
-  }
-  lines.push("</section>");
-  return lines.join("\n");
+    out.set(n.id, own);
+    return own;
+  };
+  for (const n of state.nodes) if (n.parent === null) visit(n);
+  return out;
 }
 
-function nodeList(
-  heading: string,
-  attribute: string,
-  nodes: Node[],
-  state: State,
-  commit: PageCommit,
-  detail: (n: Node) => string,
-): string {
-  const lines = [`<section ${attribute}>`, `<h2>${escapeHtml(heading)}</h2>`];
-  if (nodes.length === 0) {
-    lines.push('<p class="note" data-empty>None.</p>');
-  } else {
-    lines.push('<ul class="plain">');
-    for (const n of nodes) {
-      const extra = detail(n);
-      lines.push(
-        `<li>${titleLink(n, commit)} <span class="stage">[${escapeHtml(n.stage)}]</span>${extra ? ` <span class="note">${extra}</span>` : ""}${n.outcome ? `<br><span class="note">${escapeHtml(n.outcome)}</span>` : ""}</li>`,
-      );
-    }
-    lines.push("</ul>");
+function needsAttention(b: Below): boolean {
+  return b.owner > 0 || b.decisions > 0;
+}
+
+function flags(b: Below, own: Below): string {
+  const parts: string[] = [];
+  const belowOwner = b.owner - own.owner + (b.decisions - own.decisions);
+  if (belowOwner > 0) {
+    parts.push(
+      `<span class="flag f-owner" data-below-owner="${belowOwner}">${belowOwner} waiting on you below</span>`,
+    );
   }
-  lines.push("</section>");
-  return lines.join("\n");
+  const belowFlight = b.inFlight - own.inFlight;
+  if (belowFlight > 0) {
+    parts.push(
+      `<span class="flag f-flight" data-below-flight="${belowFlight}">${belowFlight} in flight below</span>`,
+    );
+  }
+  return parts.join(" ");
+}
+
+function treeRow(
+  n: Node,
+  cls: NodeClass,
+  below: Below,
+  own: Below,
+  decisions: Decision[],
+  commit: PageCommit,
+): string {
+  const attention =
+    cls === "gated"
+      ? `<span class="hold" data-hold>${escapeHtml(attentionReason(n))}</span>`
+      : cls === "blocked"
+        ? `<span class="hold" data-hold>blocked: ${escapeHtml(n.hold!.reason)}</span>`
+        : "";
+  const stage =
+    n.stage === "done" && n.done
+      ? ` <span class="stage">done ${escapeHtml(n.done)}</span>`
+      : ` <span class="stage">[${escapeHtml(n.stage)}]</span>`;
+  const outcome = n.outcome
+    ? `<span class="row-outcome" data-outcome>${escapeHtml(n.outcome)}</span>`
+    : "";
+  const list =
+    decisions.length > 0
+      ? `<ul class="decisions" data-decisions-of="${escapeHtml(n.id)}">${decisions.map(decisionLine).join("")}</ul>`
+      : "";
+  return `${classBadge(cls)} ${titleLink(n, commit)}${stage} ${flags(below, own)}${outcome}${attention}${list}`;
+}
+
+function renderTree(
+  state: State,
+  classes: Map<string, NodeClass>,
+  openDecisions: Map<string, Decision[]>,
+  mode: OpenMode,
+  commit: PageCommit,
+): string {
+  const children = childrenOf(state);
+  const below = countBelow(state, classes, openDecisions);
+  const isOpen = (n: Node, depth: number): boolean => {
+    if (mode === "all") return true;
+    if (mode === "roots") return depth === 0;
+    const b = below.get(n.id)!;
+    if (needsAttention(b)) return true;
+    return mode === "active" && b.inFlight > 0;
+  };
+  const visit = (n: Node, depth: number): string => {
+    const kids = children.get(n.id) ?? [];
+    const cls = classes.get(n.id)!;
+    const b = below.get(n.id)!;
+    const own: Below = {
+      owner: cls === "gated" ? 1 : 0,
+      inFlight: cls === "in-flight" ? 1 : 0,
+      decisions: openDecisions.get(n.id)?.length ?? 0,
+    };
+    const attention = needsAttention(own) ? " attention" : "";
+    const row = treeRow(n, cls, b, own, openDecisions.get(n.id) ?? [], commit);
+    if (kids.length === 0) {
+      return `<li data-node="${escapeHtml(n.id)}"><div class="leaf${attention}">${row}</div></li>`;
+    }
+    const open = isOpen(n, depth) ? " open" : "";
+    return [
+      `<li data-node="${escapeHtml(n.id)}"><details${open}><summary class="${attention.trim()}">${row}</summary>`,
+      "<ul>",
+      ...kids.map((k) => visit(k, depth + 1)),
+      "</ul>",
+      "</details></li>",
+    ].join("\n");
+  };
+  return [
+    '<ul class="tree" data-tree>',
+    ...state.nodes.filter((n) => n.parent === null).map((n) => visit(n, 0)),
+    "</ul>",
+  ].join("\n");
+}
+
+function modeLinks(mode: OpenMode, commit: PageCommit): string {
+  const labels: Record<OpenMode, string> = {
+    owner: "waiting on you",
+    active: "waiting on you and in flight",
+    all: "everything",
+    roots: "roots only",
+  };
+  const parts = OPEN_MODES.map((m) => {
+    const params = new URLSearchParams();
+    if (commit.requestedRef !== undefined)
+      params.set("ref", commit.requestedRef);
+    if (m !== "owner") params.set("open", m);
+    const query = params.toString();
+    const href = query ? `/view?${query}` : "/view";
+    return m === mode
+      ? `<strong data-open-mode="${m}">${labels[m]}</strong>`
+      : `<a data-open-mode="${m}" href="${escapeHtml(href)}">${labels[m]}</a>`;
+  });
+  return `<p class="note" data-unfold>Unfolded: ${parts.join(" · ")}</p>`;
+}
+
+function summary(
+  state: State,
+  classes: Map<string, NodeClass>,
+  openDecisions: Map<string, Decision[]>,
+): string {
+  const count = (c: NodeClass): number =>
+    state.nodes.filter((n) => classes.get(n.id) === c).length;
+  const decisions = state.decisions.filter((d) => d.chosen === null).length;
+  const owner = count("gated");
+  const parts = [
+    `<span data-count-owner="${owner}">${owner} node${owner === 1 ? "" : "s"} waiting on you</span>`,
+    `<span data-count-decisions="${decisions}">${decisions} open decision${decisions === 1 ? "" : "s"}</span>`,
+    `<span data-count-flight="${count("in-flight")}">${count("in-flight")} in flight</span>`,
+    `<span data-count-waiting="${count("waiting")}">${count("waiting")} waiting on a dependency</span>`,
+    `<span data-count-blocked="${count("blocked")}">${count("blocked")} blocked</span>`,
+    `<span data-count-done="${count("done")}">${count("done")} of ${state.nodes.length} done</span>`,
+  ];
+  const project = openDecisions.get("") ?? [];
+  const projectList =
+    project.length > 0
+      ? `<p class="note">Project decisions, on no node:</p><ul class="decisions" data-decisions-of="">${project.map(decisionLine).join("")}</ul>`
+      : "";
+  return `<section data-summary><p class="counts">${parts.join(" · ")}</p>${projectList}</section>`;
 }
 
 function legend(): string {
@@ -137,50 +260,11 @@ function legend(): string {
   return `<ul class="legend">${order.map((c) => `<li>${classBadge(c)}</li>`).join("")}</ul>`;
 }
 
-function treeRow(n: Node, cls: NodeClass, commit: PageCommit): string {
-  const hold = n.hold
-    ? `<span class="hold" data-hold>${escapeHtml(n.hold.kind)}: ${escapeHtml(n.hold.reason)}</span>`
-    : "";
-  const done =
-    n.stage === "done" && n.done
-      ? ` <span class="stage">done ${escapeHtml(n.done)}</span>`
-      : ` <span class="stage">[${escapeHtml(n.stage)}]</span>`;
-  const outcome = n.outcome
-    ? `<span class="row-outcome" data-outcome>${escapeHtml(n.outcome)}</span>`
-    : "";
-  return `${classBadge(cls)} ${titleLink(n, commit)}${done}${outcome}${hold}`;
-}
-
-function renderTree(
-  state: State,
-  classes: Map<string, NodeClass>,
+export function renderTreePage(
+  read: StateAtPage,
   commit: PageCommit,
+  mode: OpenMode = "owner",
 ): string {
-  const children = childrenOf(state);
-  const visit = (n: Node, depth: number): string => {
-    const kids = children.get(n.id) ?? [];
-    const cls = classes.get(n.id)!;
-    const row = treeRow(n, cls, commit);
-    if (kids.length === 0) {
-      return `<li data-node="${escapeHtml(n.id)}"><div class="leaf">${row}</div></li>`;
-    }
-    const open = depth === 0 ? " open" : "";
-    return [
-      `<li data-node="${escapeHtml(n.id)}"><details${open}><summary>${row}</summary>`,
-      "<ul>",
-      ...kids.map((k) => visit(k, depth + 1)),
-      "</ul>",
-      "</details></li>",
-    ].join("\n");
-  };
-  return [
-    '<ul class="tree" data-tree>',
-    ...state.nodes.filter((n) => n.parent === null).map((n) => visit(n, 0)),
-    "</ul>",
-  ].join("\n");
-}
-
-export function renderTreePage(read: StateAtPage, commit: PageCommit): string {
   const title = read.state ? `Plan: ${read.state.project}` : "Plan";
   const body: string[] = [
     pageHeader(commit, "/view"),
@@ -197,50 +281,21 @@ export function renderTreePage(read: StateAtPage, commit: PageCommit): string {
   }
   const state = read.state;
   const classes = classifyAll(state);
-  const byId = nodesById(state);
-  const openTasks = state.tasks.filter((t) => t.status === "open");
+  nodesById(state); // the ids are valid: checkState passed the schema
+  const openDecisions = new Map<string, Decision[]>();
+  for (const d of state.decisions) {
+    if (d.chosen !== null) continue;
+    const key = d.node ?? "";
+    if (!openDecisions.has(key)) openDecisions.set(key, []);
+    openDecisions.get(key)!.push(d);
+  }
   body.push(
     `<h1>${escapeHtml(title)}</h1>`,
-    '<div class="columns">',
-    waitingSection(state, classes, commit),
-    nodeList(
-      "Ready to start",
-      "data-ready",
-      state.nodes.filter((n) => classes.get(n.id) === "actionable"),
-      state,
-      commit,
-      () => "",
-    ),
-    nodeList(
-      "In flight",
-      "data-in-flight",
-      state.nodes.filter((n) => classes.get(n.id) === "in-flight"),
-      state,
-      commit,
-      (n) =>
-        openTasks
-          .filter((t) => t.node === n.id)
-          .map((t) => t.id)
-          .join(", "),
-    ),
-    nodeList(
-      "Waiting on a dependency",
-      "data-waiting-on",
-      state.nodes.filter((n) => classes.get(n.id) === "waiting"),
-      state,
-      commit,
-      (n) =>
-        "after " +
-        n.after
-          .filter((d) => byId.get(d)?.stage !== "done")
-          .map((d) => escapeHtml(byId.get(d)?.title ?? d))
-          .join(", "),
-    ),
-    "</div>",
+    summary(state, classes, openDecisions),
     "<section data-plan>",
-    "<h2>The plan</h2>",
+    modeLinks(mode, commit),
     legend(),
-    renderTree(state, classes, commit),
+    renderTree(state, classes, openDecisions, mode, commit),
     "</section>",
     problemsSection(read.findings),
     "</main>",

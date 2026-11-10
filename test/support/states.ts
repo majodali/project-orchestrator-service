@@ -13,6 +13,7 @@ export function node(
     parent: null,
     after: [],
     hold: null,
+    start: "auto",
     docs: { plan: null, spec: null },
     done: null,
     note: null,
@@ -108,6 +109,13 @@ export function sampleState(): State {
         stage: "specified",
         parent: "P1-N001",
         hold: { kind: "blocked", reason: "no credential" },
+      }),
+      node({
+        id: "P1-N008",
+        title: "The part that needs a go-ahead",
+        stage: "specified",
+        parent: "P1-N001",
+        start: "approve",
       }),
       node({
         id: "P2-N001",

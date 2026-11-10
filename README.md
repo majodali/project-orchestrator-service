@@ -116,15 +116,15 @@ so far:
 
 ### HTTP routes
 
-| Method and path            | Auth                        | Answers                                                                                                                                                                                                                                                                    |
-| -------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /health`              | none                        | liveness, as JSON                                                                                                                                                                                                                                                          |
-| `ANY /mcp`                 | `Authorization: Bearer`     | the MCP endpoint and its six tools                                                                                                                                                                                                                                         |
-| `GET /view/sign-in`        | none                        | the web view's sign-in form                                                                                                                                                                                                                                                |
-| `POST /view/sign-in`       | the view token, in the form | `303` to `/view` with the view cookie, or `401`                                                                                                                                                                                                                            |
-| `GET /view`                | the view cookie             | the plan of the coordinating repository at one commit, from `orchestration/state.json`: what waits on the owner, what is ready, what is in flight, every node in its tree with its class and outcome, and the problems `check` reports; `?ref=` picks a branch, tag or SHA |
-| `GET /view/node/<node ID>` | the view cookie             | a node page: class and stage, outcome, position in the tree, what it waits on and what waits on it, documents at the SHA, decisions and tasks; `404` for an ID the state file lacks                                                                                        |
-| `GET /view/task/<task ID>` | the view cookie             | a task page: the task's fields and notes from the state file; `404` for an ID it lacks                                                                                                                                                                                     |
+| Method and path            | Auth                        | Answers                                                                                                                                                                                                                                                                                                  |
+| -------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /health`              | none                        | liveness, as JSON                                                                                                                                                                                                                                                                                        |
+| `ANY /mcp`                 | `Authorization: Bearer`     | the MCP endpoint and its six tools                                                                                                                                                                                                                                                                       |
+| `GET /view/sign-in`        | none                        | the web view's sign-in form                                                                                                                                                                                                                                                                              |
+| `POST /view/sign-in`       | the view token, in the form | `303` to `/view` with the view cookie, or `401`                                                                                                                                                                                                                                                          |
+| `GET /view`                | the view cookie             | the plan of the coordinating repository at one commit, from `orchestration/state.json`: every node in its tree with its class and outcome, what waits on the owner marked in context and unfolded, and the problems `check` reports; `?ref=` picks a branch, tag or SHA; `?open=` picks what is unfolded |
+| `GET /view/node/<node ID>` | the view cookie             | a node page: class and stage, outcome, position in the tree, what it waits on and what waits on it, documents at the SHA, decisions and tasks; `404` for an ID the state file lacks                                                                                                                      |
+| `GET /view/task/<task ID>` | the view cookie             | a task page: the task's fields and notes from the state file; `404` for an ID it lacks                                                                                                                                                                                                                   |
 
 The `/view` routes are the web view: server-rendered HTML with no
 script, for a desktop browser (the rebuild plan, decision 9). Since
@@ -139,17 +139,25 @@ token does not open `/view`. Only `POST /view/sign-in` accepts a
 method other than `GET`, and it changes only the caller's cookie. See
 `src/view/` and `docs/runbook.md`, "The web view".
 
-The tree page leads with what waits on the owner, open decisions and
-gated nodes, then what is ready to start, in flight and waiting on a
-dependency, then every node in its tree, folded below the roots, each
-with a badge for its class (waiting on the owner, blocked, in flight,
-in progress, waiting on a dependency, ready, done, parked), its title,
-its identifier and its one-sentence outcome. A "Problems found"
-section at the bottom lists what `plan-state check` reports for the
-file at that commit; a file that fails the schema shows the problems
-and nothing else. Each page's source line names the state file at the
-SHA as the progress truth during the rebuild, under the deviation from
-K-003 recorded in the coordinating repository's Classification.
+The tree page is the plan hierarchy, the primary view (owner,
+2026-11-10): every node in its tree, read in the context of its parent
+and siblings, each row a badge for its class (waiting on the owner,
+blocked, in flight, in progress, waiting on a dependency, ready, done,
+parked), its title, its identifier and its one-sentence outcome. What
+needs attention shows in that context: a node waiting on the owner is
+highlighted with its reason, every ancestor carries a flag counting
+such nodes below it, and open decisions sit under their node. The
+paths to those nodes are unfolded on load and everything else is
+folded; `?open=active` also unfolds what is in flight, `?open=all`
+everything, `?open=roots` nothing below the roots. A line of counts
+opens the page. "Ready" is not a category: a ready node starts
+automatically unless its `start` is `approve`, and then it waits on
+the owner. A "Problems found" section at the bottom lists what
+`plan-state check` reports for the file at that commit; a file that
+fails the schema shows the problems and nothing else. Each page's
+source line names the state file at the SHA as the progress truth
+during the rebuild, under the deviation from K-003 recorded in the
+coordinating repository's Classification.
 
 A file above 1 MB, the contents endpoint's base64 limit, is read again
 with the raw media type, in full; one above the endpoint's 100 MB

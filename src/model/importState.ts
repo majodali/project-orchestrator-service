@@ -543,6 +543,7 @@ export function importState(input: ImportInput): {
       parent: r.parentId,
       after,
       hold: r.hold,
+      start: "auto",
       docs: { plan, spec: ann.spec },
       done,
       note: ann.note,

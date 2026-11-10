@@ -489,13 +489,13 @@ Since the rebuild's milestone 2 (the coordinating repository's
 repository at one commit, `orchestration/state.json`, through the same
 GitHub App `plan_read` uses. They change nothing. Five routes:
 
-| Method and path            | Answers                                                                                                                                                                                               |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /view/sign-in`        | the sign-in form                                                                                                                                                                                      |
-| `POST /view/sign-in`       | the exchange of the view token for the view cookie                                                                                                                                                    |
-| `GET /view`                | the tree page: what waits on the owner, what is ready, what is in flight, every node in its tree with its class and outcome, the problems `check` reports; `?ref=<branch, tag or SHA>` reads that ref |
-| `GET /view/node/<node ID>` | a node page: class and stage, outcome, position, dependencies, documents, decisions and tasks                                                                                                         |
-| `GET /view/task/<task ID>` | a task page: the task's fields and notes                                                                                                                                                              |
+| Method and path            | Answers                                                                                                                                                                                                                             |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /view/sign-in`        | the sign-in form                                                                                                                                                                                                                    |
+| `POST /view/sign-in`       | the exchange of the view token for the view cookie                                                                                                                                                                                  |
+| `GET /view`                | the tree page: every node in its tree with its class and outcome, what waits on the owner marked in context and unfolded, the problems `check` reports; `?ref=<branch, tag or SHA>` reads that ref, `?open=` picks what is unfolded |
+| `GET /view/node/<node ID>` | a node page: class and stage, outcome, position, dependencies, documents, decisions and tasks                                                                                                                                       |
+| `GET /view/task/<task ID>` | a task page: the task's fields and notes                                                                                                                                                                                            |
 
 The view has its own credential, the **view token**. It is held in
 Secrets Manager apart from the MCP bearer token, and `/mcp` refuses
@@ -605,14 +605,17 @@ source of progress truth) recorded in the coordinating repository's
 Classification; each page's source line says so and links the file at
 the SHA.
 
-- **The tree page** leads with what waits on the owner: the open
-  decisions, each with its default and its node, and the gated nodes
-  with their reasons. Then the nodes ready to start, in flight (with
-  their open tasks) and waiting on a dependency (with what they wait
-  for). Then every node in its tree, the roots open and the rest
-  folded, each row a badge for the node's class, its title linked to
-  its node page, its identifier small, its stage or its done date, its
-  one-sentence outcome, and its hold when it has one. A "Problems
+- **The tree page** is the plan hierarchy. A line of counts opens it
+  (nodes waiting on the owner, open decisions, in flight, waiting on a
+  dependency, blocked, done), then every node in its tree: a badge for
+  the node's class, its title linked to its node page, its identifier
+  small, its stage or its done date, its one-sentence outcome. A node
+  waiting on the owner, by a hold or because its start needs approval,
+  is highlighted with its reason; every ancestor carries a flag
+  counting such nodes below it; open decisions sit under their node.
+  The paths to those nodes are unfolded on load and the rest is folded.
+  `?open=active` also unfolds what is in flight, `?open=all`
+  everything, `?open=roots` nothing below the roots. A "Problems
   found" section at the bottom lists what `plan-state check` reports
   for the file at that commit. A file that is not JSON or fails the
   schema shows the problems and nothing else.
