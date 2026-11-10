@@ -8,6 +8,7 @@
 
 import {
   NODE_CLASS_LABELS,
+  attentionReason,
   childrenOf,
   classifyAll,
   nodesById,
@@ -177,7 +178,9 @@ export function renderNodePage(
     node.stage === "done" && node.done ? `done ${node.done}` : node.stage;
   const hold = node.hold
     ? `<p class="hold" data-hold>${escapeHtml(node.hold.kind)}: ${escapeHtml(node.hold.reason)}</p>`
-    : "";
+    : cls === "gated"
+      ? `<p class="hold" data-hold>${escapeHtml(attentionReason(node))}</p>`
+      : "";
   const body = [
     pageHeader(commit, nodePagePath(node.id)),
     sourceLine(commit, commit.sha),
@@ -207,6 +210,13 @@ export function renderNodePage(
       nodeRefs(children.get(node.id) ?? [], classes, commit, "none"),
     ),
     field("documents", "Documents", documentsField(node, commit)),
+    field(
+      "start",
+      "Start",
+      node.start === "auto"
+        ? "automatic, when its dependencies are done"
+        : "needs the owner's approval when ready",
+    ),
     "</dl>",
     "</section>",
     "<section>",

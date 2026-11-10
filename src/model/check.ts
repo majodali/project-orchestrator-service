@@ -52,7 +52,7 @@ export const NODE_CLASS_LABELS: Readonly<Record<NodeClass, string>> = {
   "in-flight": "in flight",
   "in-progress": "in progress, its children carry the work",
   waiting: "waiting on a dependency",
-  actionable: "ready",
+  actionable: "ready, starts automatically",
   done: "done",
   parked: "parked",
 };
@@ -92,7 +92,15 @@ export function classifyNode(
   if ((openTasks.get(node.id) ?? []).length > 0) return "in-flight";
   if (node.stage === "broken-down") return "in-progress";
   if (node.after.some((d) => byId.get(d)?.stage !== "done")) return "waiting";
+  if (node.start === "approve") return "gated";
   return "actionable";
+}
+
+/** Why a node waits on the owner: its hold's reason, or, for a ready
+ * node that needs a go-ahead, that its start needs approval. */
+export function attentionReason(node: Node): string {
+  if (node.hold) return node.hold.reason;
+  return "start needs the owner's approval";
 }
 
 export function classifyAll(state: State): Map<string, NodeClass> {

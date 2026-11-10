@@ -5,7 +5,7 @@ import {
   COMMIT_325C502,
   repository325c502,
 } from "./support/fixtures325c502.js";
-import { sampleState, stateJson } from "./support/states.js";
+import { node, sampleState, stateJson, task } from "./support/states.js";
 import {
   FakeRepository,
   NOW,
@@ -87,42 +87,24 @@ describe("the tree page", () => {
     expect(html).not.toMatch(/<script/i);
   });
 
-  it("leads with what waits on the owner: open decisions and gated nodes", async () => {
+  it("opens with the counts and the project decisions, then the tree as the primary view", async () => {
     const { html } = await get(appOver(sampleRepo()), "/view");
-    const waiting = html.slice(
-      html.indexOf("data-waiting"),
-      html.indexOf("data-ready"),
+    expect(html).toContain('data-count-owner="2"');
+    expect(html).toContain('data-count-decisions="2"');
+    expect(html).toContain('data-count-flight="1"');
+    expect(html).toContain('data-count-waiting="1"');
+    expect(html).toContain('data-count-blocked="1"');
+    expect(html).toContain('data-count-done="1"');
+    expect(all(html, "data-open-decision")[0]).toContain(
+      "D002 A project decision with no node? Default: yes",
     );
-    expect(textOf(waiting)).toContain("2 open decisions");
-    expect(all(waiting, "data-open-decision")).toEqual([
-      expect.stringContaining(
-        "D001 on The part the owner reviews P1-N003: Which store holds the answers? Default: git",
-      ),
-      expect.stringContaining(
-        "D002: A project decision with no node? Default: yes",
-      ),
-    ]);
-    expect(all(waiting, "data-gated")).toEqual([
-      expect.stringContaining("The part the owner reviews"),
-    ]);
-    expect(textOf(waiting)).toContain("owner review of the plan");
+    expect(html.indexOf("data-summary")).toBeLessThan(
+      html.indexOf("data-tree"),
+    );
+    expect(html).not.toContain("data-ready");
   });
 
-  it("lists what is ready, in flight and waiting, with titles first", async () => {
-    const { html } = await get(appOver(sampleRepo()), "/view");
-    const section = (attr: string): string => {
-      const start = html.indexOf(attr);
-      return textOf(html.slice(start, html.indexOf("</section>", start)));
-    };
-    expect(section("data-ready")).toContain("The part that is ready");
-    expect(section("data-ready")).not.toContain("The first line of work");
-    expect(section("data-in-flight")).toContain("The part in flight");
-    expect(section("data-in-flight")).toContain("T002");
-    expect(section("data-waiting-on")).toContain("The part that waits");
-    expect(section("data-waiting-on")).toContain("after The part in flight");
-  });
-
-  it("shows every node in its tree with its class, identifier and outcome, and folds below the roots", async () => {
+  it("shows every node in its tree with its class, identifier and outcome", async () => {
     const { html } = await get(appOver(sampleRepo()), "/view");
     const tree = html.slice(html.indexOf("data-tree"));
     expect(all(tree, "data-node-id")).toEqual([
@@ -133,12 +115,13 @@ describe("the tree page", () => {
       "P1-N005",
       "P1-N006",
       "P1-N007",
+      "P1-N008",
       "P2-N001",
     ]);
     const classes = [...tree.matchAll(/data-class="([a-z-]+)"/g)].map(
       (m) => m[1],
     );
-    expect(classes.slice(0, 8)).toEqual([
+    expect(classes).toEqual([
       "in-progress",
       "done",
       "gated",
@@ -146,24 +129,140 @@ describe("the tree page", () => {
       "waiting",
       "actionable",
       "blocked",
+      "gated",
       "parked",
     ]);
     expect(all(tree, "data-outcome")[0]).toBe(
       "The first line of work exists and works.",
     );
-    expect(tree).toContain("<details open>");
     expect(all(tree, "data-hold")).toEqual([
-      "gated: owner review of the plan",
+      "owner review of the plan",
       "blocked: no credential",
+      "start needs the owner's approval",
     ]);
     expect(expectLinksPinned(html, undefined).pageLinks).toBeGreaterThan(8);
   });
 
-  it("carries the received ref on every page link", async () => {
+  it("marks what waits on the owner in context: the row, the ancestors' flags, the decisions under their node", async () => {
+    const { html } = await get(appOver(sampleRepo()), "/view");
+    const tree = html.slice(html.indexOf("data-tree"));
+    // The root carries two gated nodes and one open decision below it.
+    expect(tree).toMatch(
+      /<li data-node="P1-N001"><details open><summary class="">[^]*?data-below-owner="3"/,
+    );
+    expect(tree).toContain('data-below-flight="1"');
+    // The gated row is highlighted, and its decision sits under it.
+    const gatedRow = tree.slice(
+      tree.indexOf('data-node="P1-N003"'),
+      tree.indexOf('data-node="P1-N004"'),
+    );
+    expect(gatedRow).toContain('class="leaf attention"');
+    expect(gatedRow).toContain('data-decisions-of="P1-N003"');
+    expect(gatedRow).toContain("Which store holds the answers?");
+    // A row that needs nothing is not highlighted.
+    const doneRow = tree.slice(
+      tree.indexOf('data-node="P1-N002"'),
+      tree.indexOf('data-node="P1-N003"'),
+    );
+    expect(doneRow).not.toContain("attention");
+  });
+
+  it("unfolds the paths to what waits on the owner by default, and the other modes on request", async () => {
+    // A deeper tree: the gated node sits under a child of the root, beside a folded sibling.
+    const state = sampleState();
+    state.nodes.push(
+      node({
+        id: "P1-N010",
+        title: "A middle node with work below",
+        stage: "broken-down",
+        parent: "P1-N001",
+      }),
+      node({
+        id: "P1-N011",
+        title: "A gated grandchild",
+        stage: "planned",
+        parent: "P1-N010",
+        hold: { kind: "gated", reason: "review" },
+      }),
+      node({
+        id: "P1-N012",
+        title: "A quiet middle node",
+        stage: "broken-down",
+        parent: "P1-N001",
+      }),
+      node({
+        id: "P1-N013",
+        title: "A quiet grandchild in flight",
+        stage: "executing",
+        parent: "P1-N012",
+      }),
+      node({
+        id: "P1-N014",
+        title: "A quiet grandchild",
+        stage: "identified",
+        parent: "P1-N012",
+        outcome: null,
+      }),
+    );
+    state.tasks.push(
+      task({
+        id: "T004",
+        node: "P1-N013",
+        status: "open",
+        closed: null,
+        ref: null,
+        summary: null,
+      }),
+    );
+    // A second root with nothing waiting below it folds in the default mode.
+    state.nodes.push(
+      node({
+        id: "P2-N002",
+        title: "A quiet part of the second line",
+        stage: "identified",
+        parent: "P2-N001",
+        outcome: null,
+      }),
+    );
+    state.nodes.find((n) => n.id === "P2-N001")!.stage = "broken-down";
+    const repo = new FakeRepository();
+    repo.heads.set("main", SHA_A);
+    repo.setFile(SHA_A, "orchestration/state.json", stateJson(state));
+    const app = appOver(repo);
+    const detailsOf = (html: string, id: string): string =>
+      /<details( open)?>/.exec(
+        html.slice(html.indexOf(`data-node="${id}"`)),
+      )![0];
+
+    const owner = (await get(app, "/view")).html;
+    expect(detailsOf(owner, "P1-N001")).toBe("<details open>");
+    expect(detailsOf(owner, "P2-N001")).toBe("<details>");
+    expect(detailsOf(owner, "P1-N010")).toBe("<details open>");
+    expect(detailsOf(owner, "P1-N012")).toBe("<details>");
+    expect(owner).toContain('<strong data-open-mode="owner">');
+
+    const active = (await get(app, "/view?open=active")).html;
+    expect(detailsOf(active, "P1-N010")).toBe("<details open>");
+    expect(detailsOf(active, "P1-N012")).toBe("<details open>");
+
+    const all_ = (await get(app, "/view?open=all")).html;
+    expect(all_).not.toContain("<details>");
+
+    const roots = (await get(app, "/view?open=roots")).html;
+    expect(detailsOf(roots, "P1-N001")).toBe("<details open>");
+    expect(detailsOf(roots, "P1-N010")).toBe("<details>");
+
+    const unknown = (await get(app, "/view?open=whatever")).html;
+    expect(unknown).toContain('<strong data-open-mode="owner">');
+  });
+
+  it("carries the received ref on every page link, the unfold links included", async () => {
     const repo = sampleRepo();
     repo.heads.set("feature", SHA_A);
-    const { html } = await get(appOver(repo), "/view?ref=feature");
+    const { html } = await get(appOver(repo), "/view?ref=feature&open=all");
     expectLinksPinned(html, "feature");
+    expect(html).toContain('href="/view?ref=feature"');
+    expect(html).toContain('href="/view?ref=feature&amp;open=roots"');
   });
 
   it("lists the problems check reports, and renders nothing else when the file fails the schema", async () => {
@@ -302,7 +401,8 @@ describe("over the coordinating repository's state file at 325c502", () => {
     expect(
       all(html.slice(html.indexOf("data-tree")), "data-node-id"),
     ).toHaveLength(59);
-    expect(all(html, "data-gated")).toHaveLength(2);
+    expect(html).toContain('data-count-owner="2"');
+    expect(html).toContain('data-count-decisions="0"');
     expect(html).not.toContain("data-open-decision");
     expect(html).not.toContain("data-problems");
   });

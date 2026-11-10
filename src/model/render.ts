@@ -7,6 +7,7 @@
 
 import {
   NODE_CLASS_LABELS,
+  attentionReason,
   childrenOf,
   classifyAll,
   nodesById,
@@ -114,7 +115,7 @@ export function renderPlan(state: State): string {
     if (gated.length > 0) {
       lines.push("Gated nodes:", "");
       for (const n of gated)
-        lines.push(`- ${nodeLabel(n)}: ${md(n.hold!.reason)}`);
+        lines.push(`- ${nodeLabel(n)}: ${md(attentionReason(n))}`);
       lines.push("");
     }
   }
@@ -122,7 +123,7 @@ export function renderPlan(state: State): string {
   const byClass = (c: NodeClass): Node[] =>
     state.nodes.filter((n) => classes.get(n.id) === c);
   for (const [heading, cls] of [
-    ["Ready to start", "actionable"],
+    ["Ready, starting automatically when the loop runs", "actionable"],
     ["In flight", "in-flight"],
     ["In progress, children carry the work", "in-progress"],
     ["Waiting on a dependency", "waiting"],
