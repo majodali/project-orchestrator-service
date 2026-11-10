@@ -1,0 +1,3481 @@
+{
+  "schema": 0,
+  "project": "majodali/project-orchestrator",
+  "nodes": [
+    {
+      "id": "P1-N001",
+      "title": "Orchestrator v1: the process specification and the Claude Code plugin",
+      "outcome": "A process specification and a Claude Code plugin run role-based agent sessions through the methodology on managed projects, at the least cost that does the job.",
+      "stage": "broken-down",
+      "parent": null,
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/orchestrator-v1.md",
+        "spec": null
+      },
+      "done": null,
+      "note": null
+    },
+    {
+      "id": "P1-N002",
+      "title": "The repository bootstrapped and the founding plan written",
+      "outcome": "The repository exists, is enrolled under the methodology, and holds the founding plan with its six chunks.",
+      "stage": "done",
+      "parent": "P1-N001",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": null,
+      "note": "Chunk 1 of the parent plan"
+    },
+    {
+      "id": "P1-N003",
+      "title": "The orchestration process specification, version 1",
+      "outcome": "The process specification under docs/process/ states the plan model, the Plan register, the dispatch loop, the roles, the profiles, the Cost log, auditing and observability.",
+      "stage": "done",
+      "parent": "P1-N001",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": null,
+      "note": "Chunk 2 of the parent plan"
+    },
+    {
+      "id": "P1-N004",
+      "title": "The role contracts written, version 1",
+      "outcome": "Six role contracts under .claude/agents/, each bound to a model tier, with the Orchestrator as single writer of the registers.",
+      "stage": "done",
+      "parent": "P1-N001",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": null,
+      "note": "Chunk 3 of the parent plan"
+    },
+    {
+      "id": "P1-N005",
+      "title": "The plugin built and tried on this repository",
+      "outcome": "The Claude Code plugin with the orchestrate and enroll skills, the form checker and the billing hook, tried in four trials on this repository.",
+      "stage": "done",
+      "parent": "P1-N001",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": "2026-08-26",
+      "note": "Chunk 4 of the parent plan"
+    },
+    {
+      "id": "P1-N008",
+      "title": "mtool checker extension-point proposal",
+      "outcome": "A decision-ready proposal to methodology-tools for one generic capability: a checker that a project declares beside its custom type and that mtool audit form runs.",
+      "stage": "done",
+      "parent": "P1-N001",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p1-n008-mtool-checker-extension-point.md",
+        "spec": "docs/specs/p1-n008-mtool-checker-extension-point.md"
+      },
+      "done": "2026-08-26",
+      "note": null
+    },
+    {
+      "id": "P1-N009",
+      "title": "Plugin tooling on the portfolio stack",
+      "outcome": "The plugin's tooling runs on the portfolio's declared stack, Node and TypeScript, and the Plan register grammar has one implementation that both repositories share.",
+      "stage": "done",
+      "parent": "P1-N001",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p1-n009-plugin-tooling-portfolio-stack.md",
+        "spec": "docs/specs/p1-n009-plugin-tooling-portfolio-stack.md"
+      },
+      "done": "2026-08-30",
+      "note": null
+    },
+    {
+      "id": "P1-N010",
+      "title": "Node toolchain and the shared register grammar, proven by journal_tail",
+      "outcome": "The plugin's tooling runs on Node, and the Plan register grammar has one TypeScript implementation, proven by the journal_tail port.",
+      "stage": "done",
+      "parent": "P1-N009",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": "2026-08-30",
+      "note": null
+    },
+    {
+      "id": "P1-N011",
+      "title": "The travelling package: conformance corpus, recorded expectations, vendoring generator",
+      "outcome": "A conformance corpus of fixtures with recorded expectations, and a generator that vendors the shared grammar unit into the service repository.",
+      "stage": "done",
+      "parent": "P1-N009",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": "2026-08-30",
+      "note": null
+    },
+    {
+      "id": "P1-N012",
+      "title": "The form checker on the shared unit, proven finding-for-finding",
+      "outcome": "The form checker ported to TypeScript on the shared grammar unit, reproducing the Python checker's findings one for one.",
+      "stage": "done",
+      "parent": "P1-N009",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": "2026-08-30",
+      "note": null
+    },
+    {
+      "id": "P1-N013",
+      "title": "The cutover: sync_agents ported, every invocation site moved, the Python retired",
+      "outcome": "The Python scripts retired, sync_agents ported, and every invocation site moved to the TypeScript tools.",
+      "stage": "done",
+      "parent": "P1-N009",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": "2026-08-30",
+      "note": null
+    },
+    {
+      "id": "P1-N014",
+      "title": "Role contracts adopt the methodology's conduct rules",
+      "outcome": "Every conduct duty that methodology v1.4.0 named is stated once, in the document that owns it, and reaches the roles through the artifacts they actually load.",
+      "stage": "done",
+      "parent": "P1-N001",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p1-n014-role-contracts-adopt-v140-rules.md",
+        "spec": "docs/specs/p1-n014-role-contracts-adopt-conduct-rules.md"
+      },
+      "done": "2026-10-29",
+      "note": null
+    },
+    {
+      "id": "P1-N015",
+      "title": "Methodology amendments for delegated, multi-agent work",
+      "outcome": "Four adjudicable amendment proposals to majodali/methodology, drafted in this repository and hand-carried upstream by the owner.",
+      "stage": "done",
+      "parent": "P1-N001",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p1-n015-methodology-amendments-delegated-work.md",
+        "spec": "docs/specs/p1-n015-methodology-amendments-delegated-work.md"
+      },
+      "done": "2026-09-01",
+      "note": null
+    },
+    {
+      "id": "P1-N016",
+      "title": "Process spec maintenance: branch lifecycle, PR citation, packet table",
+      "outcome": "Every Backlog row routed to this node is either landed in the process specification, or closed with a stated reason.",
+      "stage": "done",
+      "parent": "P1-N001",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p1-n016-process-spec-maintenance.md",
+        "spec": null
+      },
+      "done": "2026-11-05",
+      "note": "plan gate crossed 2026-11-03, the plan's criteria are its specification (decision 2); does not wait on P3-N009 (decision 3); E1 (T103) accepted 2026-11-03, E2 (T104) accepted 2026-11-05 under the owner's rulings A26 to A28; verifying gate crossed 2026-11-08"
+    },
+    {
+      "id": "P1-N006",
+      "title": "The pilot on a real project, superseded by the service's migration and pilot",
+      "outcome": null,
+      "stage": "identified",
+      "parent": "P1-N001",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": null,
+      "note": "Chunk 5 of the parent plan; superseded in place by P2-N006; kept until the founding plan closes out"
+    },
+    {
+      "id": "P1-N007",
+      "title": "Cost reporting and the founding plan's close-out",
+      "outcome": null,
+      "stage": "identified",
+      "parent": "P1-N001",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": null,
+      "note": "Chunk 6 of the parent plan"
+    },
+    {
+      "id": "P2-N001",
+      "title": "Orchestration service: the MCP service and the web view",
+      "outcome": "A service that Claude Code sessions call over MCP for plan state, coordination and owner questions, with a web view of the plan, and git as the only source of truth.",
+      "stage": "broken-down",
+      "parent": null,
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/orchestration-service.md",
+        "spec": null
+      },
+      "done": null,
+      "note": null
+    },
+    {
+      "id": "P2-N002",
+      "title": "The service skeleton, and plan state read and updated through it",
+      "outcome": "A deployed MCP service reads and validates the Plan register through a GitHub App, and a session updates plan state under an advisory lease.",
+      "stage": "done",
+      "parent": "P2-N001",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p2-n002-service-skeleton.md",
+        "spec": "docs/specs/p2-n002-service-skeleton.md"
+      },
+      "done": "2026-08-26",
+      "note": "Chunk 1 of the parent plan"
+    },
+    {
+      "id": "P2-N007",
+      "title": "The service repository bootstrapped and classified",
+      "outcome": "The service repository exists with its Classification, its Node toolchain, its README and its Backlog.",
+      "stage": "done",
+      "parent": "P2-N002",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": "2026-08-27",
+      "note": null
+    },
+    {
+      "id": "P2-N008",
+      "title": "Reachability slice: a deployed MCP server a session can call",
+      "outcome": "A deployed MCP server on Lambda answers service_identity over HTTP with bearer-token auth, enlisted from a checked-in .mcp.json.",
+      "stage": "done",
+      "parent": "P2-N002",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": "2026-08-28",
+      "note": null
+    },
+    {
+      "id": "P2-N009",
+      "title": "Plan-state read through the GitHub App",
+      "outcome": "plan_read returns the coordinating repository's Plan register at a named ref through an installed GitHub App, with the commit SHA on every answer.",
+      "stage": "done",
+      "parent": "P2-N002",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": "2026-08-29",
+      "note": null
+    },
+    {
+      "id": "P2-N010",
+      "title": "Plan-state update, git-authoritative, with the advisory lease",
+      "outcome": "A session moves a node through a legal stage transition: it takes the lease, receives the exact edit, commits it, and the service confirms the commit carries it.",
+      "stage": "done",
+      "parent": "P2-N002",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": "2026-09-01",
+      "note": null
+    },
+    {
+      "id": "P2-N011",
+      "title": "Degrade to git-only, and enlistment documentation",
+      "outcome": "A session works with the service unreachable, and the enlistment documentation says how a repository enlists.",
+      "stage": "done",
+      "parent": "P2-N002",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": "2026-09-07",
+      "note": null
+    },
+    {
+      "id": "P2-N012",
+      "title": "Deploy the service from CI on merge",
+      "outcome": "A merge to main in the service repository deploys the service, proves it against a real endpoint, and only then promotes it, with a red workflow on failure.",
+      "stage": "done",
+      "parent": "P2-N001",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p2-n012-deploy-from-ci-on-merge.md",
+        "spec": "docs/specs/p2-n012-deploy-from-ci-on-merge.md"
+      },
+      "done": "2026-09-01",
+      "note": null
+    },
+    {
+      "id": "P2-N013",
+      "title": "Alias assumptions verified against AWS documentation",
+      "outcome": "The Lambda alias assumptions the deploy relies on are verified against AWS documentation and recorded.",
+      "stage": "done",
+      "parent": "P2-N012",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": "2026-09-01",
+      "note": null
+    },
+    {
+      "id": "P2-N014",
+      "title": "Pull-request checks that cannot deploy",
+      "outcome": "Pull-request checks build, lint and test without any deploy credential.",
+      "stage": "done",
+      "parent": "P2-N012",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": "2026-09-01",
+      "note": null
+    },
+    {
+      "id": "P2-N015",
+      "title": "Alias-aware lease-table selection, failing closed",
+      "outcome": "The lease table is selected by the invoked alias, and an unknown alias fails closed.",
+      "stage": "done",
+      "parent": "P2-N012",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": "2026-09-01",
+      "note": null
+    },
+    {
+      "id": "P2-N016",
+      "title": "Deploy, smoke and promote on merge to main",
+      "outcome": "A merge to main deploys a version to the preprod alias, smoke-tests it, and promotes live only on a pass.",
+      "stage": "done",
+      "parent": "P2-N012",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": "2026-09-07",
+      "note": null
+    },
+    {
+      "id": "P2-N003",
+      "title": "Owner questions and the plan view",
+      "outcome": "The owner sees this project's plan in a browser on any device, and later answers gate decisions there.",
+      "stage": "broken-down",
+      "parent": "P2-N001",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p2-n003-owner-questions-and-plan-view.md",
+        "spec": "docs/specs/p2-n003-owner-questions-and-plan-view.md"
+      },
+      "done": null,
+      "note": "Chunk 2 of the parent plan; split into the web view's first version and the owner question queue (owner, 2026-10-29)"
+    },
+    {
+      "id": "P2-N021",
+      "title": "The web view's first version: the plan tree from commits, drilling to node and task",
+      "outcome": "A signed-in owner sees the plan tree at one commit and drills to node and task pages, with the Project model's renderings beside them.",
+      "stage": "done",
+      "parent": "P2-N003",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": "docs/specs/p2-n003-owner-questions-and-plan-view.md"
+      },
+      "done": "2026-11-02",
+      "note": "independent of P2-N005 and P2-N004 (RU-018; owner, 2026-10-29); its task E3 waits on P3-N007 done, its tasks E1 and E2 do not (plan decision 8)"
+    },
+    {
+      "id": "P2-N022",
+      "title": "The owner question queue: gate decisions answered in the web view, picked up through the task-pull loop",
+      "outcome": "The owner answers gates and asks on a phone, in the web view.",
+      "stage": "identified",
+      "parent": "P2-N003",
+      "after": ["P2-N021", "P2-N005"],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p2-n022-owner-question-queue.md",
+        "spec": "docs/specs/p2-n003-owner-questions-and-plan-view.md"
+      },
+      "done": null,
+      "note": "depends on P2-N021, done 2026-11-03, and on P2-N005 for its final slice only; no longer follows P2-N006 (owner, 2026-11-03)"
+    },
+    {
+      "id": "P2-N023",
+      "title": "Web view UX refinement: an owner-attended loop on the service repository until the view can replace docs/plan.md, at most ten iterations",
+      "outcome": "At V30 the owner decided that the web view does not replace docs/plan.md yet.",
+      "stage": "verifying",
+      "parent": "P2-N003",
+      "after": ["P2-N021"],
+      "hold": {
+        "kind": "gated",
+        "reason": "owner review at verifying, U1 on the owner's decision to end the loop at three iterations"
+      },
+      "docs": {
+        "plan": "docs/plans/p2-n023-web-view-ux-refinement.md",
+        "spec": null
+      },
+      "done": null,
+      "note": "depends on P2-N021, done 2026-11-03; independent of P2-N022 and does not block it (RU-018; owner, 2026-11-03); iterations 1 to 3 (T097 to T099) accepted 2026-11-03; the owner ended the loop on 2026-11-07, and T100 shipped nothing"
+    },
+    {
+      "id": "P2-N004",
+      "title": "Topics for coordination between enlisted sessions",
+      "outcome": null,
+      "stage": "identified",
+      "parent": "P2-N001",
+      "after": ["P2-N006"],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": null,
+      "note": "Chunk 3 of the parent plan; after P2-N006, built only on a shown need (owner, 2026-10-29)"
+    },
+    {
+      "id": "P2-N005",
+      "title": "The task-pull loop: sessions claim tasks from the service",
+      "outcome": "A session asks the service for the next task in its role, claims it, reports progress, and reports completion.",
+      "stage": "broken-down",
+      "parent": "P2-N001",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p2-n005-task-pull-loop.md",
+        "spec": "docs/specs/p2-n005-task-pull-loop.md"
+      },
+      "done": null,
+      "note": "Chunk 4 of the parent plan; independent of P2-N003 and P2-N004 (RU-018; owner, 2026-10-29)"
+    },
+    {
+      "id": "P2-N017",
+      "title": "The platform facts, verified",
+      "outcome": "A committed finding, docs/findings/p2-n005-platform-facts.md, answers five facts yes or no.",
+      "stage": "identified",
+      "parent": "P2-N005",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p2-n017-platform-facts.md",
+        "spec": "docs/specs/p2-n005-task-pull-loop.md"
+      },
+      "done": null,
+      "note": "planned before execute (owner, 2026-11-03)"
+    },
+    {
+      "id": "P2-N018",
+      "title": "The loop in git alone",
+      "outcome": null,
+      "stage": "identified",
+      "parent": "P2-N005",
+      "after": ["P2-N017"],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": "docs/specs/p2-n005-task-pull-loop.md"
+      },
+      "done": null,
+      "note": "depends on P2-N017"
+    },
+    {
+      "id": "P2-N019",
+      "title": "Role-aware session identity for the service",
+      "outcome": null,
+      "stage": "identified",
+      "parent": "P2-N005",
+      "after": ["P2-N017"],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": "docs/specs/p2-n005-task-pull-loop.md"
+      },
+      "done": null,
+      "note": "depends on P2-N017; independent of P2-N018 (RU-018)"
+    },
+    {
+      "id": "P2-N020",
+      "title": "The task tools of the service",
+      "outcome": null,
+      "stage": "identified",
+      "parent": "P2-N005",
+      "after": ["P2-N018", "P2-N019"],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": "docs/specs/p2-n005-task-pull-loop.md"
+      },
+      "done": null,
+      "note": "depends on P2-N018 and P2-N019"
+    },
+    {
+      "id": "P2-N006",
+      "title": "This repository migrates onto the service, then the pilot runs on methodology-tools",
+      "outcome": null,
+      "stage": "identified",
+      "parent": "P2-N001",
+      "after": ["P2-N005", "P2-N021", "P2-N003"],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": null,
+      "note": "Chunk 5 of the parent plan; depends on P2-N005 and on P2-N021, the web view's first version, done 2026-11-03, not on P2-N003 as a whole (owner, 2026-10-29)"
+    },
+    {
+      "id": "P3-N001",
+      "title": "Project comprehension and continuous implementation",
+      "outcome": "A model of each part of a project and what depends on it, plus the safeguards for longer runs of work without owner review.",
+      "stage": "broken-down",
+      "parent": null,
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/comprehension-and-continuous-implementation.md",
+        "spec": "docs/specs/p3-n001-comprehension-and-continuous-implementation.md"
+      },
+      "done": null,
+      "note": null
+    },
+    {
+      "id": "P3-N002",
+      "title": "The comprehension model: resources, edges and renderings",
+      "outcome": "One comprehension model, defined as an extension of the planning and execution model this project already has, plus one instance of it over this repository, populated from documents that already exist here.",
+      "stage": "broken-down",
+      "parent": "P3-N001",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p3-n002-comprehension-model.md",
+        "spec": "docs/specs/p3-n002-comprehension-model.md"
+      },
+      "done": null,
+      "note": "Chunk 1 of the parent plan"
+    },
+    {
+      "id": "P3-N006",
+      "title": "The thin end-to-end slice: five real parts all the way through, and both renderings",
+      "outcome": "Five real parts of this repository carried through the model, the navigation bound and both renderings, in one commit, so that P3-N007 can define the type against content that has already pushed back.",
+      "stage": "done",
+      "parent": "P3-N002",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p3-n006-thin-end-to-end-slice.md",
+        "spec": "docs/specs/p3-n002-comprehension-model.md"
+      },
+      "done": "2026-10-30",
+      "note": null
+    },
+    {
+      "id": "P3-N007",
+      "title": "The type declared, the arguments written, the K-003 amendment drafted",
+      "outcome": "The Project model becomes a declared type of this repository, and the K-003 (the Backlog is the single source of progress truth) amendment exists as a reviewed proposal ready for the owner to carry.",
+      "stage": "done",
+      "parent": "P3-N002",
+      "after": ["P3-N006"],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p3-n007-type-declared-amendment-drafted.md",
+        "spec": "docs/specs/p3-n002-comprehension-model.md"
+      },
+      "done": "2026-10-31",
+      "note": "depends on P3-N006"
+    },
+    {
+      "id": "P3-N008",
+      "title": "The instance, over this repository",
+      "outcome": "The instance describes every current part of the project.",
+      "stage": "planned",
+      "parent": "P3-N002",
+      "after": ["P3-N007"],
+      "hold": {
+        "kind": "gated",
+        "reason": "owner review of the plan"
+      },
+      "docs": {
+        "plan": "docs/plans/p3-n008-instance-over-this-repository.md",
+        "spec": "docs/specs/p3-n002-comprehension-model.md"
+      },
+      "done": null,
+      "note": "depends on P3-N007 for its executing stage (P3-N007 decision 9), done 2026-10-30"
+    },
+    {
+      "id": "P3-N009",
+      "title": "Sibling ordering retired, and the checks that replace it",
+      "outcome": null,
+      "stage": "identified",
+      "parent": "P3-N002",
+      "after": ["P3-N008"],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": null,
+      "note": "depends on P3-N008"
+    },
+    {
+      "id": "P3-N003",
+      "title": "The common risk catalogue",
+      "outcome": "A catalogue of recurring risk classes, each carried from one instance to a check that reads the Risk register's class lines.",
+      "stage": "broken-down",
+      "parent": "P3-N001",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p3-n003-common-risk-catalogue.md",
+        "spec": "docs/specs/p3-n003-common-risk-catalogue.md"
+      },
+      "done": null,
+      "note": "Chunk 2 of the parent plan; independent of P3-N002 (RU-018)"
+    },
+    {
+      "id": "P3-N010",
+      "title": "One class, carried end to end",
+      "outcome": "The catalogue exists with one entry.",
+      "stage": "done",
+      "parent": "P3-N003",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p3-n010-one-class-end-to-end.md",
+        "spec": "docs/specs/p3-n003-common-risk-catalogue.md"
+      },
+      "done": "2026-10-30",
+      "note": null
+    },
+    {
+      "id": "P3-N011",
+      "title": "The sweep, the rest of the catalogue, and the omission list",
+      "outcome": "Every candidate in the five sources that criterion B1 (one recorded pass per source) names is dispositioned on the record.",
+      "stage": "done",
+      "parent": "P3-N003",
+      "after": ["P3-N010"],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p3-n011-sweep-and-omission-list.md",
+        "spec": "docs/specs/p3-n003-common-risk-catalogue.md"
+      },
+      "done": "2026-10-31",
+      "note": "depends on P3-N010"
+    },
+    {
+      "id": "P3-N012",
+      "title": "The Article 8 proposal, written IR first and reviewed",
+      "outcome": null,
+      "stage": "identified",
+      "parent": "P3-N003",
+      "after": ["P3-N011"],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": null,
+      "note": "depends on P3-N011, done 2026-11-03"
+    },
+    {
+      "id": "P3-N004",
+      "title": "Reversibility, and the measurement that says whether it pays",
+      "outcome": null,
+      "stage": "identified",
+      "parent": "P3-N001",
+      "after": ["P3-N002"],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": null,
+      "note": "Chunk 3 of the parent plan; depends on P3-N002"
+    },
+    {
+      "id": "P3-N005",
+      "title": "Sequence mode: the loop runs W-001's pre-ratified mode",
+      "outcome": "This project's own dispatch loop runs methodology W-001's pre-ratified sequence mode, and the four conditions that stop a sequence are applied mechanically by the roles that meet them.",
+      "stage": "broken-down",
+      "parent": "P3-N001",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p3-n005-sequence-mode.md",
+        "spec": "docs/specs/p3-n005-sequence-mode.md"
+      },
+      "done": null,
+      "note": "Chunk 4 of the parent plan; independent of P3-N002 (RU-018)"
+    },
+    {
+      "id": "P3-N013",
+      "title": "The four stop conditions, decidable, evidenced, and related to the meta-review signals",
+      "outcome": "W-001's four stop conditions exist as committed predicates that two blind readings apply identically to this project's past task results.",
+      "stage": "done",
+      "parent": "P3-N005",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p3-n013-stop-conditions-decidable.md",
+        "spec": "docs/specs/p3-n005-sequence-mode.md"
+      },
+      "done": "2026-10-30",
+      "note": null
+    },
+    {
+      "id": "P3-N014",
+      "title": "The loop runs sequence mode, and the roles meet the conditions without looking",
+      "outcome": "This project's dispatch loop can run methodology W-001 (two delivery modes, human-gated)'s pre-ratified sequence.",
+      "stage": "done",
+      "parent": "P3-N005",
+      "after": ["P3-N013", "P1-N014"],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p3-n014-loop-runs-sequence-mode.md",
+        "spec": "docs/specs/p3-n005-sequence-mode.md"
+      },
+      "done": "2026-10-30",
+      "note": "depends on P3-N013 and on P1-N014's execute"
+    },
+    {
+      "id": "P3-N015",
+      "title": "The demonstration: a ratified sequence lands two chunks and stops on asks",
+      "outcome": "The owner ratifies a sequence of four members once.",
+      "stage": "broken-down",
+      "parent": "P3-N005",
+      "after": ["P3-N014"],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p3-n015-sequence-demonstration.md",
+        "spec": "docs/specs/p3-n005-sequence-mode.md"
+      },
+      "done": null,
+      "note": "depends on P3-N014; plan gate crossed 2026-11-04, decisions 1 to 7 at their defaults; specified by the parent's Child C with the plan's criteria (decision 3); its children run as a ratified sequence, in this order; the first is dispatched only when no other task is in flight (decision 5)"
+    },
+    {
+      "id": "P3-N017",
+      "title": "The process specification cites the methodology at its pin",
+      "outcome": "The owner ratifies a sequence of four members once.",
+      "stage": "done",
+      "parent": "P3-N015",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p3-n015-sequence-demonstration.md",
+        "spec": null
+      },
+      "done": "2026-11-07",
+      "note": "T105 accepted 2026-11-07, member 1 of the ratified sequence"
+    },
+    {
+      "id": "P3-N018",
+      "title": "Risk register entries can be linked one by one",
+      "outcome": "The owner ratifies a sequence of four members once.",
+      "stage": "done",
+      "parent": "P3-N015",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p3-n015-sequence-demonstration.md",
+        "spec": null
+      },
+      "done": "2026-11-07",
+      "note": "T106 accepted 2026-11-07, member 2 of the ratified sequence"
+    },
+    {
+      "id": "P3-N019",
+      "title": "The checker extension-point proposal is ready to carry",
+      "outcome": "The owner ratifies a sequence of four members once.",
+      "stage": "done",
+      "parent": "P3-N015",
+      "after": [],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p3-n015-sequence-demonstration.md",
+        "spec": null
+      },
+      "done": "2026-11-08",
+      "note": "T107 accepted 2026-11-08, member 3 of the ratified sequence"
+    },
+    {
+      "id": "P3-N020",
+      "title": "The plugin tools are tested the way they run",
+      "outcome": "The owner ratifies a sequence of four members once.",
+      "stage": "specified",
+      "parent": "P3-N015",
+      "after": ["P3-N019"],
+      "hold": null,
+      "docs": {
+        "plan": "docs/plans/p3-n015-sequence-demonstration.md",
+        "spec": null
+      },
+      "done": null,
+      "note": "ratified, withheld by the stop"
+    },
+    {
+      "id": "P3-N016",
+      "title": "The determination on W-001, and the artifact or the argument",
+      "outcome": null,
+      "stage": "identified",
+      "parent": "P3-N005",
+      "after": ["P3-N015"],
+      "hold": null,
+      "docs": {
+        "plan": null,
+        "spec": null
+      },
+      "done": null,
+      "note": "depends on P3-N015"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T001",
+      "node": "P1-N005",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-08-25T18:52:00Z",
+      "closed": "2026-08-26T23:04:23Z",
+      "ref": null,
+      "pr": null,
+      "summary": "chunk-4 build in the owner-facing design session (attended surface, owner-designated model above tier); harness exposed no usage split, and elapsed time spans the design conversation rather than agent work",
+      "notes": "chunk-4 build in the owner-facing design session (attended surface, owner-designated model above tier); harness exposed no usage split, and elapsed time spans the design conversation rather than agent work"
+    },
+    {
+      "id": "T002",
+      "node": "P1-N008",
+      "step": "plan",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-08-25T22:09:00Z",
+      "closed": "2026-08-25T22:13:00Z",
+      "ref": "fa1d878",
+      "pr": null,
+      "summary": "harness reported ~44k tokens total, no input/output split; packet widened (dispatch.md; backlog.md whole; form_check.py partial)",
+      "notes": "harness reported ~44k tokens total, no input/output split; packet widened (dispatch.md; backlog.md whole; form_check.py partial)"
+    },
+    {
+      "id": "T003",
+      "node": "P1-N008",
+      "step": "specify",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-08-25T22:15:00Z",
+      "closed": "2026-08-25T22:19:00Z",
+      "ref": "de599e7",
+      "pr": null,
+      "summary": "harness reported ~36k tokens total, no input/output split; packet widened (auditing.md excerpt; backlog.md; plan-register.md excerpt)",
+      "notes": "harness reported ~36k tokens total, no input/output split; packet widened (auditing.md excerpt; backlog.md; plan-register.md excerpt)"
+    },
+    {
+      "id": "T004",
+      "node": "P1-N008",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-08-26T13:00:00Z",
+      "closed": "2026-08-26T14:52:00Z",
+      "ref": "cb58f44918d0a007e7a4270d5dbb6af8ce4b83fb",
+      "pr": null,
+      "summary": "harness reported ~68k tokens total (26 tool calls, ~110 min wall-clock), no input/output split; packet widened (git log/remote/branch metadata commands, not file reads; one grepped line of plan-register.md's existing Article-7 citation)",
+      "notes": "harness reported ~68k tokens total (26 tool calls, ~110 min wall-clock), no input/output split; packet widened (git log/remote/branch metadata commands, not file reads; one grepped line of plan-register.md's existing Article-7 citation)"
+    },
+    {
+      "id": "T005",
+      "node": "P2-N002",
+      "step": "plan",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-08-26T23:19:02Z",
+      "closed": "2026-08-26T23:19:02Z",
+      "ref": "5146a91",
+      "pr": null,
+      "summary": "~54k context reported, no input/output split; 6m25s dispatch→result (unattended subagent); packet widened (rulings.md — recorded as R6's fifth firing and repaired); brief also invited breakdown content ahead of the specify stage (orchestrator error, see journal)",
+      "notes": "~54k context reported, no input/output split; 6m25s dispatch→result (unattended subagent); packet widened (rulings.md — recorded as R6's fifth firing and repaired); brief also invited breakdown content ahead of the specify stage (orchestrator error, see journal)"
+    },
+    {
+      "id": "T006",
+      "node": "P2-N002",
+      "step": "specify",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-08-26T23:25:30Z",
+      "closed": "2026-08-26T23:25:30Z",
+      "ref": "b6bb4d2",
+      "pr": null,
+      "summary": "~55k context reported, no input/output split; 5m04s dispatch→result (unattended subagent); four minor packet widenings, none a spec defect — the Backlog gap it flagged was an orchestrator brief-assembly error (the packet table already carries the Backlog in the base)",
+      "notes": "~55k context reported, no input/output split; 5m04s dispatch→result (unattended subagent); four minor packet widenings, none a spec defect — the Backlog gap it flagged was an orchestrator brief-assembly error (the packet table already carries the Backlog in the base)"
+    },
+    {
+      "id": "T007",
+      "node": "P2-N007",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-08-27T00:19:37Z",
+      "closed": "2026-08-27T00:19:37Z",
+      "ref": "775842c",
+      "pr": null,
+      "summary": "~87k subagent tokens over 63 tool calls, 7m36s dispatch→result (unattended); packet widened (plan-model.md K-003 section, form_check.py, coordinating Backlog)",
+      "notes": "~87k subagent tokens over 63 tool calls, 7m36s dispatch→result (unattended); packet widened (plan-model.md K-003 section, form_check.py, coordinating Backlog)"
+    },
+    {
+      "id": "T008",
+      "node": "P2-N008",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-08-27T01:00:03Z",
+      "closed": "2026-08-27T01:00:24Z",
+      "ref": "fa3e979",
+      "pr": null,
+      "summary": "~195k subagent tokens over 157 tool calls, 21m12s dispatch→result (unattended) — the largest task to date; returned blocked on owner actions as designed; packet widened (plan-register.md; MCP SDK and Hono internals for transport API; SAM CLI installed to a scratch venv for local validate/build)",
+      "notes": "~195k subagent tokens over 157 tool calls, 21m12s dispatch→result (unattended) — the largest task to date; returned `blocked` on owner actions as designed; packet widened (plan-register.md; MCP SDK and Hono internals for transport API; SAM CLI installed to a scratch venv for local validate/build)"
+    },
+    {
+      "id": "T009",
+      "node": "P2-N008",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-08-28T06:38:03Z",
+      "closed": "2026-08-28T06:47:03Z",
+      "ref": "b5f2a04",
+      "pr": null,
+      "summary": "~100k subagent tokens over 65 tool calls, 9m50s dispatch→result (unattended); rework after the backward transition; packet widened (hono aws-lambda adapter source and types, to verify the diagnosis independently rather than trust it)",
+      "notes": "~100k subagent tokens over 65 tool calls, 9m50s dispatch→result (unattended); rework after the backward transition; packet widened (hono aws-lambda adapter source and types, to verify the diagnosis independently rather than trust it)"
+    },
+    {
+      "id": "T010",
+      "node": "P2-N009",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-08-29T15:27:34Z",
+      "closed": "2026-08-29T15:57:00Z",
+      "ref": "cd67d75",
+      "pr": null,
+      "summary": "~269k subagent tokens over 167 tool calls, 25m07s dispatch→result (unattended); returned blocked on O3 as briefed; packet widened (parent plan and spec whole, for the gate decisions and the not-verified-here boundary; the four existing test files in full; mcp-enlistment.md, deploy.sh, .gitignore, .prettierignore, tsconfig.eslint.json, MCP SDK type declarations; npm registry metadata to choose the JWT dependency).",
+      "notes": "~269k subagent tokens over 167 tool calls, 25m07s dispatch→result (unattended); returned `blocked` on O3 as briefed; packet widened (parent plan and spec whole, for the gate decisions and the not-verified-here boundary; the four existing test files in full; mcp-enlistment.md, deploy.sh, .gitignore, .prettierignore, tsconfig.eslint.json, MCP SDK type declarations; npm registry metadata to choose the JWT dependency). The subagent's self-reported model was internally contradictory (named both Opus 5 and Sonnet 5); this row records the tier dispatched"
+    },
+    {
+      "id": "T011",
+      "node": "P1-N009",
+      "step": "plan",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-08-29T22:23:59Z",
+      "closed": "2026-08-29T22:33:31Z",
+      "ref": "a13756e",
+      "pr": null,
+      "summary": "~104k subagent tokens over 43 tool calls, 8m23s dispatch→result (unattended); harness reported a running total with no input/output split; packet widened (auditing.md, for the specification the checker mechanizes; open-risks.md R7–R12, where R9 is decisive for the no-build recommendation; the mtool proposal's entry-point line; .claude/settings.json and the agents listing, to find an invocation site the brief's list missed — the …",
+      "notes": "~104k subagent tokens over 43 tool calls, 8m23s dispatch→result (unattended); harness reported a running total with no input/output split; packet widened (auditing.md, for the specification the checker mechanizes; open-risks.md R7–R12, where R9 is decisive for the no-build recommendation; the mtool proposal's entry-point line; .claude/settings.json and the agents listing, to find an invocation site the brief's list missed — the Auditor contract names form_check.py). The last widening is a real packet defect in this brief, not the role's fault"
+    },
+    {
+      "id": "T012",
+      "node": "P1-N009",
+      "step": "specify",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-08-30T05:05:24Z",
+      "closed": "2026-08-30T05:15:29Z",
+      "ref": "2f576d6",
+      "pr": null,
+      "summary": "~113k subagent tokens over 35 tool calls, 9m16s dispatch→result (unattended); harness reported only a remaining-budget counter, no input/output split; packet widened once (a repo-wide search for the three script names, then four documents outside the packet) — and it produced finding 2, the undischarged P2-N002 criteria.",
+      "notes": "~113k subagent tokens over 35 tool calls, 9m16s dispatch→result (unattended); harness reported only a remaining-budget counter, no input/output split; packet widened once (a repo-wide search for the three script names, then four documents outside the packet) — and it produced finding 2, the undischarged P2-N002 criteria. Second consecutive brief whose mention inventory the role had to rediscover: R6's seventh firing, orchestrator brief-assembly again"
+    },
+    {
+      "id": "T013",
+      "node": "P1-N009",
+      "step": "break down",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-08-30T18:22:22Z",
+      "closed": "2026-08-30T18:30:39Z",
+      "ref": "73c88e8",
+      "pr": null,
+      "summary": "~103k subagent tokens over 26 tool calls, 7m55s dispatch→result (unattended); harness reported a running total, no input/output split; no packet widening — the first task on this project to need none, which is what the orchestrator's own declared widening at dispatch was for",
+      "notes": "~103k subagent tokens over 26 tool calls, 7m55s dispatch→result (unattended); harness reported a running total, no input/output split; **no packet widening** — the first task on this project to need none, which is what the orchestrator's own declared widening at dispatch was for"
+    },
+    {
+      "id": "T014",
+      "node": "P1-N010",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-08-30T21:02:52Z",
+      "closed": "2026-08-30T21:17:09Z",
+      "ref": "8bf68e7",
+      "pr": null,
+      "summary": "~167k subagent tokens over 86 tool calls, 12m27s dispatch→result (unattended); no input/output split reported; no packet widening — the second consecutive task to need none.",
+      "notes": "~167k subagent tokens over 86 tool calls, 12m27s dispatch→result (unattended); no input/output split reported; **no packet widening** — the second consecutive task to need none. Eight criteria, all met and all re-verified at acceptance; two findings routed to the Backlog rather than resolved in place"
+    },
+    {
+      "id": "T015",
+      "node": "P1-N011",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-08-30T21:32:14Z",
+      "closed": "2026-08-30T21:53:05Z",
+      "ref": "cc9e8ee",
+      "pr": null,
+      "summary": "~263k subagent tokens over 111 tool calls, 19m08s dispatch→result (unattended); no input/output split reported; packet widened once (journal_tail.py, to confirm its duplicate-ID behaviour first-hand rather than trust the Backlog's paraphrase — a widening the brief should have pre-empted, since it routed that fixture here).",
+      "notes": "~263k subagent tokens over 111 tool calls, 19m08s dispatch→result (unattended); no input/output split reported; packet widened once (journal_tail.py, to confirm its duplicate-ID behaviour first-hand rather than trust the Backlog's paraphrase — a widening the brief should have pre-empted, since it routed that fixture here). 19 fixtures, all 11 declared rules provoked; the duplicate-ID conflict made visible and left undecided as briefed; found a failing test the orchestrator's own T014 acceptance commit had broken"
+    },
+    {
+      "id": "T016",
+      "node": "P1-N012",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-08-30T22:15:51Z",
+      "closed": "2026-08-30T22:35:23Z",
+      "ref": "8876cf2",
+      "pr": null,
+      "summary": "~263k subagent tokens over 98 tool calls, 17m59s dispatch→result (unattended); no input/output split reported; packet widened (the corpus's manifest, README, 18 fixture directories and expectation files, and run_corpus/sync_shared_unit/parse-output in full — reachable from the packet's pointers but not individually named, and needed to match message shapes exactly).",
+      "notes": "~263k subagent tokens over 98 tool calls, 17m59s dispatch→result (unattended); no input/output split reported; packet widened (the corpus's manifest, README, 18 fixture directories and expectation files, and run_corpus/sync_shared_unit/parse-output in full — reachable from the packet's pointers but not individually named, and needed to match message shapes exactly). Found and fixed a real port bug mid-task via its own harness: path.resolve() on the project-root argument, which Python never does"
+    },
+    {
+      "id": "T017",
+      "node": "P1-N013",
+      "step": "execute",
+      "status": "needs-judgment",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-08-30T22:43:42Z",
+      "closed": "2026-08-30T22:43:42Z",
+      "ref": null,
+      "pr": null,
+      "summary": "deleting form_check.py breaks test/plan-register.test.ts, which loads it through a python3 subprocess at collection time — so the whole file crashes, not one assertion.",
+      "notes": null
+    },
+    {
+      "id": "T018",
+      "node": "P1-N013",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-08-30T23:18:29Z",
+      "closed": "2026-08-30T23:39:28Z",
+      "ref": "73b20b4",
+      "pr": null,
+      "summary": "~228k subagent tokens over 164 tool calls, 17m04s dispatch→result (unattended); no input/output split reported; no packet widening.",
+      "notes": "~228k subagent tokens over 164 tool calls, 17m04s dispatch→result (unattended); no input/output split reported; **no packet widening**. The cutover: three Python scripts retired, seven invocation sites moved, sync_agents ported, the differential harness deleted, all in one commit. Redispatch of T017, which returned needs-judgment and cost ~253k tokens with no row of its own — see the Backlog entry on unrecordable needs-judgment cost"
+    },
+    {
+      "id": "T019",
+      "node": "P1-N014",
+      "step": "plan",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-08-31T05:17:14Z",
+      "closed": "2026-08-31T05:29:34Z",
+      "ref": "c9da132",
+      "pr": null,
+      "summary": "~118k subagent tokens over 47 tool calls, 11m12s dispatch→result (unattended); no input/output split reported; packet widened five times, two of which (process/README.md and auditing.md) the role judged a packet-table gap rather than one-off need — a plan-stage packet that omits them will recur whenever a node touches the process spec itself.",
+      "notes": "~118k subagent tokens over 47 tool calls, 11m12s dispatch→result (unattended); no input/output split reported; packet widened five times, two of which (process/README.md and auditing.md) the role judged a packet-table gap rather than one-off need — a plan-stage packet that omits them will recur whenever a node touches the process spec itself. Discharged K-011 in its own commit rather than deferring it: the founding plan claimed a v1.3.0 pin in two places while the Classification has said 1.4.0 since 2026-08-30"
+    },
+    {
+      "id": "T020",
+      "node": "P1-N015",
+      "step": "plan",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-08-31T23:57:09Z",
+      "closed": "2026-09-01T00:03:15Z",
+      "ref": "b29b0e5",
+      "pr": null,
+      "summary": "~84k subagent tokens over 37 tool calls, 5m28s dispatch→result (unattended); no input/output split reported; packet widened once (process/README.md, whose Defined terms section is A3's evidencing instance and which the brief did not enumerate — the third packet observation on this project, and the second naming this same file).",
+      "notes": "~84k subagent tokens over 37 tool calls, 5m28s dispatch→result (unattended); no input/output split reported; packet widened once (process/README.md, whose Defined terms section is A3's evidencing instance and which the brief did not enumerate — the third packet observation on this project, and the second naming this same file). Leanest plan dispatched to date, as briefed; sharpened one of the owner's four sketches rather than only recording them, and flagged the sharpening for override"
+    },
+    {
+      "id": "T021",
+      "node": "P1-N015",
+      "step": "specify",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-09-01T00:14:52Z",
+      "closed": "2026-09-01T00:19:17Z",
+      "ref": "ca36ca8",
+      "pr": null,
+      "summary": "~55k subagent tokens over 22 tool calls, 4m05s dispatch→result (unattended); no input/output split reported; no packet widening — the first specify task on this project to need none, and the brief that enumerated process/README.md after two consecutive tasks had to widen for it.",
+      "notes": "~55k subagent tokens over 22 tool calls, 4m05s dispatch→result (unattended); no input/output split reported; **no packet widening** — the first specify task on this project to need none, and the brief that enumerated process/README.md after two consecutive tasks had to widen for it. Smallest planner task to date; seven criteria groups, no new owner decision staged"
+    },
+    {
+      "id": "T022",
+      "node": "P1-N015",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-09-01T00:20:28Z",
+      "closed": "2026-09-01T00:40:13Z",
+      "ref": "2b618c8",
+      "pr": null,
+      "summary": "~217k subagent tokens over 110 tool calls, 18m31s dispatch→result (unattended); no input/output split reported; packet widened three times, each necessary — the T019 cost-log row to confirm the commit A4 evidences, form_check.ts's header to know its scope before relying on it, and live HTTP fetches of the four evidencing-instance links to check they resolve.",
+      "notes": "~217k subagent tokens over 110 tool calls, 18m31s dispatch→result (unattended); no input/output split reported; packet widened three times, each necessary — the T019 cost-log row to confirm the commit A4 evidences, form_check.ts's header to know its scope before relying on it, and live HTTP fetches of the four evidencing-instance links to check they resolve. Also reported a harness anomaly: the Write tool refused a file whose name contains \"report\", apparently a path heuristic; routed around with a heredoc, no content affected"
+    },
+    {
+      "id": "T023",
+      "node": "P1-N015",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-09-01T01:58:08Z",
+      "closed": "2026-09-01T02:04:44Z",
+      "ref": "42d235e",
+      "pr": null,
+      "summary": "~136k subagent tokens over 46 tool calls, 6m01s dispatch→result (unattended); no input/output split reported; no packet widening.",
+      "notes": "~136k subagent tokens over 46 tool calls, 6m01s dispatch→result (unattended); no input/output split reported; **no packet widening**. Bounded revision after the second backward transition: two ordering duties folded into A1's principal-audience Statement, +15 lines. Declined to bind the agent audience, with the reason stated rather than escalated"
+    },
+    {
+      "id": "T024",
+      "node": "P2-N010",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-09-01T03:35:39Z",
+      "closed": "2026-09-01T04:06:07Z",
+      "ref": "a3415ce",
+      "pr": null,
+      "summary": "~343k subagent tokens over 206 tool calls, 28m49s dispatch→result (unattended) — the largest task this project has dispatched; no input/output split reported.",
+      "notes": "~343k subagent tokens over 206 tool calls, 28m49s dispatch→result (unattended) — the largest task this project has dispatched; no input/output split reported. Packet widened to form_check.ts, form-check-core.ts and node-preflight.ts, to read INTERIOR_OK's exact definition rather than infer it: a good widening, since the transition table's structural invariant now mirrors the coordinating repo's own checker. The subagent's self-reported model was again inconsistent with the tier dispatched; this row records the tier dispatched"
+    },
+    {
+      "id": "T025",
+      "node": "P2-N010",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-09-01T07:10:42Z",
+      "closed": "2026-09-01T07:28:26Z",
+      "ref": "6f3b117",
+      "pr": null,
+      "summary": "~186k subagent tokens over 130 tool calls, 15m54s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~186k subagent tokens over 130 tool calls, 15m54s dispatch→result (unattended); no input/output split reported. Outage rework. Packet widened to a SAM CLI it found in the session scratchpad and to aws_lambda_builders' own source, both load-bearing: the first let it verify the real production build path rather than the npm convenience script, and the second confirmed BuildProperties.Banner is a genuine esbuild passthrough instead of a guess. Also flagged a real defect in my brief — I said two Backlog entries existed in the service repo when I had written them in the coordinating repo"
+    },
+    {
+      "id": "T026",
+      "node": "P2-N010",
+      "step": "verify",
+      "status": "closed",
+      "role": "orchestrator",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": null,
+      "closed": "2026-09-01T17:40:32Z",
+      "ref": "e9ae6e4",
+      "pr": null,
+      "summary": "the chunk 1 gate demonstration, orchestrator-run rather than dispatched, so this row records an attended demonstration rather than a billed task.",
+      "notes": "the chunk 1 gate demonstration, orchestrator-run rather than dispatched, so this row records an attended demonstration rather than a billed task. Six calls against the deployed service: lease acquire, read, two deliberate refusals, the legal transition, confirm. Surfaced the reserved-word defect on the first call ever made against the production lease table"
+    },
+    {
+      "id": "T027",
+      "node": "P2-N010",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-09-01T17:28:49Z",
+      "closed": "2026-09-01T17:40:32Z",
+      "ref": "3ff7fa8",
+      "pr": null,
+      "summary": "~114k subagent tokens over 50 tool calls, 10m02s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~114k subagent tokens over 50 tool calls, 10m02s dispatch→result (unattended); no input/output split reported. Packet widened to the npm registry and a proxy probe while hunting a reserved-word list — which is how it met the suspicious package now recorded as R14. Declined the dependency and shipped a hand-built list with the caveat stated in the source"
+    },
+    {
+      "id": "T028",
+      "node": "P2-N012",
+      "step": "plan",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-09-01T18:21:25Z",
+      "closed": "2026-09-01T18:30:16Z",
+      "ref": "e5c045a",
+      "pr": null,
+      "summary": "~90k subagent tokens over 46 tool calls, 7m42s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~90k subagent tokens over 46 tool calls, 7m42s dispatch→result (unattended); no input/output split reported. Packet widened to the methodology's rule corpus, which the role judged structural rather than incidental — a plan that changes a Classification field must know which rules the change activates, and the plan-stage packet carries no rule corpus. It also surfaced two decisions the brief did not ask for: the cross-repo scope grant, and an ordering departure from dispatch's earlier-siblings-done default"
+    },
+    {
+      "id": "T029",
+      "node": "P2-N012",
+      "step": "specify",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-09-01T19:08:00Z",
+      "closed": "2026-09-01T19:20:00Z",
+      "ref": "9f03d8c",
+      "pr": "majodali/project-orchestrator#6",
+      "summary": "~77k subagent tokens over 25 tool calls, 6m19s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~77k subagent tokens over 25 tool calls, 6m19s dispatch→result (unattended); no input/output split reported. **No packet widening** — the second task on this project to need none, and the first at the specify stage. The brief named the eight documents and the role stayed inside them, including the one it could not read: it specified work landing in the service repository without a clone, by writing every criterion to be answerable from repository content, run logs, HTTPS calls or an owner attestation, which is the same constraint the dispatched execute sessions will be under"
+    },
+    {
+      "id": "T030",
+      "node": "P2-N013",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-09-01T19:56:00Z",
+      "closed": "2026-09-01T20:12:00Z",
+      "ref": "f95b9e8",
+      "pr": null,
+      "summary": "~127k subagent tokens over 74 tool calls, 8m48s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~127k subagent tokens over 74 tool calls, 8m48s dispatch→result (unattended); no input/output split reported. Model recorded from the role definition's pin, not from the role's self-report, which named a different model and is not evidence. One packet widening, and a good one: the installed `hono` adapter source under `node_modules/`, to answer assumptions 2 and 6 against the code this service actually runs rather than against the adapter's documentation — not a packet defect, since the execute row grants the code paths the specification names and this one it had to find"
+    },
+    {
+      "id": "T031",
+      "node": "P2-N014",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-09-01T20:30:00Z",
+      "closed": "2026-09-01T20:55:00Z",
+      "ref": "a5f75f3",
+      "pr": null,
+      "summary": "~130k subagent tokens over 72 tool calls, 12m57s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~130k subagent tokens over 72 tool calls, 12m57s dispatch→result (unattended); no input/output split reported. Dispatched in parallel with T032, the first parallel dispatch on this project, under the specification's recorded independence. Two packet widenings, both sound: the service repo's Backlog history, to establish that the lint gap my brief described was already half closed; and `git ls-remote` against three action repositories, because `api.github.com` is unreachable here and a SHA pin invented from memory would have been worse than none. The stale lint claim was my brief's defect, carried from a Backlog entry nothing re-reads"
+    },
+    {
+      "id": "T032",
+      "node": "P2-N015",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-09-01T20:30:00Z",
+      "closed": "2026-09-01T21:05:00Z",
+      "ref": "62e144a",
+      "pr": null,
+      "summary": "~382k subagent tokens over 186 tool calls, 32m03s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~382k subagent tokens over 186 tool calls, 32m03s dispatch→result (unattended); no input/output split reported. The most expensive task on this project by a wide margin, and the brief is why: it asked for three break-and-restore cycles proving each new test can fail, which is where the cost went and which is the reason 167 tests can be believed. Three packet widenings, all sound — the installed hono adapter source, four CloudFormation reference pages child A had no reason to cite, and the SAM CLI's own Python source to check what `aws cloudformation deploy` does with an unset parameter. The role verified the alternative would work and implemented the settled prescription anyway, flagging its reading rather than substituting judgment"
+    },
+    {
+      "id": "T033",
+      "node": "P2-N016",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-09-01T21:50:00Z",
+      "closed": "2026-09-01T22:20:00Z",
+      "ref": "db8b66a",
+      "pr": null,
+      "summary": "~241k subagent tokens over 100 tool calls, 19m16s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~241k subagent tokens over 100 tool calls, 19m16s dispatch→result (unattended); no input/output split reported. Child D's first task, and not its workflow: the owner hit both blocking owner actions, so this one bought the answers. Expensive because the deliverable is an IAM policy that must be right the first time — the role read AWS's Service Authorization Reference for five services rather than reciting a general list, and its most useful output is the list of things it could not source. No packet widening beyond the \"follow where it leads\" the brief granted"
+    },
+    {
+      "id": "T034",
+      "node": "P2-N016",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-09-02T04:05:00Z",
+      "closed": "2026-09-02T04:40:00Z",
+      "ref": "74d67c1",
+      "pr": null,
+      "summary": "~236k subagent tokens over 93 tool calls, 17m27s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~236k subagent tokens over 93 tool calls, 17m27s dispatch→result (unattended); no input/output split reported. Child D's main deliverable, and the second-most expensive task on this project. The owner's own history bought the preflight: he had hit an unexplained AssumeRoleWithWebIdentity denial elsewhere, so the brief asked for a claims dump that makes the mismatch visible, and the role exercised its decoder against a synthetic JWT carrying this repository's real expected claims rather than shipping it unrun. Two packet widenings, both to avoid trusting prose about a wire format: the write-path tool source for the exact structuredContent shapes the smoke test asserts on, and a live local server to cross-check the tools/list response"
+    },
+    {
+      "id": "T035",
+      "node": "P2-N016",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": null,
+      "closed": "2026-09-06T00:30:00Z",
+      "ref": "7dab3c5",
+      "pr": null,
+      "summary": "~114k subagent tokens over 37 tool calls, 6m56s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~114k subagent tokens over 37 tool calls, 6m56s dispatch→result (unattended); no input/output split reported. Documentation repair after the first CI deploy failed on a permission the policy never granted. Its most valuable output was a negative result the brief did not ask for: neither the Service Authorization Reference nor the SAM permissions page documents a `transform` resource type at all, so the requirement is evidenced only by the runtime denial. The role said so plainly rather than dressing the fix in a citation it did not have. Three packet widenings, all to check that claim"
+    },
+    {
+      "id": "T036",
+      "node": "P2-N016",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-09-06T16:00:00Z",
+      "closed": "2026-09-06T16:15:00Z",
+      "ref": "3d582ea",
+      "pr": null,
+      "summary": "~185k subagent tokens over 97 tool calls, 18m52s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~185k subagent tokens over 97 tool calls, 18m52s dispatch→result (unattended); no input/output split reported. Two defects from the first real pipeline run. The role refuted a factual premise in my brief rather than working around it: I said `AWS::Lambda::Permission` has no CloudFormation property for `lambda:InvokedViaFunctionUrl`, it fetched the resource reference and found the property documented, and the fix now reproduces AWS's default NONE-auth policy condition for condition instead of approximating it. Verified independently at acceptance. Two packet widenings, both to check quotes the brief supplied"
+    },
+    {
+      "id": "T037",
+      "node": "P2-N016",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-09-06T17:00:00Z",
+      "closed": "2026-09-07T15:10:00Z",
+      "ref": "c0e8edf",
+      "pr": null,
+      "summary": "~86k subagent tokens over 51 tool calls, 7m46s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~86k subagent tokens over 51 tool calls, 7m46s dispatch→result (unattended); no input/output split reported. G5's deliberate failure and G6's recorded numbers, on two branches. Two orchestrator corrections at acceptance, both about evidence rather than code: the failure message would have read \"returned 200, expected 200\", which reads as a smoke-test bug rather than the deliberate assertion it was, and the run log is the whole artifact; and the revert branch would not have reverted anything, because a branch cut before a change makes no change to that line and loses the three-way merge. The second was found by simulating the merge rather than reasoning about it"
+    },
+    {
+      "id": "T038",
+      "node": "P2-N011",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-09-07T16:35:00Z",
+      "closed": "2026-09-07T16:55:00Z",
+      "ref": "519f42c",
+      "pr": null,
+      "summary": "~113k subagent tokens over 52 tool calls, 8m29s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~113k subagent tokens over 52 tool calls, 8m29s dispatch→result (unattended); no input/output split reported. The documentation half of chunk 1's last child. The role did two things the brief did not ask for and both were right: it noticed that closing an existing deferred Backlog item was implied by its work and closed it explicitly rather than leaving it stale, and it flagged that its placement choice collides with the parent specification's I9 instead of proceeding quietly. It also reported that my brief's cited precedent did not resolve — accurately, because the T037 placeholder I pointed at had already been filled in by the time it looked"
+    },
+    {
+      "id": "T039",
+      "node": "P3-N001",
+      "step": "specify",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-09-17T12:30:00Z",
+      "closed": "2026-09-17T13:00:00Z",
+      "ref": "377abde",
+      "pr": null,
+      "summary": "~117k subagent tokens over 33 tool calls, 7m58s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~117k subagent tokens over 33 tool calls, 7m58s dispatch→result (unattended); no input/output split reported. The role reported 21 tool calls and no usage counter; this row records the harness's figures, which the role could not see. One packet widening, and a narrow one: form-check-core.ts grepped (with an ls of plugin/scripts/lib/) to establish whether the checker validates specification links or document Status lines before criterion P1 relied on it, plus git log/status, which the specify row does not grant. Not a packet defect — but the role filed two packet-table observations that are: the specify row has no clause for a top-level node (the parent-specification item is simply empty) and names no registers, and the orchestrator-declared register widening on this task was load-bearing, since the plan's claims about the Cost log's missing field and the journal's vocabulary gaps both had to be checked against the instances"
+    },
+    {
+      "id": "T040",
+      "node": "P3-N002",
+      "step": "plan",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-09-17T14:20:00Z",
+      "closed": "2026-09-17T15:30:00Z",
+      "ref": "4e22d3a",
+      "pr": null,
+      "summary": "~115k subagent tokens over 32 tool calls, 9m55s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~115k subagent tokens over 32 tool calls, 9m55s dispatch→result (unattended); no input/output split reported. Dispatched in parallel with T041 and T042, the first exercise of RU-018 and the largest parallel dispatch on this project. Answered the parent node's open question rather than staging it: the model is a new document type keyed to the existing hierarchy, and no K-003 amendment is needed. Three packet widenings, all into `plugin/scripts/lib/` and `sync_shared_unit.ts`, all for one reason — the plan's central claim is that the node stays inside one repository, and that is only checkable against the code. The widening earned its keep: it established that sibling-order semantics are encoded nowhere in code and that `form-check-core.ts` does not travel to the service repo, which made the single-repository declaration defensible instead of asserted. The orchestrator re-verified both at acceptance"
+    },
+    {
+      "id": "T041",
+      "node": "P3-N003",
+      "step": "plan",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-09-17T14:20:00Z",
+      "closed": "2026-09-17T15:30:00Z",
+      "ref": "dbd92c3",
+      "pr": null,
+      "summary": "~108k subagent tokens over 24 tool calls, 6m48s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~108k subagent tokens over 24 tool calls, 6m48s dispatch→result (unattended); no input/output split reported. Parallel with T040 and T042 under RU-018. **No packet widening** — and it reported confirming the Cost log exists without reading it, since naming the sweep seam is plan work and sweeping it is a child's, which is the distinction the packet contract is for. Wrote the independence check into the plan as its own section rather than asserting it, and named the one place a dependency could have hidden quietly"
+    },
+    {
+      "id": "T042",
+      "node": "P3-N005",
+      "step": "plan",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-09-17T14:20:00Z",
+      "closed": "2026-09-17T15:30:00Z",
+      "ref": "5075026",
+      "pr": null,
+      "summary": "~129k subagent tokens over 28 tool calls, 8m12s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~129k subagent tokens over 28 tool calls, 8m12s dispatch→result (unattended); no input/output split reported. Parallel with T040 and T041 under RU-018. **No packet widening** beyond the orchestrator-declared one, which was load-bearing: the node changes the dispatch loop and the six role contracts. Found that the owner's 2026-09-17 Asks clarification removes a sequence stop unless W-001's maintainer-decision condition catches it — a consequence the orchestrator did not see when recording the clarification"
+    },
+    {
+      "id": "T043",
+      "node": "P3-N002",
+      "step": "specify",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-29T18:10:00Z",
+      "closed": "2026-10-29T18:45:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~244k subagent tokens over 33 tool calls, 10m43s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~244k subagent tokens over 33 tool calls, 10m43s dispatch→result (unattended); no input/output split reported. Parallel with T044, T045, T046. Status needs-judgment on decision 13 (act on the amended K-003 before its release: no deviation recommended), staged for the gate with decisions 9 to 15. Specification with the navigation bound fixed, the relation to the planning/execution model, criteria G1 to G6, I1 to I10, P1 to P6, four children; two plan defects found (a derivation rule that yields cycles, a journal event kind in the wrong child). Packet widened: methodology v1.6.0 rule text, the vocabulary and IR specification at main."
+    },
+    {
+      "id": "T044",
+      "node": "P3-N003",
+      "step": "specify",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-29T18:10:00Z",
+      "closed": "2026-10-29T18:25:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~244k subagent tokens over 44 tool calls, 9m10s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~244k subagent tokens over 44 tool calls, 9m10s dispatch→result (unattended); no input/output split reported. Parallel with T043, T045, T046. Specification with the entry test ET-1 to ET-4, the class-to-instance check and the negative control defined; three children; decisions 10 to 16 staged; ten terms for ratification. Packet widened: dispatch.md prose routing, roles.md paraphraser and stranger sections, methodology at v1.6.0 (W-009, Article 8, readers), a grep for the bundle-guard encounter. Found two stale lines: the plan's Status after its gate and CLAUDE.md's binding version; both fixed at acceptance."
+    },
+    {
+      "id": "T045",
+      "node": "P3-N005",
+      "step": "specify",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-29T18:10:00Z",
+      "closed": "2026-10-29T18:35:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~253k subagent tokens over 42 tool calls, 9m49s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~253k subagent tokens over 42 tool calls, 9m49s dispatch→result (unattended); no input/output split reported. Parallel with T043, T044, T046. Specification with the four stop predicates as criteria I1 to I4, four children, decisions 9 to 16 staged, six terms for ratification. Three findings: no past task result's Asks part is committed; W-008 at v1.6.0 makes a term ratification an ask; a result's asks address the Orchestrator while W-001 stops on the human's. Packet widened: the vision, the methodology vocabulary and style guide, methodology history at v1.6.0, the journal, the register's P1 lines."
+    },
+    {
+      "id": "T046",
+      "node": "P1-N014",
+      "step": "specify",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-29T18:10:00Z",
+      "closed": "2026-10-29T18:55:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~245k subagent tokens over 52 tool calls, 11m37s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~245k subagent tokens over 52 tool calls, 11m37s dispatch→result (unattended); no input/output split reported. Parallel with T043 to T045. Specification against the 1.6.0 pin: a seventeen-row duty inventory, criteria in groups S, C, R, K, P, H, B, X, G, leaf affirmed, decisions 10 to 16 staged, decision 12 needs-judgment (the gate summary template takes W-008's four parts; recommendation adopt). Located findings: orchestrator-v1.md claims a v1.4.0 pin; the Backlog's P1-N014 entry lags the register; dispatch.md's handoff contract lacks the Terms introduced line and a packet-widenings field. Packet widened: dispatch.md whole, open-risks R15 to R17, the methodology style guide and vocabulary."
+    },
+    {
+      "id": "T047",
+      "node": "P1-N014",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-29T19:45:00Z",
+      "closed": "2026-10-29T20:22:00Z",
+      "ref": "7521066",
+      "pr": null,
+      "summary": "~276k subagent tokens over 86 tool calls, 18m03s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~276k subagent tokens over 86 tool calls, 18m03s dispatch→result (unattended); no input/output split reported. Advanced tier (tier raise). One commit 7521066 on branch role-contracts-adopt-conduct-rules, 20 files; self-verification: every group passes, G5 untested (vitest absent, no diff under test/), G3 by script (mtool absent). Asks: R14's contract wording missing from the inventory (follow-up); term result core. Four located findings, four Backlog additions. Packet widened: orchestration-service.md, plan-register.md, p3-n005 plan, classification.md, sync_agents.ts, form-check-core.ts."
+    },
+    {
+      "id": "T048",
+      "node": "P3-N006",
+      "step": "plan",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-29T19:45:00Z",
+      "closed": "2026-10-29T20:05:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~183k subagent tokens over 45 tool calls, 8m38s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~183k subagent tokens over 45 tool calls, 8m38s dispatch→result (unattended); no input/output split reported. Parallel with T049, T050. Plan with three decisions staged; leaf; two Backlog additions; two located findings (the stale comprehension-model Backlog entry, corrected at acceptance; the breakdown's child A edge list missing the spec-header modification). Packet widened: classification.md, open-risks.md, cost-log.md, the P1-N014 plan and spec, the p1-n009 spec header, plugin/scripts/lib form-check-core.ts, plan-register.ts, sync_shared_unit.ts, plan-register.md, methodology Article 4, K-003/K-007/K-010, W-rules, the rendering rule."
+    },
+    {
+      "id": "T049",
+      "node": "P3-N010",
+      "step": "plan",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-29T19:45:00Z",
+      "closed": "2026-10-29T19:55:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~152k subagent tokens over 36 tool calls, 6m00s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~152k subagent tokens over 36 tool calls, 6m00s dispatch→result (unattended); no input/output split reported. Parallel with T048, T050. Plan with five decisions staged; leaf; three candidate encounters added (A12); two located findings on the parent spec's step 1 and the Backlog's Completed convention. Packet widened: Backlog entries beyond the cited encounters, cost log rows T017/T025/T026/T031, the Classification, P1-N014 decision 11, W-009."
+    },
+    {
+      "id": "T050",
+      "node": "P3-N013",
+      "step": "plan",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-29T19:45:00Z",
+      "closed": "2026-10-29T19:55:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~172k subagent tokens over 32 tool calls, 6m13s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~172k subagent tokens over 32 tool calls, 6m13s dispatch→result (unattended); no input/output split reported. Parallel with T048, T049. Plan with seven decisions staged, two terms; leaf as a fixed task sequence E1 to E4; found that no predicate reads `blocked` and that no committed source holds the pinned signal text. Packet widened: the methodology IR review records and IR, plan-register.md, RU-008, journal records for P1-N010, P2-N013, T008, T010."
+    },
+    {
+      "id": "T052",
+      "node": "P1-N014",
+      "step": "verify",
+      "status": "closed",
+      "role": "reviewer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-29T20:25:00Z",
+      "closed": "2026-10-29T20:50:00Z",
+      "ref": "7521066",
+      "pr": null,
+      "summary": "~183k subagent tokens over 57 tool calls, 8m47s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~183k subagent tokens over 57 tool calls, 8m47s dispatch→result (unattended); no input/output split reported. Advanced tier per decision 15. Verdict pass with findings: every criterion holds, G4 not confirmable from the summary; one should-fix (R14's Status), ten notes; within authority. Term result core to the gate. Packet widened: orchestration-service.md, plan-register.md, p3-n005 plan, test/*.ts, the base-branch diff and journal, the methodology style guide's mechanical checks and vocabulary anchors at v1.6.0."
+    },
+    {
+      "id": "T054",
+      "node": "P3-N006",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T09:20:00Z",
+      "closed": "2026-10-30T09:50:00Z",
+      "ref": "86a1330",
+      "pr": "majodali/project-orchestrator#15",
+      "summary": "~332k subagent tokens over 90 tool calls, 18m23s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~332k subagent tokens over 90 tool calls, 18m23s dispatch→result (unattended); no input/output split reported. Standard tier. One commit 86a1330 on branch thin-end-to-end-slice: project-model.md (five entries), the slice record (599 lines, seven sections), two header links, the Backlog row. Criteria A1 to A9 pass; fifty paths, 38 at two steps and 12 at three; eleven differences from the Backlog classified; seven terms for ratification; three Backlog additions; README's stale pin found and corrected at acceptance. Packet widened: specs and plans of P1-N008, P1-N014, P1-N015, P2-N002, P2-N012; observability.md, rulings.md, README, cost log rows T039 and T043, the journal head, the checker headers."
+    },
+    {
+      "id": "T055",
+      "node": "P3-N010",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T09:20:00Z",
+      "closed": "2026-10-30T10:15:00Z",
+      "ref": "dc733b1",
+      "pr": null,
+      "summary": "~354k subagent tokens over 95 tool calls, 19m25s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~354k subagent tokens over 95 tool calls, 19m25s dispatch→result (unattended); no input/output split reported. Standard tier; read-only reach to methodology and the service repository (RU-016). Three commits on branch one-class-end-to-end (6f5033e inputs, 3fd85dc run record, dc733b1 control and findings), merged with a merge commit as asked. Criteria A1 to A13 pass; CR-001 with five encounters; 30 parts, 14 apply, 6 covered, 8 omissions; negative control returned its pair; eight shape findings; one term; two asks to the owner on CR-001's header and R13's citation; one contradiction located in the service repository. Packet widened: hooks.json, .claude/settings.json, package.json, test/, form-check-core.ts, the delegated-work proposal, git history for dates, the other worktrees' diffs; methodology prose, style, rules README, quality; the service's smoke test, deploy workflow, tests, Backlog and runbook."
+    },
+    {
+      "id": "T056",
+      "node": "P3-N013",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T09:20:00Z",
+      "closed": "2026-10-30T10:45:00Z",
+      "ref": "6096b56",
+      "pr": null,
+      "summary": "~307k subagent tokens over 62 tool calls, 20m29s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~307k subagent tokens over 62 tool calls, 20m29s dispatch→result (unattended); no input/output split reported. Task E1 at the advanced tier. Two predicate commits (309ed24, d843457 after a status-token defect the pre-pass exposed) and commit (b) 6096b56 with the sample verdicts, revision log R1 to R9, pre-pass script and output, and the relation table. Corpus: 53 items at cut-off d1c3659, 0 exclusions, 18 stand-in grants, 3 unrecoverable; no committed Asks part anywhere. Relation table: signal 3 and half of signal 2 have no counterpart. Three terms; six Backlog additions; two located findings. Packet widened: observability.md, roles.md, other plans' gate sections, register, git cat-file and log -S, the Stranger rounds section at v1.6.0."
+    },
+    {
+      "id": "T057",
+      "node": "P3-N007",
+      "step": "plan",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T09:55:00Z",
+      "closed": "2026-10-30T11:25:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~251k subagent tokens over 46 tool calls, 10m10s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~251k subagent tokens over 46 tool calls, 10m10s dispatch→result (unattended); no input/output split reported. Advanced tier. Plan: a leaf run as E1 (type and arguments) and E2 (the amendment IR first, proposal, stranger rounds, owner gate); twelve decisions staged, decision 3 a new dependency rule for uses edges replacing slice finding 1's fourth edge kind; the fourteen findings dispositioned; one term; four Backlog additions; three located findings in the P3-N002 plan (unmarked pre-override K-003 passages, marked at acceptance). Packet widened: process README, plan-register.md, observability.md, rulings.md, .claude/agents listing, form-check-core.ts EVENTS, the P1-N015 proposal shape, the P3-N013 plan, README, methodology releases, style and vocabulary."
+    },
+    {
+      "id": "T058",
+      "node": "P3-N011",
+      "step": "plan",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T10:20:00Z",
+      "closed": "2026-10-30T11:10:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~216k subagent tokens over 42 tool calls, 8m18s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~216k subagent tokens over 42 tool calls, 8m18s dispatch→result (unattended); no input/output split reported. Plan: a leaf run as tasks E1 to E3, five decisions staged (decision 3 tightens coverage to the Class clause, decisions 4 and 5 answer P3-N010's shape findings 6 and 8), criteria B12 to B18; one Backlog addition; located finding: the parent spec's check still read the pre-refinement text (corrected at acceptance). Read-only git despite the brief. Packet widened: the P3-N013 plan's leaf section, methodology style guide's supersession markers, rule titles in security, quality, working agreement and knowledge, the IR specification's document form."
+    },
+    {
+      "id": "T059",
+      "node": "P3-N013",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T10:50:00Z",
+      "closed": "2026-10-30T11:55:00Z",
+      "ref": "a70b96c",
+      "pr": null,
+      "summary": "~340k subagent tokens, 212 verdict rows, dispatch→result unattended.",
+      "notes": "~340k subagent tokens, 212 verdict rows, dispatch→result unattended. Task E2, reading 1, frugal tier, blind. Commit a70b96c on branch stop-predicates-reading-one. Stops/failed closed/continue: P1 45/41/8, P2 12/11/41, P3 37/13/16, P4 53/53/0. Fourteen points where the predicate text was hard to apply literally, recorded as findings; six Backlog additions proposed for E4. Packet widened: member plans' and specs' gate and decision sections, grep of commands, git cat-file on refs."
+    },
+    {
+      "id": "T060",
+      "node": "P3-N013",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T12:00:00Z",
+      "closed": "2026-10-30T12:45:00Z",
+      "ref": "755d60b",
+      "pr": null,
+      "summary": "subagent tokens not reported; 212 verdict rows; dispatch→result unattended.",
+      "notes": "subagent tokens not reported; 212 verdict rows; dispatch→result unattended. Task E3, reading 2, advanced tier, blind. Commit 755d60b on branch stop-predicates-reading-two. Stops/failed closed/continue: P1 45/41/8, P2 12/11/41, P3 39/15/14, P4 53/53/0. Twenty hard points F1 to F20 with the alternative verdicts; no Backlog additions. Packet widened: verification criteria of the P1-N014 and P2-N012 specs; the opening lines of each plan and spec."
+    },
+    {
+      "id": "T061",
+      "node": "P3-N013",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T12:55:00Z",
+      "closed": "2026-10-30T13:30:00Z",
+      "ref": "8c31de1",
+      "pr": null,
+      "summary": "~223k subagent tokens over 50 tool calls, 10m38s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~223k subagent tokens over 50 tool calls, 10m38s dispatch→result (unattended); no input/output split reported. Task E4, round 1, advanced tier. Readings agree 210 of 212 rows (97.9% where input existed); the split is T051 and T053 on predicate 3. Draft 3 (027ca03 on stop-predicates-draft-3) revises predicates 1 to 3 (R10 to R22); predicate 4 unchanged; agreement and revision log written (8c31de1). Pre-pass and merge-base checks re-run by the Orchestrator: identical and as reported. Three terms. Readings round 2 required. Packet widened: the journal on central-plan-document (dispatch tiers), classification.md."
+    },
+    {
+      "id": "T062",
+      "node": "P3-N013",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T13:35:00Z",
+      "closed": "2026-10-30T14:10:00Z",
+      "ref": "ea7c4ef",
+      "pr": null,
+      "summary": "~330k subagent tokens; 212 verdict rows; dispatch→result unattended.",
+      "notes": "~330k subagent tokens; 212 verdict rows; dispatch→result unattended. Reading 1, round 2, frugal tier, blind, from draft 3. Commit ea7c4ef on branch stop-predicates-reading-one-round-2. Stops (failed closed)/continue: P1 45(41)/8, P2 13(11)/40, P3 21(15)/32, P4 53(53)/0. Fifteen remaining hard points, mostly on gate-record dating, the window's end, recorded refs and naming forms; five Backlog additions proposed."
+    },
+    {
+      "id": "T063",
+      "node": "P3-N013",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T14:15:00Z",
+      "closed": "2026-10-30T14:55:00Z",
+      "ref": "0aa26f8",
+      "pr": null,
+      "summary": "subagent tokens not reported; 212 verdict rows; dispatch→result unattended.",
+      "notes": "subagent tokens not reported; 212 verdict rows; dispatch→result unattended. Reading 2, round 2, advanced tier, blind, from draft 3. Commit 0aa26f8 on branch stop-predicates-reading-two-round-2. Stops (failed closed)/continue: P1 45(40)/8, P2 14(12)/39, P3 39(13)/14, P4 53(53)/0. Seven remaining hard points with alternative verdicts."
+    },
+    {
+      "id": "T064",
+      "node": "P3-N013",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T15:00:00Z",
+      "closed": "2026-10-30T15:45:00Z",
+      "ref": "4bbdabd",
+      "pr": null,
+      "summary": "subagent tokens not reported; dispatch→result unattended.",
+      "notes": "subagent tokens not reported; dispatch→result unattended. Task E4, round 2, advanced tier. Agreement 193 of 212 (80.2% where input existed); predicates 1 and 4 closed; predicate 2 split on T031, predicate 3 on 18 rows (the dated gate-record question). Draft 4 (fcf4894, R23 to R34) settles the gate-record date, the window, ruling refs and naming forms; two self-contradictions of draft 3 corrected. Six terms; eight consolidated Backlog additions. Orchestrator re-ran the pre-pass (identical) and merge-base checks (as reported). Readings round 3 on predicates 2 and 3."
+    },
+    {
+      "id": "T065",
+      "node": "P3-N013",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T15:50:00Z",
+      "closed": "2026-10-30T16:25:00Z",
+      "ref": "04f7e00",
+      "pr": null,
+      "summary": "subagent tokens not reported; 106 verdict rows; dispatch→result unattended.",
+      "notes": "subagent tokens not reported; 106 verdict rows; dispatch→result unattended. Reading 1, round 3, frugal tier, blind, predicates 2 and 3 from draft 4. Commit 04f7e00 on branch stop-predicates-reading-one-round-3. P2 13(11)/40, P3 39(13)/14. Eleven hard points, H1 (count words between 'all' and 'staged decisions') the largest; four located findings; a stray empty file /gates.py created outside the worktree, left for the owner to remove."
+    },
+    {
+      "id": "T066",
+      "node": "P3-N013",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T16:30:00Z",
+      "closed": "2026-10-30T17:10:00Z",
+      "ref": "7a18e1a",
+      "pr": null,
+      "summary": "subagent tokens not reported; 106 verdict rows; dispatch→result unattended, one false start on a worktree the Orchestrator created late.",
+      "notes": "subagent tokens not reported; 106 verdict rows; dispatch→result unattended, one false start on a worktree the Orchestrator created late. Reading 2, round 3, advanced tier, blind, predicates 2 and 3 from draft 4. Commit 7a18e1a on branch stop-predicates-reading-two-round-3. P2 13(11)/40, P3 39(13)/14. Six hard points, T031's possessive naming form the one with a verdict at stake."
+    },
+    {
+      "id": "T067",
+      "node": "P3-N013",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T17:15:00Z",
+      "closed": "2026-10-30T17:55:00Z",
+      "ref": "4bc9a4a",
+      "pr": null,
+      "summary": "~216k subagent tokens over 54 tool calls, 8m45s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~216k subagent tokens over 54 tool calls, 8m45s dispatch→result (unattended); no input/output split reported. Task E4, round 3 and close, advanced tier. Round 3 readings agree on all 106 rows; the node's final figure 212 of 212, 95 of 95 where input existed; all four predicates closed within two revision rounds; A1 to A10 met; sixteen Backlog rows and the node's entry written (4bc9a4a). Caveat carried to the gate: the session scratch directory is shared, so blindness holds on the commit graph only. Orchestrator re-ran the pre-pass (identical) and the merge-base checks. Packet widened: the live journal and cost log, the P2-N012 spec, scratch files for A6, roles.md and dispatch.md greps."
+    },
+    {
+      "id": "T068",
+      "node": "P3-N014",
+      "step": "plan",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T18:00:00Z",
+      "closed": "2026-10-30T18:30:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~245k subagent tokens over 58 tool calls, 11m20s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~245k subagent tokens over 58 tool calls, 11m20s dispatch→result (unattended); no input/output split reported. Advanced tier. Plan: a leaf, one execute task; eleven decisions staged (the predicate text copied byte for byte; the member's result record holds every predicate input; the Asks clarification restated in five result shapes and the gate template); two event kinds for ratification; three Backlog additions; two located findings carried to E1's brief (observability.md's read-back sentence; the result core's ask wording). Read-only git despite the brief. Packet widened: form-check-core.ts EVENTS, the corpus manifest, sync_shared_unit.ts, the service's vendored directory and workflows, prepass.ts, the journal tail, risks R1 to R5 and R14, cost log rows, the P3-N011 plan, methodology releases."
+    },
+    {
+      "id": "T070",
+      "node": "P3-N007",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T19:50:00Z",
+      "closed": "2026-10-30T23:15:00Z",
+      "ref": "38138c9",
+      "pr": null,
+      "summary": "~311k subagent tokens over 91 tool calls, 20m38s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~311k subagent tokens over 91 tool calls, 20m38s dispatch→result (unattended); no input/output split reported. Task E1 at the advanced tier. One commit 38138c9 on branch type-declared-and-arguments, 19 files: docs/process/project-model.md (the type: entry grammar in EBNF, slugs, state derivation, the dependency rule, the two renderings, the writer rule, the lifecycle answer, defined terms), the Classification's fifth custom definition, plan-model.md's edge rule, rulings.md's Applied reason, the edge-recorded event and its test, four contracts; criteria B1 to B8, B15, B17 met; 36 tests pass; eight terms for ratification; held edges listed for transcription. Merged with conflicts against P3-N014 resolved by keeping both. Packet widened: the P3-N006 plan's Dependencies, cost logs, register and journal tail, roles.md, sync scripts and tests, methodology Articles 4 and 7, the tools' Classification parser."
+    },
+    {
+      "id": "T071",
+      "node": "P3-N011",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T19:50:00Z",
+      "closed": "2026-10-30T23:45:00Z",
+      "ref": "d51264b",
+      "pr": null,
+      "summary": "~632k uncached input and ~320k output tokens over 78 tool calls, 22m42s dispatch→result (unattended), read from the session transcript.",
+      "notes": "~632k uncached input and ~320k output tokens over 78 tool calls, 22m42s dispatch→result (unattended), read from the session transcript. Task E1 at the standard tier. One commit d51264b on branch catalogue-sweep, 3 files: the check document's sweep record (passes 1 and 2, 53 rows, the ET-2 reading in two parts, the header table, deferrals, the N1 to N14 table, carry-overs, findings S1 to S3), the catalogue (CR-002 to CR-008 with six fields each, decision 4's counting sentence, three deferrals listed), the Backlog entry. Found 43, admitted 7, merged 11, rejected 22, deferred 3. form_check 0 violations. Asks carried to the P3-N003 gate: the ET-2 reading, the convention merge with exposure, the IDs and judgment calls. Packet widened read-only: cost log rows, the service workflow and Classification, the methodology's Classification and Risk register at v1.6.0, Backlog and register greps, git log -S."
+    },
+    {
+      "id": "T072",
+      "node": "P3-N014",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T19:50:00Z",
+      "closed": "2026-10-30T21:50:00Z",
+      "ref": "ef4c15f",
+      "pr": null,
+      "summary": "~270k subagent tokens over 84 tool calls, 14m17s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~270k subagent tokens over 84 tool calls, 14m17s dispatch→result (unattended); no input/output split reported. Advanced tier. One commit 6401311 on branch loop-runs-sequence-mode: dispatch.md's Sequence mode section (predicates copied from fcf4894, I7+ diff empty), the member's result record, the addressee rule in five result shapes and the gate template, roles.md's trigger table, six contracts and plugin/agents regenerated, two event kinds in observability.md, form-check-core.ts and a new corpus fixture, thirteen routed Backlog rows; form check, sync check, run_corpus and style clean; npm test unrun in the worktree, 34 passed on the Orchestrator's run after merge. Result written in the new record form; the Orchestrator's try found no verdict resting on missing input."
+    },
+    {
+      "id": "T073",
+      "node": "P2-N005",
+      "step": "plan",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T21:05:00Z",
+      "closed": "2026-10-30T22:50:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~230k subagent tokens over 51 tool calls, 10m15s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~230k subagent tokens over 51 tool calls, 10m15s dispatch→result (unattended); no input/output split reported. Advanced tier; read-only reach to the service repository. Plan: offers, claims and results in git (task files, claim branches, result files); the service reads git and says what to push; declared role identity with a session handle; six tools; interior with four children; thirteen decisions, four terms; two located findings (a stale lease-release Backlog row; the struck live-update text, already in P2-N003's decision 1). Packet widened: observability.md, process README, the P3-N014 plan, the service's smoke test."
+    },
+    {
+      "id": "T074",
+      "node": "P1-N016",
+      "step": "plan",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T21:05:00Z",
+      "closed": "2026-10-30T23:50:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~276k subagent tokens over 64 tool calls, 15m57s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~276k subagent tokens over 64 tool calls, 15m57s dispatch→result (unattended); no input/output split reported. Advanced tier. Plan docs/plans/p1-n016-process-spec-maintenance.md (629 lines) written in the working tree, no commit: 35 Backlog rows inventoried with owning document and disposition, 8 rulings promoted and 5 declined, the packet table row by row, two execute tasks, criteria V1 to V15, 17 decisions with defaults, five names to ratify. Four located findings (dispatch.md's owner-decision bullets against RU-016, the Promotion flags line, the ruling type taxonomy, plan.md's Completed wording). Packet widened: the P3-N014 and P3-N007 plans, the P3-N002 specification, the project model, the orchestrator contract and skills, the P3-N010 plan, methodology style.md and releases.md, re-reads after P3-N014 landed."
+    },
+    {
+      "id": "T075",
+      "node": "P2-N003",
+      "step": "plan",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T21:05:00Z",
+      "closed": "2026-10-30T22:25:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~175k subagent tokens over 54 tool calls, 8m59s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~175k subagent tokens over 54 tool calls, 8m59s dispatch→result (unattended); no input/output split reported. Advanced tier; read-only reach to the service repository. Plan: two children (the web view's first version as three execute tasks starting with a thin slice; the owner question queue after the pilot); ten decisions staged; a register deadlock found between P2-N003 and P2-N006 (broken by a note on P2-N006); three located findings on the struck live-update text (drafted corrections in decision 1). Packet widened: the service's httpApp.ts and auth.ts, plan-model.md, the P2-N002 plan, cost log and journal heads, methodology vocabulary, the P3-N014 plan, process README."
+    },
+    {
+      "id": "T076",
+      "node": "P3-N015",
+      "step": "plan",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T21:55:00Z",
+      "closed": "2026-10-31T00:35:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~299k subagent tokens over 59 tool calls, 18m53s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~299k subagent tokens over 59 tool calls, 18m53s dispatch→result (unattended); no input/output split reported. Advanced tier. Plan docs/plans/p3-n015-sequence-demonstration.md (548 lines) written in the working tree, no commit: four members chosen from open Backlog rows, the ratification record drafted, the predicate table per landing, the stop summary, the plan after the stop, criteria C10 to C14, seven decisions with defaults. Two located findings (R16's preflight placed in this repository by the P3-N005 plan; a Backlog entry that can close). Packet widened: the journal, the P3-N011 plan and P3-N003 gate record, the P1-N016 plan, open-risks.md, the checker proposal, plugin scripts and tests, process README, methodology prose.md at v1.6.0, one git log."
+    },
+    {
+      "id": "T078",
+      "node": "P3-N007",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T23:20:00Z",
+      "closed": "2026-10-31T01:15:00Z",
+      "ref": "94d148d",
+      "pr": null,
+      "summary": "~267k subagent tokens over 87 tool calls, 16m21s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~267k subagent tokens over 87 tool calls, 16m21s dispatch→result (unattended); no input/output split reported. Task E2 at the advanced tier. Two commits on branch k-003-amendment-drafted: aadcfb9 the IR alone (73 claims), 94d148d the rendered proposal docs/proposals/planning-execution-model-is-progress-truth.md, the IR's Status, one Backlog row rewritten. The clause appended to K-003's statement; the provenance line at v1.6.0 commit 3e34829 checked against main 195eba9; three answers (31 of 139 open entries name no node; built but broken stands; declaration by Custom definitions); the Release-register entry against all 23 Portfolio rows. ir check 0 violations, style 0 violations, roundtrip 73 of 73, form_check pass. Criteria B9 to B13, B15, B17 met; B14's rounds and B16's gate follow. Two terms for ratification. Packet widened: the methodology's vision and roadmap IRs, its Classification, style.md, the vocabulary at v1.6.0 and main; this repository's Backlog and process README; the tools' and the pipeline's script sources."
+    },
+    {
+      "id": "T079",
+      "node": "P3-N008",
+      "step": "plan",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T23:20:00Z",
+      "closed": "2026-10-31T00:55:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~276k subagent tokens over 55 tool calls, 12m34s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~276k subagent tokens over 55 tool calls, 12m34s dispatch→result (unattended); no input/output split reported. Advanced tier. Plan docs/plans/p3-n008-instance-over-this-repository.md (585 lines) written in the working tree, no commit: three execute tasks, the enumeration from five sources, entries at scale under the writer rule, the navigation measure extended to the instance, the comparison in both directions, six decisions with drafted texts, four Backlog additions and two row rewrites. Seven surprises recorded (slug prefixes, three single-writer headers, two stale headers, plan.md's contract, prose dependencies in older plans, list shapes, G4's record). Packet widened: the P3-N011 plan, observability.md, three register writer rules, the Cost log head, open-risks.md headings, README, a file listing and every plan's Status line."
+    },
+    {
+      "id": "T080",
+      "node": "P3-N011",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-30T23:55:00Z",
+      "closed": "2026-10-31T02:35:00Z",
+      "ref": "616ebaf",
+      "pr": null,
+      "summary": "~432k subagent tokens over 86 tool calls, 27m15s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~432k subagent tokens over 86 tool calls, 27m15s dispatch→result (unattended); no input/output split reported. Task E2 at the standard tier. One commit 616ebaf on branch catalogue-sweep, 3 files: passes 3 to 5 recorded (85 candidates found, 4 classes admitted as CR-009 to CR-012, 40 merged, 38 rejected, 3 deferred, 43 seen again), the full named-candidates table (B15), findings S4 to S6, shared arguments A4 and A5; the catalogue gains CR-009 to CR-012, 17 CR-005 encounters and three deferrals; the P3-N011 Backlog entry. form_check 0 violations; style 0 violations; links pass. Asks carried to the P3-N003 gate: the four classes, ET-2 parts (a) and (b), the CR-005 volume, the conventions. Packet widened read-only: the implementer contract, the methodology rule corpus at v1.6.0 and main, the service Classification, the P3-N003 specification, methodology-tools for the checks."
+    },
+    {
+      "id": "T081",
+      "node": "P3-N007",
+      "step": "execute",
+      "status": "closed",
+      "role": "reviewer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-31T01:20:00Z",
+      "closed": "2026-10-31T02:05:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~138k subagent tokens over 5 tool calls, 4m49s dispatch→result, plus ~180k tokens over 3 tool calls, 1m31s for the confirmation (unattended); no input/output split reported.",
+      "notes": "~138k subagent tokens over 5 tool calls, 4m49s dispatch→result, plus ~180k tokens over 3 tool calls, 1m31s for the confirmation (unattended); no input/output split reported. Frugal tier. Round 1 stranger read of the K-003 proposal: restatement, 23 findings (SP-02 8, SP-04 5, SP-05 2, SP-09 1, SP-18 3, SP-25 1, SP-26 2, one restatement mismatch), verdict not readable; confirmation 15 of 20 fixes hold, 2 of 3 declines accepted, 6 new defects. Read only the proposal and its IR; one read-only environment listing outside the brief."
+    },
+    {
+      "id": "T082",
+      "node": "P3-N007",
+      "step": "execute",
+      "status": "closed",
+      "role": "reviewer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-31T02:05:00Z",
+      "closed": "2026-10-31T03:15:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~131k subagent tokens over 4 tool calls, 4m09s dispatch→result, plus ~166k tokens over 3 tool calls, 1m01s for the confirmation (unattended); no input/output split reported.",
+      "notes": "~131k subagent tokens over 4 tool calls, 4m09s dispatch→result, plus ~166k tokens over 3 tool calls, 1m01s for the confirmation (unattended); no input/output split reported. Frugal tier. Round 2 stranger read of the K-003 proposal: restatement with no mismatch, 19 findings (SP-02 7, SP-04 2, SP-05 2, SP-03 2, SP-25 2, SP-26 1, SP-01 1, SP-08 1, SP-18 1), verdict not readable; confirmation 17 of 18 fixes hold, 0 of 1 declines accepted, 6 new defects. Read only the proposal and its IR."
+    },
+    {
+      "id": "T083",
+      "node": "P3-N011",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-31T02:35:00Z",
+      "closed": "2026-10-31T05:25:00Z",
+      "ref": "107e62e",
+      "pr": null,
+      "summary": "~414k subagent tokens over 110 tool calls, 27m54s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~414k subagent tokens over 110 tool calls, 27m54s dispatch→result (unattended); no input/output split reported. Task E3 at the standard tier. Three commits on branch catalogue-sweep (69e67af, b03d5b0, 107e62e; the run record must name its input commit), 3 files: nine Class lines on the Risk register with one preamble sentence amended; the parts enumeration brought to 35 (four nodes done, the service Backlog); the full run over 12 classes, 395 pairs, 82 applicable, 26 covered, 56 omissions (11 accepted, 45 routed to 18 Backlog entries, two entries new); the negative control on CR-003 against PT-23 (56 became 60 on removal); shape findings 9 to 21; the verification table B1 to B18; three delta rows. form_check 0 violations; style 0 violations; links no new findings. Two terms (citation test, delta row) and four rulings for the owner. Packet widened read-only: the service repository's source, tests, workflows and Backlog; this repository's plugin scripts, tests and tool configuration; plans P3-N014 and P3-N008; proposals' provenance lines; the register; git diffs of the Backlog and Cost log; the mtool source."
+    },
+    {
+      "id": "T084",
+      "node": "P3-N007",
+      "step": "execute",
+      "status": "closed",
+      "role": "reviewer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-31T03:15:00Z",
+      "closed": "2026-10-31T03:55:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~141k subagent tokens over 4 tool calls, 4m43s dispatch→result, plus the confirmation (unattended); no input/output split reported.",
+      "notes": "~141k subagent tokens over 4 tool calls, 4m43s dispatch→result, plus the confirmation (unattended); no input/output split reported. Frugal tier. Round 3 stranger read of the K-003 proposal: restatement with one own mismatch, 16 findings (SP-26 5, SP-04 3, SP-01 2, SP-02 2, SP-03 1, SP-05 1, SP-25 1), verdict not readable; confirmation 14 of 15 fixes hold, 1 of 1 declines accepted, 4 new defects. Read only the proposal and its IR."
+    },
+    {
+      "id": "T085",
+      "node": "P3-N007",
+      "step": "execute",
+      "status": "closed",
+      "role": "reviewer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-31T03:55:00Z",
+      "closed": "2026-10-31T04:35:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~150k subagent tokens over 4 tool calls, 5m16s dispatch→result, plus the confirmation (unattended); no input/output split reported.",
+      "notes": "~150k subagent tokens over 4 tool calls, 5m16s dispatch→result, plus the confirmation (unattended); no input/output split reported. Frugal tier. Round 4 stranger read of the K-003 proposal: restatement with two mismatches, 14 findings (SP-01 4, SP-04 3, SP-05 2, SP-03 1, SP-25 1, SP-26 1), verdict not readable; confirmation 12 of 13 fixes hold, 0 of 1 declines accepted, 4 new defects. Read only the proposal and its IR."
+    },
+    {
+      "id": "T086",
+      "node": "P3-N007",
+      "step": "execute",
+      "status": "closed",
+      "role": "reviewer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-31T04:35:00Z",
+      "closed": "2026-10-31T05:55:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~141k subagent tokens over 6 tool calls, 4m52s dispatch→result, plus the confirmation (unattended); no input/output split reported.",
+      "notes": "~141k subagent tokens over 6 tool calls, 4m52s dispatch→result, plus the confirmation (unattended); no input/output split reported. Frugal tier. Round 5 stranger read of the K-003 proposal: restatement with one own mismatch, 10 findings (SP-04 2, SP-18 2, SP-26 2, SP-01 1, SP-09 1, SP-25 1), verdict not readable; confirmation 9 of 9 fixes hold, 7 new defects. Read only the proposal and its IR; one reminder scheduled and deleted outside the brief."
+    },
+    {
+      "id": "T087",
+      "node": "P3-N007",
+      "step": "execute",
+      "status": "closed",
+      "role": "reviewer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-31T05:55:00Z",
+      "closed": "2026-10-31T06:50:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~150k subagent tokens over 4 tool calls, 5m11s dispatch→result, plus the confirmation (unattended); no input/output split reported.",
+      "notes": "~150k subagent tokens over 4 tool calls, 5m11s dispatch→result, plus the confirmation (unattended); no input/output split reported. Frugal tier. Round 6 stranger read of the K-003 proposal: restatement with no mismatch, the step-6 passage matched, 6 findings (SP-25 2, SP-26 2, SP-01 1, SP-04 1), verdict not readable; confirmation 5 of 6 fixes hold, 3 new defects. Read only the proposal and its IR."
+    },
+    {
+      "id": "T088",
+      "node": "P3-N007",
+      "step": "execute",
+      "status": "closed",
+      "role": "reviewer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-31T06:50:00Z",
+      "closed": "2026-10-31T08:00:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~166k subagent tokens over 4 tool calls, 6m11s dispatch→result, plus the confirmation (unattended); no input/output split reported.",
+      "notes": "~166k subagent tokens over 4 tool calls, 6m11s dispatch→result, plus the confirmation (unattended); no input/output split reported. Frugal tier. Round 7 stranger read of the K-003 proposal: five omissions reported as mismatches, the owner's gate missing from the body, 9 prose findings, verdict not readable; confirmation 11 of 12 fixes hold, 0 of 1 declines accepted, 3 new defects. Read only the proposal and its IR."
+    },
+    {
+      "id": "T089",
+      "node": "P3-N007",
+      "step": "execute",
+      "status": "closed",
+      "role": "reviewer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-31T08:00:00Z",
+      "closed": "2026-10-31T09:10:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~126k subagent tokens over 4 tool calls, 3m28s dispatch→result, plus the confirmation (unattended); no input/output split reported.",
+      "notes": "~126k subagent tokens over 4 tool calls, 3m28s dispatch→result, plus the confirmation (unattended); no input/output split reported. Frugal tier. Round 8 stranger read of the K-003 proposal: two own mismatches, 4 prose findings (SP-26 3, SP-04 1), three tensions noted, verdict not readable; confirmation 5 of 5 hold (one in part), 1 of 1 declines accepted, 3 new defects. Read only the proposal and its IR."
+    },
+    {
+      "id": "T090",
+      "node": "P3-N007",
+      "step": "execute",
+      "status": "closed",
+      "role": "reviewer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-31T09:10:00Z",
+      "closed": "2026-10-31T10:20:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~143k subagent tokens over 5 tool calls, 4m35s dispatch→result, plus the confirmation (unattended); no input/output split reported.",
+      "notes": "~143k subagent tokens over 5 tool calls, 4m35s dispatch→result, plus the confirmation (unattended); no input/output split reported. Frugal tier. Round 9 stranger read of the K-003 proposal: one own mismatch, 5 prose findings (SP-01 1, SP-03 1, SP-04 1, SP-10 1, SP-26 1), verdict not readable; confirmation 4 of 4 hold, 1 of 1 declines accepted, 2 new defects. Read only the proposal and its IR."
+    },
+    {
+      "id": "T091",
+      "node": "P3-N007",
+      "step": "execute",
+      "status": "closed",
+      "role": "reviewer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-31T10:20:00Z",
+      "closed": "2026-10-31T11:40:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "~139k subagent tokens over 4 tool calls, 4m21s dispatch→result, plus two confirmation exchanges (unattended); no input/output split reported.",
+      "notes": "~139k subagent tokens over 4 tool calls, 4m21s dispatch→result, plus two confirmation exchanges (unattended); no input/output split reported. Frugal tier. Round 10 stranger read of the K-003 proposal, the limit: one own mismatch, 4 prose findings (SP-04 2, SP-25 2), verdict not readable; confirmation 4 of 4 hold, 2 new defects re-fixed and confirmed. Read only the proposal and its IR."
+    },
+    {
+      "id": "T092",
+      "node": "P2-N005",
+      "step": "specify",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-31T10:45:00Z",
+      "closed": "2026-10-31T12:35:00Z",
+      "ref": "4d1e574",
+      "pr": null,
+      "summary": "~311k subagent tokens over 61 tool calls, 15m05s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~311k subagent tokens over 61 tool calls, 15m05s dispatch→result (unattended); no input/output split reported. Advanced tier. One commit 4d1e574 on branch p2-n005-specified, 2 files: docs/specs/p2-n005-task-pull-loop.md (new, draft; the forms of the task file, claim branch with Claim, Renew and Release commits, expiry and stale rule, result file, session handle; dispatch and acceptance in a pull run; six tools; node criteria I1 to I16; children A to D at breakdown depth with criteria A1 to D12 and edges; decisions 14 to 22; three terms; proposed register lines P2-N017 to P2-N020) and the P2-N005 Backlog entry. form_check 0 violations; style 0 violations. One located finding (the plan's Dependencies section writes no edges). Packet widened read-only: the project model type and instance, the P1-N016 and P3-N007 plans, three specifications and the stop-predicates record, process README and plan-register.md, the register, Classification, open-risks R10 to R17, the Cost log header, .mcp.json, sync_agents.ts, the tools' style.ts; the service repository at 58e6819."
+    },
+    {
+      "id": "T093",
+      "node": "P2-N003",
+      "step": "specify",
+      "status": "closed",
+      "role": "planner",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-31T12:00:00Z",
+      "closed": "2026-10-31T12:55:00Z",
+      "ref": "c930ada",
+      "pr": null,
+      "summary": "~288k subagent tokens over 64 tool calls, 11m15s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~288k subagent tokens over 64 tool calls, 11m15s dispatch→result (unattended); no input/output split reported. Advanced tier. One commit c930ada on branch p2-n003-specified, 2 files: docs/specs/p2-n003-owner-questions-and-plan-view.md (new, draft; child 1 at full depth with what it reads at one SHA, the 1 MB contents limit, the three pages, the routes on the existing function, sign-in by view token and cookie, the parser's home, what is next by the type's procedure, tasks E1 to E3 and the owner demonstration, criteria V1 to V30, owner actions O-view-1 to O-view-5; child 2 at outcome depth with seven planning questions; node criteria I1 to I10; edges; decisions 11 to 15; three terms; proposed register lines P2-N021 and P2-N022) and the P2-N003 Backlog entry. form_check 0 violations; style 0 violations; every link resolves. Packet widened read-only: observability.md, open-risks R10 to R12, the Cost log and journal, the register and its process document, the slice record, two specifications, the P2-N005 plan and branch, form-check-core.ts and sync_shared_unit.ts, the service's deploy script, workflow env and role permissions, one proposal IR."
+    },
+    {
+      "id": "T094",
+      "node": "P2-N021",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-31T13:45:00Z",
+      "closed": "2026-10-31T14:30:00Z",
+      "ref": "bf8f1b5",
+      "pr": "majodali/project-orchestrator-service#18",
+      "summary": "~276k subagent tokens over 76 tool calls, 15m48s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~276k subagent tokens over 76 tool calls, 15m48s dispatch→result (unattended); no input/output split reported. Task E1 at the advanced tier. One commit bf8f1b5 in majodali/project-orchestrator-service on branch p2-n021-e1-thin-slice, 25 files, 2,839 insertions; pull request #18 to main opened by the Orchestrator. Returned `blocked` on the deploy after owner actions O-view-1 to O-view-4, as designed: V19 and V22 owed as deploy evidence, `sam validate --lint` run by the pull request's check; every other criterion met; npm test 221/221 (171 before, 50 new). Accepted under the T008 precedent. Packet widened read-only: this repository's docs/project-model.md at 1b9e207; the service's planRegister internals, githubAppAuth.ts, inMemoryLeaseBackend.ts, localServer.ts, test/deployScriptLivePinning.test.ts and configuration files."
+    },
+    {
+      "id": "T095",
+      "node": "P2-N021",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-10-31T14:30:00Z",
+      "closed": "2026-11-01T10:05:00Z",
+      "ref": "3259736",
+      "pr": "majodali/project-orchestrator-service#18",
+      "summary": "~273k subagent tokens over 100 tool calls, 17m03s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~273k subagent tokens over 100 tool calls, 17m03s dispatch→result (unattended); no input/output split reported. Task E2 at the advanced tier. Commits 3259736 in majodali/project-orchestrator (the shared unit plugin/scripts/lib/cost-log-and-journal.ts, the core importing it, the travelling set; 44/44, corpus 19/19) and c600a40, d6a40b5 in majodali/project-orchestrator-service (the vendored unit, the node and task pages; 255/255); all merged 2026-11-01. Returned `needs-judgment` on W-002 (E1's route-key test widened to admit E2's routes) and `blocked` on V22; the owner ruled option (a) on 2026-11-01; accepted under the T094 precedent. Packet widened read-only: GitHub's REST contents documentation; the service's parser, types, defaultFetcher exports and three configuration files; this repository's package and tsconfig files, .gitignore, one test, the plugin/scripts list, git log for the corpus lag, the plans' Outcome headings at 1b9e207."
+    },
+    {
+      "id": "T096",
+      "node": "P2-N021",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-11-01T10:05:00Z",
+      "closed": "2026-11-02T10:05:00Z",
+      "ref": "12c8ada",
+      "pr": null,
+      "summary": "~382k subagent tokens over 90 tool calls, 26m05s dispatch→result (unattended); no input/output split reported.",
+      "notes": "~382k subagent tokens over 90 tool calls, 26m05s dispatch→result (unattended); no input/output split reported. Task E3 at the advanced tier. Commits 12c8ada in majodali/project-orchestrator (the Project model parser as a shared unit; 73/73, corpus 19/19, consumer typecheck pass) and 82c9bfa, a6684fb in majodali/project-orchestrator-service (the vendored parser, the renderings and edges; 275/275); pull requests open. Returned `needs-judgment` on W-002 (six assertions in E1's and E2's tests changed) and `blocked` on V22; the owner ruled option (a) on 2026-11-02; accepted under the T094 precedent. Packet widened read-only: plan-model.md; the Cost log and journal at 1b9e207; the service's registerFetcher, parser, types, test support and two configuration files; this repository's tsconfig, package, eslint and prettier files."
+    },
+    {
+      "id": "T097",
+      "node": "P2-N023",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "n/a",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-11-03T02:45:00Z",
+      "closed": "2026-11-03T03:12:00Z",
+      "ref": "ae43d1c",
+      "pr": "majodali/project-orchestrator-service#23",
+      "summary": "Owner-attended session (plan decision 1); the Orchestrator knows neither its model nor its usage.",
+      "notes": "Owner-attended session (plan decision 1); the Orchestrator knows neither its model nor its usage. 27m dispatch→result, attended, including the owner's merges. Iteration 1 in majodali/project-orchestrator-service: pull requests #23 (7bda788) and #24 (ae43d1c), merged 02:58 and 03:12 UTC. 13 new tests, 288 pass; deployed green. Asks: three on #23 (plan decisions 7 to 9), one on #24 (decision 8 amended)."
+    },
+    {
+      "id": "T098",
+      "node": "P2-N023",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "n/a",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-11-03T03:12:00Z",
+      "closed": "2026-11-03T16:51:00Z",
+      "ref": "7b7f792",
+      "pr": "majodali/project-orchestrator-service#25",
+      "summary": "Owner-attended session; model and usage unknown to the Orchestrator.",
+      "notes": "Owner-attended session; model and usage unknown to the Orchestrator. 13h39m dispatch→result, attended, including the owner's time. Iteration 2 in majodali/project-orchestrator-service: pull request #25 (7b7f792), merged 16:51 UTC. 293 tests pass; deployed green. Two asks, on V25 and V26 and on V27 (plan decisions 10 and 11)."
+    },
+    {
+      "id": "T099",
+      "node": "P2-N023",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "n/a",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-11-03T16:51:00Z",
+      "closed": "2026-11-03T17:53:00Z",
+      "ref": "6cffc04",
+      "pr": "majodali/project-orchestrator-service#26",
+      "summary": "Owner-attended session; model and usage unknown to the Orchestrator.",
+      "notes": "Owner-attended session; model and usage unknown to the Orchestrator. 1h02m dispatch→result, attended. Iteration 3 in majodali/project-orchestrator-service: pull request #26 (6cffc04), merged 17:53 UTC. 299 tests pass; deployed green. One ask: four lines of this repository's Project model instance broke the entry grammar, fixed by the Orchestrator at acceptance."
+    },
+    {
+      "id": "T100",
+      "node": "P2-N023",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "n/a",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-11-03T17:53:00Z",
+      "closed": "2026-11-07T20:30:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "Owner-attended; model and usage unknown to the Orchestrator.",
+      "notes": "Owner-attended; model and usage unknown to the Orchestrator. Dispatched 2026-11-03 17:53 UTC; closed 2026-11-07 on the owner's words, which ended the loop after three iterations. Iteration 4 in majodali/project-orchestrator-service: no pull request. Nothing shipped."
+    },
+    {
+      "id": "T101",
+      "node": "P2-N022",
+      "step": "plan",
+      "status": "closed",
+      "role": "planner",
+      "model": null,
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-11-03T18:30:00Z",
+      "closed": "2026-11-03T18:30:00Z",
+      "ref": "42ad7bd",
+      "pr": "majodali/project-orchestrator#25",
+      "summary": "The plan of P2-N022 delivered; merged by pull request 25 on 2026-11-09; its gate was not crossed before the freeze.",
+      "notes": null
+    },
+    {
+      "id": "T102",
+      "node": "P2-N017",
+      "step": "plan",
+      "status": "closed",
+      "role": "planner",
+      "model": null,
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-11-03T18:30:00Z",
+      "closed": "2026-11-03T18:30:00Z",
+      "ref": "502b808",
+      "pr": "majodali/project-orchestrator#24",
+      "summary": "The plan of P2-N017 delivered; merged by pull request 24 on 2026-11-09; its gate was not crossed before the freeze.",
+      "notes": null
+    },
+    {
+      "id": "T103",
+      "node": "P1-N016",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-11-03T19:40:00Z",
+      "closed": "2026-11-03T20:30:00Z",
+      "ref": null,
+      "pr": null,
+      "summary": "The harness reported no usage; no input/output split.",
+      "notes": "The harness reported no usage; no input/output split. Dispatched 19:40 UTC, result 20:05 UTC (unattended). Task E1 at the standard tier, on branch p1-n016-e1: commits c6df657 (dispatch.md and its Backlog rows) and 82bd05c (contracts, orchestrate skill, roles.md) in majodali/project-orchestrator. Returned `needs-judgment` on two routed rows; the owner ruled A23 and A24 (option A each, A23 interim), entered as RU-023 and RU-024. Checks as E1 reported: sync_agents in sync, form_check 0 violations, npm test 73/73, typecheck pass, format pass; npm run lint fails over a file outside the task's writes, read under the owner's A25 ruling on V14. Packet widened read-only: six, listed in the result."
+    },
+    {
+      "id": "T104",
+      "node": "P1-N016",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-11-03T20:50:00Z",
+      "closed": "2026-11-05T19:30:00Z",
+      "ref": "8dca031",
+      "pr": "majodali/project-orchestrator-service#27",
+      "summary": "The harness reported no usage; no input/output split.",
+      "notes": "The harness reported no usage; no input/output split. Dispatched 2026-11-03 20:50 UTC, result 21:15 UTC (unattended); accepted 2026-11-05. Task E2, on branch p1-n016-e1: commits 514c102 (plan-model, profiles, observability, auditing, the ruling taxonomy, README, docs/vocabulary.md, Backlog header and rows) and 5a94f10 (a row count corrected) in majodali/project-orchestrator. Returned `needs-judgment` on two decisions and one finding; the owner ruled A26 to A28 (defaults). Acceptance commits ba2ef2c (the kinds `unblocked` and `risk-opened`, the pre-cleared test change, the owner-attended rule) and this acceptance; majodali/project-orchestrator-service a031c2e (merged by pull request #27) re-vendors the unit. Checks: sync_agents in sync, form_check 0 violations, npm test 74/74, typecheck pass, format pass, run_corpus 19 fixtures match, sync_shared_unit in sync; npm run lint fails over a file outside the task's writes, read under the owner's A25 ruling on V14. In the service: npm test 299/299, npm run lint pass. Packet widened read-only: six groups, listed in the result."
+    },
+    {
+      "id": "T105",
+      "node": "P3-N017",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-11-07T21:00:00Z",
+      "closed": "2026-11-07T22:00:00Z",
+      "ref": "ee5f2d0",
+      "pr": null,
+      "summary": "The harness reported no usage; no input/output split.",
+      "notes": "The harness reported no usage; no input/output split. Member 1 of the sequence ratified 2026-11-04. Dispatched 2026-11-07 21:00 UTC, result 21:45 UTC (unattended). Commit ee5f2d0 in majodali/project-orchestrator, on branch p3-n017-m1, the same tree as the result's 0d46860: eleven links in eight files retargeted from tag v1.3.0 to v1.6.0, each identifier named. Checks as M1 reported: the M1.1 grep pass, form_check 0 violations, npm test pass, typecheck pass, format pass, sync_agents in sync; M1.1 to M1.4 and S1 to S3 met. Packet widened read-only: three groups, listed in the result."
+    },
+    {
+      "id": "T106",
+      "node": "P3-N018",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-11-07T22:30:00Z",
+      "closed": "2026-11-07T23:00:00Z",
+      "ref": "47aac88",
+      "pr": null,
+      "summary": "The harness reported no usage; no input/output split.",
+      "notes": "The harness reported no usage; no input/output split. Member 2 of the sequence ratified 2026-11-04. Dispatched 2026-11-07 22:30 UTC, result 22:50 UTC (unattended). Commit 47aac88 in majodali/project-orchestrator, on branch p3-n017-m1, the same tree as the result's a2fdffc: eighteen Risk register entries, R1 to R18, anchored. Checks as M2 reported: the M2.1 to M2.3 greps pass, form_check 0 violations, npm test pass, typecheck pass, format pass; M2.1 to M2.5 and S1 to S3 met. No packet widening."
+    },
+    {
+      "id": "T107",
+      "node": "P3-N019",
+      "step": "execute",
+      "status": "closed",
+      "role": "implementer",
+      "model": "recorded-model",
+      "tokens": {
+        "in": null,
+        "out": null
+      },
+      "opened": "2026-11-07T23:30:00Z",
+      "closed": "2026-11-08T00:30:00Z",
+      "ref": "41ddcc4",
+      "pr": null,
+      "summary": "The harness reported no usage; no input/output split.",
+      "notes": "The harness reported no usage; no input/output split. Member 3 of the sequence ratified 2026-11-04. Dispatched 2026-11-07 23:30 UTC, result 2026-11-08 00:10 UTC (unattended). Commit 41ddcc4 in majodali/project-orchestrator, on branch p3-n017-m1, the same tree as the result's e0890bc: the cover note `docs/proposals/mtool-custom-type-checker-cover-note.md` written, naming seven changes since 2026-08-26 with pointers and quoting Article 7 at both tags; the proposal unchanged. Checks as M3 reported: the M3.4 git diff pass, form_check 0 violations, npm test pass, typecheck pass, format pass; M3.1 to M3.6 and S1 to S3 met. Packet widened read-only: five groups, listed in the result."
+    }
+  ],
+  "decisions": [
+    {
+      "id": "RU-001",
+      "node": "P1-N008",
+      "question": "Execute a proposal draft before its evidencing node closes?",
+      "options": [],
+      "default": null,
+      "chosen": "yes.",
+      "decided": "2026-08-26",
+      "rationale": "the evidence already exists; holding just delays ratified wording.",
+      "standing": true,
+      "source": "docs/rulings.md, RU-001"
+    },
+    {
+      "id": "RU-002",
+      "node": "P1-N008",
+      "question": "How does upstream-bound output reach a repo outside granted scope?",
+      "options": [],
+      "default": null,
+      "chosen": "the owner hand-carries it; cross-repo scope is granted only explicitly.",
+      "decided": "2026-08-26",
+      "rationale": "no scope expansion for a delivery a human can make.",
+      "standing": true,
+      "source": "docs/rulings.md, RU-002"
+    },
+    {
+      "id": "RU-003",
+      "node": "P1-N008",
+      "question": "Does a node targeting an external party complete at the artifact or at upstream disposition?",
+      "options": [],
+      "default": null,
+      "chosen": "at the artifact.",
+      "decided": "2026-08-26",
+      "rationale": "external acceptance is not ours to verify.",
+      "standing": true,
+      "source": "docs/rulings.md, RU-003"
+    },
+    {
+      "id": "RU-004",
+      "node": "P1-N008",
+      "question": "Full reference implementation or conformance sketch for the extension-point proposal?",
+      "options": [],
+      "default": null,
+      "chosen": "sketch only.",
+      "decided": "2026-08-26",
+      "rationale": "the contract is still under discussion.",
+      "standing": true,
+      "source": "docs/rulings.md, RU-004"
+    },
+    {
+      "id": "RU-005",
+      "node": "P1-N008",
+      "question": "Are proposal-class nodes owner-gated, and where?",
+      "options": [],
+      "default": null,
+      "chosen": "yes, gate at verifying.",
+      "decided": "2026-08-26",
+      "rationale": "the owner sees the artifact before it represents the project.",
+      "standing": true,
+      "source": "docs/rulings.md, RU-005"
+    },
+    {
+      "id": "RU-006",
+      "node": "P2-N001",
+      "question": "When does a new capability get its own repository rather than joining an existing one?",
+      "options": [],
+      "default": null,
+      "chosen": "when it is separately deployable, holds secrets, or would raise the host repo's S-level; the originating repo is then the coordinating repo.",
+      "decided": "2026-08-26",
+      "rationale": "the orchestration service is deployable and holds tokens; this repo is C1/S0 documentation and tooling.",
+      "standing": true,
+      "source": "docs/rulings.md, RU-006"
+    },
+    {
+      "id": "RU-007",
+      "node": "P2-N001",
+      "question": "When is this repo promoted to C2?",
+      "options": [],
+      "default": null,
+      "chosen": "when it begins orchestrating C2+ work — chunk 5 of the service plan, not before.",
+      "decided": "2026-08-26",
+      "rationale": "the owner's standing intent ties promotion to what the project actually governs.",
+      "standing": true,
+      "source": "docs/rulings.md, RU-007"
+    },
+    {
+      "id": "RU-008",
+      "node": "P2-N002",
+      "question": "What language and runtime do new majodali services use?",
+      "options": [],
+      "default": null,
+      "chosen": "TypeScript/Node.",
+      "decided": "2026-08-26",
+      "rationale": "common across current portfolio projects; the MCP SDK and Lambda support it first-class, and cross-repo consistency beats matching one repo's helper scripts.",
+      "standing": true,
+      "source": "docs/rulings.md, RU-008"
+    },
+    {
+      "id": "RU-009",
+      "node": "P2-N008",
+      "question": "How does completed work reach main in a managed project's work repo?",
+      "options": [],
+      "default": null,
+      "chosen": "by pull request, opened by the orchestrating session; the owner reviews and merges.",
+      "decided": "2026-08-27",
+      "rationale": "the owner asked for one at the first such merge, and a PR is where the \"what was and was not verified\" record belongs.",
+      "standing": true,
+      "source": "docs/rulings.md, RU-009"
+    },
+    {
+      "id": "RU-010",
+      "node": null,
+      "question": "How does work reach main in this coordinating repo, given the owner created main from the design branch and made it default?",
+      "options": [],
+      "default": null,
+      "chosen": "the same way as a work repo — by pull request from the design branch, opened by the orchestrating session, owner reviews and merges.",
+      "decided": "2026-08-28",
+      "rationale": "the owner directed a PR when the design branch first needed to reach main; one handoff shape across coordinating and work repos beats two. Extends RU-009 rather than competing with it.",
+      "standing": true,
+      "source": "docs/rulings.md, RU-010"
+    },
+    {
+      "id": "RU-011",
+      "node": null,
+      "question": "What language do majodali repo-local tooling and scripts use, as distinct from deployed services?",
+      "options": [],
+      "default": null,
+      "chosen": "TypeScript/Node, the same answer RU-008 gives services.",
+      "decided": "2026-08-29",
+      "rationale": "the owner prefers portfolio consistency and reuse over per-repo convenience; the orchestrator's form checker and the service's plan_read parse the same register grammar and should not be two implementations in two languages. RU-008 was minted a day after the plugin's Python scripts were written and its wording reaches only services, so this is a gap being closed, not an override.",
+      "standing": true,
+      "source": "docs/rulings.md, RU-011"
+    },
+    {
+      "id": "RU-012",
+      "node": "P1-N009",
+      "question": "How do two majodali repositories share one unit of code, absent a package registry?",
+      "options": [],
+      "default": null,
+      "chosen": "one canonical copy in the repository that owns the thing's specification, vendored outward by a generator with a --check drift mode; the consumer never edits its copy.",
+      "decided": "2026-08-29",
+      "rationale": "the least machinery that makes drift mechanically detectable — no registry, no release cadence, no clone-time dependency — and the pattern already runs here as .claude/agents/ → plugin/agents/. A registry, submodule, subtree, or shared-library repo each buy less than they cost at two consumers; RU-006 is the near match, and reaching for a third repository is what it warns …",
+      "standing": true,
+      "source": "docs/rulings.md, RU-012"
+    },
+    {
+      "id": "RU-013",
+      "node": "P1-N009",
+      "question": "What does a majodali tool do when the runtime it needs is missing or too old?",
+      "options": [],
+      "default": null,
+      "chosen": "preflight and exit non-zero, naming what was required and what was found; never degrade quietly and never skip the check it exists to perform.",
+      "decided": "2026-08-30",
+      "rationale": "R13's failure mode is losing the form checker silently, and a loud exit converts that into a blocked dispatch, which the audit process already treats as the correct outcome. Generalizes beyond this node: any tool with a runtime floor.",
+      "standing": true,
+      "source": "docs/rulings.md, RU-013"
+    },
+    {
+      "id": "RU-014",
+      "node": "P1-N013",
+      "question": "When a port retires the only other implementation a test compares against, what happens to that test?",
+      "options": [],
+      "default": null,
+      "chosen": "retire the comparison, keep whatever assertion still stands without the retired side, and record in the same commit where the lost coverage now lives.",
+      "decided": "2026-08-30",
+      "rationale": "a cross-check needs two implementations, and deleting one is the deliberate outcome of a port, not an accident — so the test's premise is gone, not merely inconvenient. Freezing a transcript of the retired side is the anti-pattern the same test was already rewritten to remove, and keeping the retired runtime alive for tests alone defeats the port. Every …",
+      "standing": true,
+      "source": "docs/rulings.md, RU-014"
+    },
+    {
+      "id": "RU-015",
+      "node": "P1-N015",
+      "question": "How does this project deliver a change to a repository it cannot write to?",
+      "options": [],
+      "default": null,
+      "chosen": "final normative text, the current upstream text quoted verbatim beside it, and a provenance line naming the version, the commit and the date the quote was taken, with an instruction to re-verify before the change is carried. Never a patch file.",
+      "decided": "2026-09-01",
+      "rationale": "a session that cannot apply or test a patch produces one that fails on context it never verified, while a verbatim quote gives the carrier the same mechanical certainty and no fragile artifact. The provenance line is the part that earns its keep — without it a quote that went stale between drafting and delivery is undetectable by the …",
+      "standing": true,
+      "source": "docs/rulings.md, RU-015"
+    },
+    {
+      "id": "RU-016",
+      "node": "P2-N012",
+      "question": "Who decides which repositories a node's work may write to?",
+      "options": [],
+      "default": null,
+      "chosen": "the Planner declares the repository access a node needs, in the node's plan; the Orchestrator grants it and records the grant; the owner is asked only when a repository is new to the project. This project's approved scope permanently includes majodali/project-orchestrator-service.",
+      "decided": "2026-09-01",
+      "rationale": "the owner's attention is the scarcest resource in the loop, and re-granting a repository the project writes to constantly is a question with a known answer. The declaration keeps the reach visible rather than assumed — a node that writes a repository its plan never named is still a scope violation, which is the property the original owner-names-it rule …",
+      "standing": true,
+      "source": "docs/rulings.md, RU-016"
+    },
+    {
+      "id": "RU-017",
+      "node": "P3-N001",
+      "question": "When a node's whole driver is another portfolio project, is that project's adoption part of the node?",
+      "options": [],
+      "default": null,
+      "chosen": "no. The node is verified against this repository's own instance; adoption by the other project is a separate node with its own repository grant, requested when it is wanted.",
+      "decided": "2026-09-17",
+      "rationale": "every criterion must be answerable by a verifier inside the project doing the work, and a node that completes only on another project's adoption cannot be verified by anyone who works on it. Generalizes RU-003 one step out, from an upstream repository to a sibling project.",
+      "standing": true,
+      "source": "docs/rulings.md, RU-017"
+    },
+    {
+      "id": "RU-018",
+      "node": "P3-N001",
+      "question": "Is a child queued behind an earlier sibling it does not depend on?",
+      "options": [],
+      "default": null,
+      "chosen": "no. A child that needs nothing an earlier sibling produces is marked independent in the register and may be dispatched alongside it; only a real dependency holds a node. This narrows dispatch.md's earlier-siblings-done default, which stands wherever independence is not recorded.",
+      "decided": "2026-09-17",
+      "rationale": "sibling order was only ever a stand-in for dependency information the register could not hold (see the owner's direction of 2026-09-17, recorded in P3-N001's plan), and holding unrelated work behind it is the defect the comprehension model exists to fix. Type note: the taxonomy in rulings.md has no type for dispatch-sequencing decisions; scope is the nearest fit and the …",
+      "standing": true,
+      "source": "docs/rulings.md, RU-018"
+    },
+    {
+      "id": "RU-019",
+      "node": "P3-N001",
+      "question": "May a criterion that measures something be satisfied by an unfavourable result?",
+      "options": [],
+      "default": null,
+      "chosen": "yes, and it must be. A measurement criterion is met by the number, the method and the conclusion being recorded, whichever way the number falls; the response to an unfavourable one is a plan change, not a failed node.",
+      "decided": "2026-09-17",
+      "rationale": "a criterion satisfiable only by a favourable figure measures nothing.",
+      "standing": true,
+      "source": "docs/rulings.md, RU-019"
+    },
+    {
+      "id": "RU-020",
+      "node": "P3-N001",
+      "question": "Does an interior node need a separate break down task after its specification?",
+      "options": [],
+      "default": null,
+      "chosen": "no, when the specification already carries the children at the depth such a task would produce: the children are entered identified with their Backlog entries at the specification gate and the parent moves specified → broken-down in the same act.",
+      "decided": "2026-09-17",
+      "rationale": "three interior nodes have now crossed this way — P2-N002, P2-N012 and P3-N001 — and dispatching a task to restate a breakdown the owner has just approved spends tokens to produce nothing. A specification that does not reach that depth still gets the task.",
+      "standing": true,
+      "source": "docs/rulings.md, RU-020"
+    },
+    {
+      "id": "RU-021",
+      "node": "P3-N002",
+      "question": "Which document is the source of progress truth in an orchestrated project?",
+      "options": [],
+      "default": null,
+      "chosen": "the planning/execution model, once the project has one; the Backlog's remaining jobs, the implementation map and the list of what is next, are renderings of it. K-003 is amended to say so, project by project as each adopts the orchestrator, and this repository is the evidencing instance.",
+      "decided": "2026-10-29",
+      "rationale": "the owner's vision decision of 2026-10-28 (methodology docs/vision.md, decisions C8, C19, C20); two documents claiming progress truth is the divergence the comprehension model exists to remove. Overrides P3-N002's gate decision 3 default.",
+      "standing": true,
+      "source": "docs/rulings.md, RU-021"
+    },
+    {
+      "id": "RU-022",
+      "node": "P1-N014",
+      "question": "How does a document this project drafts for the methodology corpus carry W-009 (the methodology corpus writes its deliverables IR first)?",
+      "options": [],
+      "default": null,
+      "chosen": "the drafting role writes the IR first; the prose is rendered and reviewed under dispatch.md's prose routing; and RU-015's delivery form also carries the IR, under the same provenance line.",
+      "decided": "2026-10-29",
+      "rationale": "W-009 has the reasoning role render normative text, and that role is the session here; an IR written upstream would re-derive the reasoning.",
+      "standing": true,
+      "source": "docs/rulings.md, RU-022"
+    },
+    {
+      "id": "RU-023",
+      "node": "P1-N016",
+      "question": "May a task outside a ratified sequence be dispatched while the sequence runs?",
+      "options": [
+        "(A) from sequence-ratified to sequence-stopped no task outside the members is dispatched, and the first member is dispatched only when no other task is in flight",
+        "(B) a task outside the members may run alongside, under dispatch.md's Parallel dispatch, when a gate-approved plan records it as independent."
+      ],
+      "default": null,
+      "chosen": "option A, as an interim rule. It holds until the stop predicates read the journal by member task; the Backlog row \"Lift RU-023 from interim\" holds the lifting. Placed at the end of dispatch.md, Sequence mode, The run.",
+      "decided": "2026-11-03",
+      "rationale": "the predicates and the owner's audit read the journal between ratification and stop, and a concurrent writer would bring back the Backlog race. Type note: type sequencing, entered in the taxonomy by P1-N016's E2.",
+      "standing": true,
+      "source": "docs/rulings.md, RU-023"
+    },
+    {
+      "id": "RU-024",
+      "node": "P1-N016",
+      "question": "Does a go-ahead that adopts defaults ratify a sequence?",
+      "options": [
+        "(A) a go-ahead ratifies a sequence only when its words say so",
+        "(B) a ratification entry staged with the default \"ratify\" is adopted by the go-ahead like any other default."
+      ],
+      "default": null,
+      "chosen": "option A. Placed in dispatch.md, Sequence mode, Ratification, and after the bullet \"Decisions batch at the gate\" of Owner-decision economics.",
+      "decided": "2026-11-03",
+      "rationale": "W-001 (two delivery modes, human-gated) says \"The approval is still explicit\". Type note: type sequencing, entered in the taxonomy by P1-N016's E2.",
+      "standing": true,
+      "source": "docs/rulings.md, RU-024"
+    },
+    {
+      "id": "D001",
+      "node": "P2-N001",
+      "question": "Repository shape",
+      "options": [],
+      "default": "a new repository for the service, S1 / serverless-aws, with project-orchestrator as the designated coordinating repo (the multi-repo model staged upstream).",
+      "chosen": "a new repository for the service, S1 / serverless-aws, with project-orchestrator as the designated coordinating repo (the multi-repo model staged upstream).",
+      "decided": "2026-08-26",
+      "rationale": "this repo is C1/S0 documentation and tooling; a deployable service holding tokens is neither.",
+      "standing": false,
+      "source": "docs/plans/orchestration-service.md, decision 1"
+    },
+    {
+      "id": "D002",
+      "node": "P2-N001",
+      "question": "Chunk boundaries",
+      "options": [],
+      "default": "as proposed above.",
+      "chosen": "as proposed above.",
+      "decided": "2026-08-26",
+      "rationale": "each chunk ends at something the owner can see working.",
+      "standing": false,
+      "source": "docs/plans/orchestration-service.md, decision 2"
+    },
+    {
+      "id": "D003",
+      "node": "P2-N001",
+      "question": "Promotion timing",
+      "options": [],
+      "default": "promote project-orchestrator to C2 when chunk 5 begins, not before.",
+      "chosen": "promote project-orchestrator to C2 when chunk 5 begins, not before.",
+      "decided": "2026-08-26",
+      "rationale": "the owner's standing intent ties promotion to orchestrating C2+ projects, which is what the pilot does.",
+      "standing": false,
+      "source": "docs/plans/orchestration-service.md, decision 3"
+    },
+    {
+      "id": "D004",
+      "node": "P2-N001",
+      "question": "v1 plan disposition",
+      "options": [],
+      "default": "keep orchestrator-v1 active through its chunk 4 close-out, with its chunk 6 runtime assumptions marked superseded by this plan.",
+      "chosen": "keep orchestrator-v1 active through its chunk 4 close-out, with its chunk 6 runtime assumptions marked superseded by this plan.",
+      "decided": "2026-08-26",
+      "rationale": "the process spec and plugin remain in service; only the runtime direction changed.",
+      "standing": false,
+      "source": "docs/plans/orchestration-service.md, decision 4"
+    },
+    {
+      "id": "D005",
+      "node": null,
+      "question": "Pause the P3 line (comprehension model, risk catalogue, sequence mode, reversibility) and park its open nodes",
+      "options": [],
+      "default": "yes",
+      "chosen": "yes",
+      "decided": "2026-11-09",
+      "rationale": null,
+      "standing": false,
+      "source": "docs/plans/rebuild.md, decision 1"
+    },
+    {
+      "id": "D006",
+      "node": null,
+      "question": "The service may write git under the path allowlist above. This changes the service plan's standing constraint \"the service never writes git\" and keeps \"git is authoritative\"",
+      "options": [],
+      "default": "yes",
+      "chosen": "yes",
+      "decided": "2026-11-09",
+      "rationale": null,
+      "standing": false,
+      "source": "docs/plans/rebuild.md, decision 2"
+    },
+    {
+      "id": "D007",
+      "node": null,
+      "question": "The state file is JSON validated by a zod schema, at orchestration/state.json",
+      "options": [],
+      "default": "yes",
+      "chosen": "yes",
+      "decided": "2026-11-09",
+      "rationale": null,
+      "standing": false,
+      "source": "docs/plans/rebuild.md, decision 3"
+    },
+    {
+      "id": "D008",
+      "node": null,
+      "question": "The shared model code lives in the service repository and is consumed by the plugin as a package. Vendoring is retired",
+      "options": [],
+      "default": "yes",
+      "chosen": "yes",
+      "decided": "2026-11-09",
+      "rationale": null,
+      "standing": false,
+      "source": "docs/plans/rebuild.md, decision 4"
+    },
+    {
+      "id": "D009",
+      "node": null,
+      "question": "During the rebuild, pull requests auto-merge on green in both repositories",
+      "options": [],
+      "default": "yes",
+      "chosen": "yes",
+      "decided": "2026-11-09",
+      "rationale": null,
+      "standing": false,
+      "source": "docs/plans/rebuild.md, decision 5"
+    },
+    {
+      "id": "D010",
+      "node": null,
+      "question": "The methodology pin stays at 1.6.0 with the deviations the review lists, recorded at M0",
+      "options": [],
+      "default": "yes",
+      "chosen": "yes",
+      "decided": "2026-11-09",
+      "rationale": null,
+      "standing": false,
+      "source": "docs/plans/rebuild.md, decision 6"
+    },
+    {
+      "id": "D011",
+      "node": null,
+      "question": "Node identifiers stay as they are (P2-N021). Titles are shown beside them everywhere",
+      "options": [],
+      "default": "keep",
+      "chosen": "keep",
+      "decided": "2026-11-09",
+      "rationale": null,
+      "standing": false,
+      "source": "docs/plans/rebuild.md, decision 7"
+    },
+    {
+      "id": "D012",
+      "node": null,
+      "question": "Milestones 1 to 6 run as one pre-ratified sequence",
+      "options": [],
+      "default": "yes",
+      "chosen": "yes",
+      "decided": "2026-11-09",
+      "rationale": null,
+      "standing": false,
+      "source": "docs/plans/rebuild.md, decision 8"
+    },
+    {
+      "id": "D013",
+      "node": null,
+      "question": "The view targets a desktop browser",
+      "options": [],
+      "default": null,
+      "chosen": "as stated",
+      "decided": "2026-11-09",
+      "rationale": null,
+      "standing": false,
+      "source": "docs/plans/rebuild.md, decision 9"
+    },
+    {
+      "id": "D014",
+      "node": null,
+      "question": "No git-only fallback for a service outage is built in this plan",
+      "options": [],
+      "default": null,
+      "chosen": "as stated",
+      "decided": "2026-11-09",
+      "rationale": null,
+      "standing": false,
+      "source": "docs/plans/rebuild.md, decision 10"
+    },
+    {
+      "id": "D015",
+      "node": "P2-N017",
+      "question": "P2-N017's specification",
+      "options": [],
+      "default": "the parent specification's Child A section, with no specify task.",
+      "chosen": "superseded by the rebuild: not answered",
+      "decided": "2026-11-09",
+      "rationale": "that section carries checkable criteria at C1 depth; P3-N006 crossed the same way (its decision 1); RU-020 spares a task on the same reasoning. Closed unanswered on the owner's decision of 2026-11-09: the rebuild (docs/plans/rebuild.md) pauses the P3 line (D005) and replaces the pull loop and the question queue as these plans designed them (milestones 3 to 5).",
+      "standing": false,
+      "source": "docs/plans/p2-n017-platform-facts.md, decision 1"
+    },
+    {
+      "id": "D016",
+      "node": "P2-N017",
+      "question": "Where the cloud probes run",
+      "options": [],
+      "default": "the Implementer runs as a subagent of the Orchestrator's cloud session.",
+      "chosen": "superseded by the rebuild: not answered",
+      "decided": "2026-11-09",
+      "rationale": "the subagent answers for the Orchestrator's own pushes. Closed unanswered on the owner's decision of 2026-11-09: the rebuild (docs/plans/rebuild.md) pauses the P3 line (D005) and replaces the pull loop and the question queue as these plans designed them (milestones 3 to 5).",
+      "standing": false,
+      "source": "docs/plans/p2-n017-platform-facts.md, decision 2"
+    },
+    {
+      "id": "D017",
+      "node": "P2-N017",
+      "question": "The scratch offering branch",
+      "options": [],
+      "default": "named pull-probe-<date> in YYYY-MM-DD form, pushed by the Implementer, and counted among the probe branches.",
+      "chosen": "superseded by the rebuild: not answered",
+      "decided": "2026-11-09",
+      "rationale": "A2 requires the branch, and the Writes line names only claim/probe-<n>; the push also tests the Orchestrator's offering push. Closed unanswered on the owner's decision of 2026-11-09: the rebuild (docs/plans/rebuild.md) pauses the P3 line (D005) and replaces the pull loop and the question queue as these plans designed them (milestones 3 to 5).",
+      "standing": false,
+      "source": "docs/plans/p2-n017-platform-facts.md, decision 3"
+    },
+    {
+      "id": "D018",
+      "node": "P2-N017",
+      "question": "O11's order",
+      "options": [],
+      "default": "the owner runs O11 at the gate.",
+      "chosen": "superseded by the rebuild: not answered",
+      "decided": "2026-11-09",
+      "rationale": "A10 asks for one commit, and plan decision 2 holds every sibling until then; O11 is a dozen commands. Closed unanswered on the owner's decision of 2026-11-09: the rebuild (docs/plans/rebuild.md) pauses the P3 line (D005) and replaces the pull loop and the question queue as these plans designed them (milestones 3 to 5).",
+      "standing": false,
+      "source": "docs/plans/p2-n017-platform-facts.md, decision 4"
+    },
+    {
+      "id": "D019",
+      "node": "P2-N017",
+      "question": "Simultaneous pushes",
+      "options": [],
+      "default": "three trials of two simultaneous claim pushes from the cloud session, beyond A3.",
+      "chosen": "superseded by the rebuild: not answered",
+      "decided": "2026-11-09",
+      "rationale": "A3's refusal is the client's, and only a race tests GitHub's own. Closed unanswered on the owner's decision of 2026-11-09: the rebuild (docs/plans/rebuild.md) pauses the P3 line (D005) and replaces the pull loop and the question queue as these plans designed them (milestones 3 to 5).",
+      "standing": false,
+      "source": "docs/plans/p2-n017-platform-facts.md, decision 5"
+    },
+    {
+      "id": "D020",
+      "node": "P2-N022",
+      "question": "Place the owner's reordering of 2026-11-03",
+      "options": [],
+      "default": "adopt the drafted texts below.",
+      "chosen": "superseded by the rebuild: not answered",
+      "decided": "2026-11-09",
+      "rationale": "the owner set the order. Closed unanswered on the owner's decision of 2026-11-09: the rebuild (docs/plans/rebuild.md) pauses the P3 line (D005) and replaces the pull loop and the question queue as these plans designed them (milestones 3 to 5).",
+      "standing": false,
+      "source": "docs/plans/p2-n022-owner-question-queue.md, decision 1"
+    },
+    {
+      "id": "D021",
+      "node": "P2-N022",
+      "question": "Leaf, one specify task, then three execute slices",
+      "options": [],
+      "default": "a leaf",
+      "chosen": "superseded by the rebuild: not answered",
+      "decided": "2026-11-09",
+      "rationale": "the slices share one resource and validate together, and P2-N021 ran this way. Closed unanswered on the owner's decision of 2026-11-09: the rebuild (docs/plans/rebuild.md) pauses the P3 line (D005) and replaces the pull loop and the question queue as these plans designed them (milestones 3 to 5).",
+      "standing": false,
+      "source": "docs/plans/p2-n022-owner-question-queue.md, decision 2"
+    },
+    {
+      "id": "D022",
+      "node": "P2-N022",
+      "question": "A Question register in git",
+      "options": [],
+      "default": "(a) a new Document type, defined by citation: the type in docs/process/question-register.md, the instance in docs/question-register.md.",
+      "chosen": "superseded by the rebuild: not answered",
+      "decided": "2026-11-09",
+      "rationale": "a gate's go-ahead must be recorded in git, and a register in the style of the Plan register gives the view one file to read and the form checker one grammar to check. Closed unanswered on the owner's decision of 2026-11-09: the rebuild (docs/plans/rebuild.md) pauses the P3 line (D005) and replaces the pull loop and the question queue as these plans designed them (milestones 3 to 5).",
+      "standing": false,
+      "source": "docs/plans/p2-n022-owner-question-queue.md, decision 3"
+    },
+    {
+      "id": "D023",
+      "node": "P2-N022",
+      "question": "Where a held answer lives",
+      "options": [],
+      "default": "(a) one item per question in the lease table of the alias that answered, keyed answer#<question ID>, with a 30-day time-to-live.",
+      "chosen": "superseded by the rebuild: not answered",
+      "decided": "2026-11-09",
+      "rationale": "P2-N005's decision 17 put handles there for two reasons that hold here too: no template change and no owner action. Closed unanswered on the owner's decision of 2026-11-09: the rebuild (docs/plans/rebuild.md) pauses the P3 line (D005) and replaces the pull loop and the question queue as these plans designed them (milestones 3 to 5).",
+      "standing": false,
+      "source": "docs/plans/p2-n022-owner-question-queue.md, decision 4"
+    },
+    {
+      "id": "D024",
+      "node": "P2-N022",
+      "question": "How the owner is authorized to answer",
+      "options": [],
+      "default": "(a) the view cookie, with the same-origin and open-question checks of Who may answer.",
+      "chosen": "superseded by the rebuild: not answered",
+      "decided": "2026-11-09",
+      "rationale": "a held answer decides nothing until the Orchestrator commits it, and the owner sees it on the page. Closed unanswered on the owner's decision of 2026-11-09: the rebuild (docs/plans/rebuild.md) pauses the P3 line (D005) and replaces the pull loop and the question queue as these plans designed them (milestones 3 to 5).",
+      "standing": false,
+      "source": "docs/plans/p2-n022-owner-question-queue.md, decision 5"
+    },
+    {
+      "id": "D025",
+      "node": "P2-N022",
+      "question": "Which question tools, and for whom",
+      "options": [],
+      "default": "question_list, question_answers and question_confirm on the existing MCP endpoint.",
+      "chosen": "superseded by the rebuild: not answered",
+      "decided": "2026-11-09",
+      "rationale": "every session holds one shared bearer token, so an answering tool would let any agent answer the owner's gate; raising is a commit, so it needs no tool. Closed unanswered on the owner's decision of 2026-11-09: the rebuild (docs/plans/rebuild.md) pauses the P3 line (D005) and replaces the pull loop and the question queue as these plans designed them (milestones 3 to 5).",
+      "standing": false,
+      "source": "docs/plans/p2-n022-owner-question-queue.md, decision 6"
+    },
+    {
+      "id": "D026",
+      "node": "P2-N022",
+      "question": "How scheduling and delegation decisions ride the queue",
+      "options": [],
+      "default": "as decisions of a gate's entry: the scope grant, with its pull-run line and pre-authorizations, is one decision whose default is the proposed grant.",
+      "chosen": "superseded by the rebuild: not answered",
+      "decided": "2026-11-09",
+      "rationale": "* a scope grant is already what a gate approves (dispatch.md, Gates (v1)), so it needs no new mechanism. Closed unanswered on the owner's decision of 2026-11-09: the rebuild (docs/plans/rebuild.md) pauses the P3 line (D005) and replaces the pull loop and the question queue as these plans designed them (milestones 3 to 5).",
+      "standing": false,
+      "source": "docs/plans/p2-n022-owner-question-queue.md, decision 7"
+    },
+    {
+      "id": "D027",
+      "node": "P2-N022",
+      "question": "Immediate-class questions",
+      "options": [],
+      "default": "no elicitation in this node.",
+      "chosen": "superseded by the rebuild: not answered",
+      "decided": "2026-11-09",
+      "rationale": "the transport sends one JSON body per request, and the function times out after 20 seconds, while the dialog waits on the owner. Closed unanswered on the owner's decision of 2026-11-09: the rebuild (docs/plans/rebuild.md) pauses the P3 line (D005) and replaces the pull loop and the question queue as these plans designed them (milestones 3 to 5).",
+      "standing": false,
+      "source": "docs/plans/p2-n022-owner-question-queue.md, decision 8"
+    },
+    {
+      "id": "D028",
+      "node": "P2-N022",
+      "question": "No new journal event kind",
+      "options": [],
+      "default": "the register is the record.",
+      "chosen": "superseded by the rebuild: not answered",
+      "decided": "2026-11-09",
+      "rationale": "the two kinds already exist, and an answer is recorded where the gate is. Closed unanswered on the owner's decision of 2026-11-09: the rebuild (docs/plans/rebuild.md) pauses the P3 line (D005) and replaces the pull loop and the question queue as these plans designed them (milestones 3 to 5).",
+      "standing": false,
+      "source": "docs/plans/p2-n022-owner-question-queue.md, decision 9"
+    },
+    {
+      "id": "D029",
+      "node": "P2-N022",
+      "question": "The node's check, and who verifies",
+      "options": [],
+      "default": "the gate of the check is the first gate the process owes after E3's deploy, in register order.",
+      "chosen": "superseded by the rebuild: not answered",
+      "decided": "2026-11-09",
+      "rationale": "a gate genuinely due keeps the check honest, and every remaining criterion is answerable from commits, tests and logs, as for P2-N005 and P2-N003. Closed unanswered on the owner's decision of 2026-11-09: the rebuild (docs/plans/rebuild.md) pauses the P3 line (D005) and replaces the pull loop and the question queue as these plans designed them (milestones 3 to 5).",
+      "standing": false,
+      "source": "docs/plans/p2-n022-owner-question-queue.md, decision 10"
+    },
+    {
+      "id": "D030",
+      "node": "P2-N022",
+      "question": "Ratify or strike three terms",
+      "options": [],
+      "default": "ratify all three.",
+      "chosen": "superseded by the rebuild: not answered",
+      "decided": "2026-11-09",
+      "rationale": "the plan and its slices refer to each throughout. Closed unanswered on the owner's decision of 2026-11-09: the rebuild (docs/plans/rebuild.md) pauses the P3 line (D005) and replaces the pull loop and the question queue as these plans designed them (milestones 3 to 5).",
+      "standing": false,
+      "source": "docs/plans/p2-n022-owner-question-queue.md, decision 11"
+    },
+    {
+      "id": "D031",
+      "node": "P3-N008",
+      "question": "P3-N008's specification",
+      "options": [],
+      "default": "the parent specification's Child C section, with no specify task.",
+      "chosen": "superseded by the rebuild: not answered",
+      "decided": "2026-11-09",
+      "rationale": "the section carries outcome, edges and checkable criteria at C1 depth, as for P3-N006 and P3-N007 under their decision 1. Closed unanswered on the owner's decision of 2026-11-09: the rebuild (docs/plans/rebuild.md) pauses the P3 line (D005) and replaces the pull loop and the question queue as these plans designed them (milestones 3 to 5).",
+      "standing": false,
+      "source": "docs/plans/p3-n008-instance-over-this-repository.md, decision 1"
+    },
+    {
+      "id": "D032",
+      "node": "P3-N008",
+      "question": "Leaf, run as three execute tasks in a fixed order",
+      "options": [],
+      "default": "E1, E2 and E3 as in Three execute tasks in a fixed order, each at the standard tier, each one commit.",
+      "chosen": "superseded by the rebuild: not answered",
+      "decided": "2026-11-09",
+      "rationale": "the parts validate only together, and the work does not fit one session; P3-N007, P3-N011 and P3-N013 run the same shape under their decisions 2, 1 and 1. Closed unanswered on the owner's decision of 2026-11-09: the rebuild (docs/plans/rebuild.md) pauses the P3 line (D005) and replaces the pull loop and the question queue as these plans designed them (milestones 3 to 5).",
+      "standing": false,
+      "source": "docs/plans/p3-n008-instance-over-this-repository.md, decision 2"
+    },
+    {
+      "id": "D033",
+      "node": "P3-N008",
+      "question": "The service repository's parts are in the instance",
+      "options": [],
+      "default": "the instance holds the parts the P2 line's nodes placed in majodali/project-orchestrator-service.",
+      "chosen": "superseded by the rebuild: not answered",
+      "decided": "2026-11-09",
+      "rationale": "those parts are this project's work, so RU-017 does not exclude them; without them eight done nodes would have no part they created; and P3-N010's enumeration already lists them on the same basis. Closed unanswered on the owner's decision of 2026-11-09: the rebuild (docs/plans/rebuild.md) pauses the P3 line (D005) and replaces the pull loop and the question queue as these plans designed them (milestones 3 to 5).",
+      "standing": false,
+      "source": "docs/plans/p3-n008-instance-over-this-repository.md, decision 3"
+    },
+    {
+      "id": "D034",
+      "node": "P3-N008",
+      "question": "Plan and specification documents enter the model as two resources",
+      "options": [],
+      "default": "plan-documents covers every document under docs/plans/, and specification-documents every document under docs/specs/.",
+      "chosen": "superseded by the rebuild: not answered",
+      "decided": "2026-11-09",
+      "rationale": "a node's plan and specification are records about the node, which spec: lines already link; one entry per document would add about 30 entries whose only edges are their author and one header line; P3-N010's standing artifact class SA-2 also treats them as one class. Closed unanswered on the owner's decision of 2026-11-09: the rebuild (docs/plans/rebuild.md) pauses the P3 line (D005) and replaces the pull loop and the question queue as these plans designed them (milestones 3 to 5).",
+      "standing": false,
+      "source": "docs/plans/p3-n008-instance-over-this-repository.md, decision 4"
+    },
+    {
+      "id": "D035",
+      "node": "P3-N008",
+      "question": "docs/plan.md stays the hand rendering until the switch",
+      "options": [],
+      "default": "docs/plan.md stays active and maintained by the Orchestrator.",
+      "chosen": "superseded by the rebuild: not answered",
+      "decided": "2026-11-09",
+      "rationale": "the renderings omit outcomes, which are most of the document; a hand rendering made once would go stale with no tool to redo it; and the owner reads this document because the plans are hard to follow. Closed unanswered on the owner's decision of 2026-11-09: the rebuild (docs/plans/rebuild.md) pauses the P3 line (D005) and replaces the pull loop and the question queue as these plans designed them (milestones 3 to 5).",
+      "standing": false,
+      "source": "docs/plans/p3-n008-instance-over-this-repository.md, decision 5"
+    },
+    {
+      "id": "D036",
+      "node": "P3-N008",
+      "question": "Every entry heading carries a name",
+      "options": [],
+      "default": "the type's grammar makes a heading's name required.",
+      "chosen": "superseded by the rebuild: not answered",
+      "decided": "2026-11-09",
+      "rationale": "one slug can begin another, such as plan-register and plan-register-grammar, so a find for ## and the slug can land on the wrong entry; this keeps P3-N002 decision 9's one find and changes no definition of the bound. Closed unanswered on the owner's decision of 2026-11-09: the rebuild (docs/plans/rebuild.md) pauses the P3 line (D005) and replaces the pull loop and the question queue as these plans designed them (milestones 3 to 5).",
+      "standing": false,
+      "source": "docs/plans/p3-n008-instance-over-this-repository.md, decision 6"
+    }
+  ]
+}

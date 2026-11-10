@@ -1,11 +1,10 @@
 /**
- * The preview's default fixture directory (node P2-N023, iteration 1):
- * the coordinating repository at commit 2da1843, from the files the
- * view's tests already hold under `test/fixtures/`. They are copied to
- * their repository paths under `.preview/2da1843/`, which is
- * gitignored, so `VIEW_FIXTURE_DIR` can point at it. The SHA is the
- * commit's own, so document links on the preview open the real files
- * on GitHub.
+ * The preview's default fixture directory: the coordinating
+ * repository's state file at commit 325c502, the fixture the view's
+ * tests hold under `test/fixtures/`. It is copied to its repository
+ * path under `.preview/325c502/`, which is gitignored, so
+ * `VIEW_FIXTURE_DIR` can point at it. The SHA is the commit's own, so
+ * document links on the preview open the real files on GitHub.
  */
 
 import { copyFileSync, mkdirSync } from "node:fs";
@@ -19,19 +18,16 @@ export const REPO_ROOT = path.resolve(
   "..",
 );
 
-export const FIXTURE_SET_SHA = "2da18430a43e46588d65cbb4354f77bfb1419f84";
+export const FIXTURE_SET_SHA = "325c5029b7479524a239f6f3e858263533dd6d2a";
 
 /** Fixture file under `test/fixtures/` → its repository path. */
 const FIXTURE_SET: ReadonlyArray<readonly [string, string]> = [
-  ["plan-register.2da1843.txt", "docs/plan-register.md"],
-  ["cost-log.2da1843.txt", "docs/cost-log.md"],
-  ["journal.2da1843.txt", "orchestration/journal.jsonl"],
-  ["project-model.2da1843.txt", "docs/project-model.md"],
+  ["state.325c502.json", "orchestration/state.json"],
 ];
 
-/** Writes the fixture set to `.preview/2da1843/` and answers its path. */
+/** Writes the fixture set to `.preview/325c502/` and answers its path. */
 export function assembleFixtureSet(): { dir: string; sha: string } {
-  const dir = path.join(REPO_ROOT, ".preview", "2da1843");
+  const dir = path.join(REPO_ROOT, ".preview", "325c502");
   for (const [fixture, repoPath] of FIXTURE_SET) {
     const target = path.join(dir, repoPath);
     mkdirSync(path.dirname(target), { recursive: true });

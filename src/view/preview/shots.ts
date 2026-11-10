@@ -1,7 +1,8 @@
 /**
- * `npm run view:shots` (node P2-N023, iteration 1): screenshots of the
- * web view's three reference pages, at phone and desktop widths, from
- * the preview.
+ * `npm run view:shots`: screenshots of the web view's three reference
+ * pages at desktop width, from the preview. The view targets a desktop
+ * browser (the rebuild plan, decision 9); the phone width and the
+ * horizontal-scroll check of the UX loop are gone.
  *
  *   npm run view:shots -- --iteration 2 --label before
  *
@@ -12,8 +13,7 @@
  * `ux-<NN>-<label>-<page>-<width>.png`. The directory is committed, so
  * a pull request body can show the shots (owner, 2026-11-03). Each PNG
  * is reduced to a 64-colour palette, which keeps text sharp at about
- * half the size. A page wider than its viewport (a horizontal scroll)
- * is reported and fails the run.
+ * half the size.
  *
  * Playwright is not a dependency of this repository: Claude Code
  * sessions have it pre-installed, and elsewhere `npm install
@@ -54,7 +54,6 @@ export const SHOT_PAGES = [
 ] as const;
 
 export const SHOT_WIDTHS = [
-  { name: "phone", width: 390, height: 844, isMobile: true },
   { name: "desktop", width: 1440, height: 900, isMobile: false },
 ] as const;
 
@@ -86,7 +85,6 @@ interface Page {
   fill(selector: string, value: string): Promise<void>;
   click(selector: string): Promise<void>;
   waitForURL(url: string): Promise<void>;
-  evaluate(expression: string): Promise<unknown>;
   screenshot(options: { fullPage: boolean }): Promise<Buffer>;
 }
 
@@ -159,7 +157,6 @@ async function main(): Promise<void> {
     { env, stdio: ["ignore", "ignore", "inherit"] },
   );
   mkdirSync(SHOTS_DIR, { recursive: true });
-  const overflows: string[] = [];
   const browser = await chromium.launch();
   try {
     await waitForHealth(base);
@@ -184,14 +181,6 @@ async function main(): Promise<void> {
             `${target.path} answered ${res?.status() ?? "nothing"} at ${size.name} width`,
           );
         }
-        const widths = (await page.evaluate(
-          "({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth })",
-        )) as { scroll: number; client: number };
-        if (widths.scroll > widths.client) {
-          overflows.push(
-            `${target.path} at ${size.name} width: ${widths.scroll} px wide in a ${widths.client} px viewport`,
-          );
-        }
         const file = path.join(
           SHOTS_DIR,
           shotFileName(iteration, label, target.name, size.name),
@@ -204,10 +193,6 @@ async function main(): Promise<void> {
   } finally {
     await browser.close();
     server.kill("SIGTERM");
-  }
-  if (overflows.length > 0) {
-    console.error(`Horizontal scroll:\n  ${overflows.join("\n  ")}`);
-    process.exitCode = 1;
   }
 }
 

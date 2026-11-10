@@ -1,568 +1,233 @@
 /**
- * The node page, `GET /view/node/<node ID>` (node P2-N021, the web
- * view's first version, task E2; the specification of P2-N003, "The
- * node page", and decision 14). Seven fields, in the order of the hand
- * rendering `docs/plan.md` (stage, outcome, depends on, needed by,
- * documents), then resources and tasks:
- *
- *   1. Stage, with the hold marker, and the date of the latest
- *      `gate-crossed` or `accepted` journal event for the node,
- *      labelled as telemetry.
- *   2. Outcome: the first paragraph of the *Outcome* section of the
- *      plan the node's line links; or "the plan has no Outcome
- *      section", with the link; or "no plan linked".
- *   3. Depends on: the register's note, verbatim, node IDs linked;
- *      from task E3, also the nodes it depends on by recorded edges.
- *   4. Needed by: the nodes whose register notes name this node; from
- *      task E3, also the nodes that depend on it by recorded edges.
- *   5. Documents: the line's links, or the nearest ancestor's,
- *      labelled with that ancestor's ID.
- *   6. Resources (task E3): the Project model's entries whose
- *      created-by, modified-by or used-by lines name the node, grouped
- *      by label, each linked to its entry.
- *   7. Tasks: every task a Cost log row or a journal event names with
- *      this node, in task-number order. From node P2-N023's iteration
- *      3, a table: date, task, stage, role, model, input and output
- *      from the Cost log row, then a row holding the notes with their
- *      whitespace kept, which opens to the task's journal events.
- *
- * From iteration 3 too, a Gate field follows the stage when the node
- * is gated, a journal event opens or crosses a gate on it, or a
- * Project model gate item names it.
- *
- * The view parses no prose for dependencies. The edge dependencies are
- * the type's node-to-node dependency rule (P3-N007 decision 3), applied
- * by ./projectModel.ts to the instance at the page's SHA.
+ * The node page, `GET /view/node/<node ID>` (the rebuild plan,
+ * milestone 2): one node of the state file at one commit. Its place in
+ * the tree, its class and stage, its outcome, what it waits on and
+ * what waits on it, its documents at the page's SHA, its decisions and
+ * its tasks. No criteria labels and no rulings.
  */
 
-import type { PlanNode, RegisterParseResult } from "../planRegister/types.js";
+import {
+  NODE_CLASS_LABELS,
+  childrenOf,
+  classifyAll,
+  nodesById,
+  type NodeClass,
+} from "../model/check.js";
+import type { Decision, Node, State, Task } from "../model/schema.js";
 import type { PageCommit } from "./html.js";
 import {
   blobUrl,
   escapeHtml,
-  limitLine,
   pageHeader,
   pageShell,
+  sourceLine,
   viewLink,
 } from "./html.js";
 import {
-  documentPath,
-  nodePageHref,
-  renderNote,
-  renderRegisterLink,
-} from "./registerNote.js";
-import { notComputableHtml } from "./modelRenderings.js";
-import type {
-  DependencyAnswer,
-  ModelAtPage,
-  ResourceMention,
-} from "./projectModel.js";
-import {
-  dependenciesOf,
-  dependentsOf,
-  entryHref,
-  instanceAbsent,
-  resourcesOf,
-} from "./projectModel.js";
-import type {
-  CostLog,
-  CostLogRow,
-  Journal,
-  JournalEntry,
-} from "./runRecords.js";
-import {
-  COST_LOG_PATH,
-  JOURNAL_PATH,
-  byTaskNumber,
-  eventString,
-  skippedNote,
-} from "./runRecords.js";
-
-/** The journal events whose date field 1 shows. */
-const STAGE_EVENTS = new Set(["gate-crossed", "accepted"]);
-
-export function nodePagePath(id: string): string {
-  return `/view/node/${encodeURIComponent(id)}`;
-}
-
-/** The register link a node's line names as its plan, if any. */
-export function planLink(
-  node: PlanNode,
-): { target: string; path: string } | undefined {
-  for (const link of node.links) {
-    if (link.label !== "plan") continue;
-    const path = documentPath(link.target);
-    if (path !== undefined) return { target: link.target, path };
-  }
-  return undefined;
-}
-
-/**
- * The first paragraph of a Markdown document's *Outcome* section: the
- * first run of non-blank lines after a heading that reads exactly
- * "Outcome", joined by spaces. `null` when the document has no such
- * heading; the empty string when the section holds no paragraph
- * before the next heading.
- */
-export function outcomeParagraph(markdown: string): string | null {
-  const lines = markdown.split(/\r\n|\n/);
-  const start = lines.findIndex((line) => /^#{1,6}\s+Outcome\s*$/.test(line));
-  if (start === -1) return null;
-  const paragraph: string[] = [];
-  for (const line of lines.slice(start + 1)) {
-    if (/^#{1,6}\s/.test(line)) break;
-    if (line.trim() === "") {
-      if (paragraph.length > 0) break;
-      continue;
-    }
-    paragraph.push(line.trim());
-  }
-  return paragraph.join(" ");
-}
-
-export interface NodePageInput {
-  parsed: RegisterParseResult;
-  node: PlanNode;
-  costLog: CostLog;
-  journal: Journal;
-  /** The linked plan's text at the page's SHA, when the line links one. */
-  planText: string | undefined;
-  /** The Project model instance at the page's SHA (task E3). */
-  model: ModelAtPage;
-}
+  classBadge,
+  nodeHref,
+  nodePagePath,
+  pullRequestUrl,
+  taskPagePath,
+} from "./parts.js";
 
 function field(name: string, heading: string, body: string): string {
-  return `<section data-field="${name}">\n<h2>${escapeHtml(heading)}</h2>\n${body}\n</section>`;
+  return `<dt>${escapeHtml(heading)}</dt><dd data-field="${name}">${body}</dd>`;
 }
 
-function stageField(input: NodePageInput): string {
-  const { node, journal } = input;
-  const parts = [
-    `<p><span class="stage" data-stage>[${escapeHtml(node.stage)}]</span>`,
-    node.hold
-      ? ` <span class="hold" data-hold>[${escapeHtml(node.hold.kind)}: ${escapeHtml(node.hold.reason)}]</span>`
-      : "",
-    "</p>",
-  ];
-  let latest: { ts: string; kind: string } | undefined;
-  for (const { event } of journal.events) {
-    const kind = eventString(event, "event");
-    const ts = eventString(event, "ts");
-    if (eventString(event, "node") !== node.id) continue;
-    if (kind === undefined || !STAGE_EVENTS.has(kind) || ts === undefined) {
-      continue;
-    }
-    if (latest === undefined || ts >= latest.ts) latest = { ts, kind };
-  }
-  if (latest !== undefined) {
-    parts.push(
-      `<p class="note" data-journal-date><time>${escapeHtml(latest.ts.slice(0, 10))}</time>: last journal event, telemetry (<code>${escapeHtml(latest.kind)}</code>). The run journal is never authoritative.</p>`,
-    );
-  }
-  return field("stage", "Stage", parts.join(""));
-}
-
-function outcomeField(input: NodePageInput, commit: PageCommit): string {
-  const plan = planLink(input.node);
-  if (plan === undefined) {
-    return field(
-      "outcome",
-      "Outcome",
-      `<p data-outcome-state="no-plan">no plan linked</p>`,
-    );
-  }
-  const href = blobUrl(commit, commit.sha, plan.path);
-  const link = `<a href="${escapeHtml(href)}">${escapeHtml(plan.path)}</a>`;
-  const paragraph = outcomeParagraph(input.planText ?? "");
-  if (paragraph === null) {
-    return field(
-      "outcome",
-      "Outcome",
-      `<p data-outcome-state="no-section">the plan has no Outcome section: ${link}</p>`,
-    );
-  }
-  if (paragraph === "") {
-    return field(
-      "outcome",
-      "Outcome",
-      `<p data-outcome-state="empty-section">the plan's Outcome section holds no paragraph: ${link}</p>`,
-    );
-  }
-  return field(
-    "outcome",
-    "Outcome",
-    `<p data-outcome>${escapeHtml(paragraph)}</p>\n<p class="note">From the Outcome section of ${link}.</p>`,
-  );
-}
-
-/**
- * The edge part of fields 3 and 4: each dependency the type's rule
- * derives, with the resource it runs through, each linked; or what
- * stopped the rule (decision 11).
- */
-function edgeDependencies(
-  answer: DependencyAnswer | "absent",
-  input: NodePageInput,
+function nodeRef(
+  n: Node,
+  classes: Map<string, NodeClass>,
   commit: PageCommit,
-  direction: "depends-on" | "needed-by",
 ): string {
-  const label =
-    direction === "depends-on"
-      ? `<p class="label" data-edges-label>By recorded edges:</p>`
-      : `<p class="label" data-edges-label>Depending on it by recorded edges:</p>`;
-  if (answer === "absent") {
-    return `${label}\n${notComputableHtml(instanceAbsent(commit.sha))}`;
-  }
-  const node = input.node.id;
-  const link = (id: string): string =>
-    `<a href="${escapeHtml(nodePageHref(id, commit.requestedRef))}">${escapeHtml(id)}</a>`;
-  const items = answer.dependencies.map((dep) => {
-    const entry = `<a href="${escapeHtml(entryHref(commit, commit.sha, dep.entry))}">${escapeHtml(dep.entry.slug)}</a>`;
-    if (direction === "depends-on") {
-      const why =
-        dep.via === "creates"
-          ? `creates ${entry}, which ${escapeHtml(node)} uses`
-          : `named in the after qualifier of ${escapeHtml(node)}'s use of ${entry}`;
-      return `<li data-edge-dependency="${escapeHtml(dep.on)}">${link(dep.on)}: ${why}</li>`;
-    }
-    const why =
-      dep.via === "creates"
-        ? `uses ${entry}, which ${escapeHtml(node)} creates`
-        : `names ${escapeHtml(node)} in the after qualifier of its use of ${entry}`;
-    return `<li data-edge-dependent="${escapeHtml(dep.from)}">${link(dep.from)}: ${why}</li>`;
-  });
-  const list =
-    items.length === 0
-      ? `<p class="note" data-edges-none>None.</p>`
-      : `<ul>\n${items.join("\n")}\n</ul>`;
-  const stops = answer.notComputable.map((nc) => notComputableHtml(nc));
-  return [label, list, ...stops].join("\n");
+  return `${classBadge(classes.get(n.id)!)} <a href="${escapeHtml(nodeHref(n.id, commit.requestedRef))}">${escapeHtml(n.title)}</a> <span class="id">${escapeHtml(n.id)}</span>`;
 }
 
-function edgesOf(
-  input: NodePageInput,
-  direction: "depends-on" | "needed-by",
-): DependencyAnswer | "absent" {
-  if (input.model.kind === "absent") return "absent";
-  return direction === "depends-on"
-    ? dependenciesOf(input.model.parsed, input.node.id)
-    : dependentsOf(input.model.parsed, input.node.id);
-}
-
-function dependsOnField(input: NodePageInput, commit: PageCommit): string {
-  const { node, parsed } = input;
-  const edges = edgeDependencies(
-    edgesOf(input, "depends-on"),
-    input,
-    commit,
-    "depends-on",
-  );
-  if (node.annotation === null) {
-    return field(
-      "depends-on",
-      "Depends on",
-      `<p class="note">The register's line carries no note.</p>\n${edges}`,
-    );
-  }
-  const note = renderNote(node, commit, commit.sha, {
-    known: new Set(parsed.order),
-    requestedRef: commit.requestedRef,
-  });
-  return field(
-    "depends-on",
-    "Depends on",
-    `<p><span class="label">From the register's note:</span> <span data-note>${note}</span></p>\n${edges}`,
-  );
-}
-
-function neededByField(input: NodePageInput, commit: PageCommit): string {
-  const { node, parsed } = input;
-  const pattern = new RegExp(`(?<![A-Za-z0-9-])${node.id}(?![0-9])`);
-  const naming = parsed.order.filter((id) => {
-    if (id === node.id) return false;
-    const other = parsed.nodes.get(id)!;
-    return other.annotation !== null && pattern.test(other.annotation);
-  });
-  const edges = edgeDependencies(
-    edgesOf(input, "needed-by"),
-    input,
-    commit,
-    "needed-by",
-  );
-  if (naming.length === 0) {
-    return field(
-      "needed-by",
-      "Needed by",
-      `<p class="note">No register note names ${escapeHtml(node.id)}.</p>\n${edges}`,
-    );
-  }
-  const items = naming
-    .map((id) => {
-      const other = parsed.nodes.get(id)!;
-      return `<li data-needed-by="${escapeHtml(id)}"><a href="${escapeHtml(nodePageHref(id, commit.requestedRef))}">${escapeHtml(id)}</a> ${escapeHtml(other.title)}</li>`;
-    })
-    .join("\n");
-  return field(
-    "needed-by",
-    "Needed by",
-    `<p class="label">Named in the register notes of:</p>\n<ul>\n${items}\n</ul>\n${edges}`,
-  );
-}
-
-function documentsField(input: NodePageInput, commit: PageCommit): string {
-  const { node, parsed } = input;
-  const list = (owner: PlanNode): string =>
-    `<ul>\n${owner.links.map((link) => renderRegisterLink(link, commit, commit.sha)).join("\n")}\n</ul>`;
-  if (node.links.length > 0) {
-    return field("documents", "Documents", list(node));
-  }
-  let ancestorId = node.parentId;
-  while (ancestorId !== null) {
-    const ancestor = parsed.nodes.get(ancestorId)!;
-    if (ancestor.links.length > 0) {
-      return field(
-        "documents",
-        "Documents",
-        `<p class="label" data-documents-from="${escapeHtml(ancestor.id)}">This line links no document. The nearest ancestor's links, from <a href="${escapeHtml(nodePageHref(ancestor.id, commit.requestedRef))}">${escapeHtml(ancestor.id)}</a>:</p>\n${list(ancestor)}`,
-      );
-    }
-    ancestorId = ancestor.parentId;
-  }
-  return field(
-    "documents",
-    "Documents",
-    `<p class="note">No document is linked on this line or any ancestor's.</p>`,
-  );
-}
-
-const RESOURCE_GROUPS = [
-  ["created-by", "Creates (created-by)"],
-  ["modified-by", "Modifies (modified-by)"],
-  ["used-by", "Uses (used-by)"],
-] as const;
-
-function mentionHtml(mention: ResourceMention, commit: PageCommit): string {
-  const entry = `<a href="${escapeHtml(entryHref(commit, commit.sha, mention.entry))}">${escapeHtml(mention.entry.slug)}</a>`;
-  const how =
-    mention.as === "gate item"
-      ? " (a gate item)"
-      : mention.as === "after qualifier"
-        ? ` (named in the after qualifier of ${escapeHtml(mention.of ?? "")}'s item)`
-        : "";
-  return `<li data-resource="${escapeHtml(mention.entry.slug)}">${entry}${how}</li>`;
-}
-
-function resourcesField(input: NodePageInput, commit: PageCommit): string {
-  if (input.model.kind === "absent") {
-    return field(
-      "resources",
-      "Resources",
-      notComputableHtml(instanceAbsent(commit.sha)),
-    );
-  }
-  const answer = resourcesOf(input.model.parsed, input.node.id);
-  const groups = RESOURCE_GROUPS.map(([label, heading]) => {
-    const mentions = answer.mentions.filter((m) => m.label === label);
-    const body =
-      mentions.length === 0
-        ? `<p class="note">None.</p>`
-        : `<ul>\n${mentions.map((m) => mentionHtml(m, commit)).join("\n")}\n</ul>`;
-    return `<div data-resource-group="${label}">\n<p class="label">${escapeHtml(heading)}:</p>\n${body}\n</div>`;
-  });
-  const source = `<p class="note">From the Project model, <a href="${escapeHtml(blobUrl(commit, commit.sha, "docs/project-model.md"))}">docs/project-model.md</a> at this commit: the entries whose edge lines name ${escapeHtml(input.node.id)}.</p>`;
-  return field(
-    "resources",
-    "Resources",
-    [
-      source,
-      ...groups,
-      ...answer.notComputable.map((nc) => notComputableHtml(nc)),
-    ].join("\n"),
-  );
-}
-
-/** The Cost log columns the task table shows, by cell index. */
-const TASK_COLUMNS: ReadonlyArray<readonly [number, string]> = [
-  [0, "Date"],
-  [1, "Task"],
-  [3, "Stage"],
-  [4, "Role"],
-  [5, "Model"],
-  [6, "Input"],
-  [7, "Output"],
-];
-const NOTES_CELL = 8;
-/** Journal fields an event row adds to its note when they differ from
- * the task's Cost log row: stage, role and model, by cell index. */
-const EVENT_EXTRAS: ReadonlyArray<readonly [string, number]> = [
-  ["stage", 3],
-  ["role", 4],
-  ["model", 5],
-];
-
-/** The journal events naming `task`, as a table: time, event, ref and
- * note (the owner, 2026-11-03). */
-function journalTable(
-  events: JournalEntry[],
-  row: CostLogRow | undefined,
+function nodeRefs(
+  nodes: Node[],
+  classes: Map<string, NodeClass>,
+  commit: PageCommit,
+  empty: string,
 ): string {
-  if (events.length === 0) {
-    return `<p class="note" data-no-events>No journal event names this task at this commit.</p>`;
-  }
-  const rows = events
-    .map(({ line, event }) => {
-      const extras = EVENT_EXTRAS.flatMap(([name, cell]) => {
-        const value = eventString(event, name);
-        return value !== undefined && value !== row?.cells[cell]
-          ? [`${name}: ${value}`]
-          : [];
-      });
-      const note = eventString(event, "note") ?? "";
-      const noteText =
-        extras.length === 0
-          ? note
-          : `${note}${note ? " " : ""}(${extras.join("; ")})`;
-      return [
-        `<tr data-event-line="${line}">`,
-        `<td data-event-field="ts">${escapeHtml(eventString(event, "ts") ?? "")}</td>`,
-        `<td data-event-field="event">${escapeHtml(eventString(event, "event") ?? "")}</td>`,
-        `<td data-event-field="ref">${escapeHtml(eventString(event, "ref") ?? "")}</td>`,
-        `<td class="pre" data-event-field="note">${escapeHtml(noteText)}</td>`,
-        "</tr>",
-      ].join("");
-    })
-    .join("");
-  return `<table class="journal" data-journal><thead><tr><th>Time</th><th>Event</th><th>Ref</th><th>Note</th></tr></thead><tbody>${rows}</tbody></table>`;
+  if (nodes.length === 0)
+    return `<span class="note">${escapeHtml(empty)}</span>`;
+  return `<ul class="plain">${nodes.map((n) => `<li>${nodeRef(n, classes, commit)}</li>`).join("")}</ul>`;
 }
 
-function tasksField(input: NodePageInput, commit: PageCommit): string {
-  const { node, costLog, journal } = input;
-  const rowsOf = new Map<string, CostLogRow[]>();
-  for (const row of costLog.rows) {
-    if (row.node !== node.id) continue;
-    rowsOf.set(row.task, [...(rowsOf.get(row.task) ?? []), row]);
+function crumbs(
+  node: Node,
+  byId: Map<string, Node>,
+  commit: PageCommit,
+): string {
+  const chain: Node[] = [];
+  let p = node.parent === null ? undefined : byId.get(node.parent);
+  while (p) {
+    chain.unshift(p);
+    p = p.parent === null ? undefined : byId.get(p.parent);
   }
-  const withEvent = new Set<string>();
-  for (const { event } of journal.events) {
-    const task = eventString(event, "task");
-    if (eventString(event, "node") === node.id && task !== undefined) {
-      withEvent.add(task);
-    }
-  }
-  const tasks = [...new Set([...rowsOf.keys(), ...withEvent])].sort(
-    byTaskNumber,
-  );
-  const notes = [
-    skippedNote(COST_LOG_PATH, costLog.skippedLines),
-    skippedNote(JOURNAL_PATH, journal.skippedLines),
-  ]
-    .filter((note) => note !== "")
-    .map((note) => `<p class="note" data-skipped>${escapeHtml(note)}</p>`)
-    .join("\n");
-  if (tasks.length === 0) {
-    return field(
-      "tasks",
-      "Tasks",
-      `<p class="note">No Cost log row and no journal event names a task with ${escapeHtml(node.id)}.</p>${notes ? `\n${notes}` : ""}`,
-    );
-  }
-  const span = TASK_COLUMNS.length;
-  const body = tasks
-    .flatMap((task) => {
-      const events = journal.events.filter(
-        ({ event }) => eventString(event, "task") === task,
-      );
-      const taskLink = `<a href="${escapeHtml(viewLink(`/view/task/${encodeURIComponent(task)}`, commit.requestedRef))}">${escapeHtml(task)}</a>`;
-      const rows = rowsOf.get(task);
-      if (rows === undefined) {
-        return [
-          `<tr class="task" data-task="${escapeHtml(task)}"><td></td><td>${taskLink}</td><td colspan="${span - 2}" class="note" data-no-row>no Cost log row</td></tr>`,
-          `<tr class="task-notes"><td colspan="${span}"><details><summary><span class="pre note">No notes: the task has no Cost log row.</span></summary>${journalTable(events, undefined)}</details></td></tr>`,
-        ];
-      }
-      return rows.flatMap((row) => [
-        `<tr class="task" data-task="${escapeHtml(task)}" data-row-line="${row.line}">${TASK_COLUMNS.map(
-          ([cell, name]) =>
-            `<td data-cell="${name.toLowerCase()}">${cell === 1 ? taskLink : escapeHtml(row.cells[cell] ?? "")}</td>`,
-        ).join("")}</tr>`,
-        `<tr class="task-notes"><td colspan="${span}"><details><summary><span class="pre" data-notes>${escapeHtml(row.cells[NOTES_CELL] ?? "")}</span></summary>${journalTable(events, row)}</details></td></tr>`,
-      ]);
-    })
-    .join("");
-  const head = `<thead><tr>${TASK_COLUMNS.map(([, name]) => `<th>${name}</th>`).join("")}</tr></thead>`;
-  return field(
-    "tasks",
-    "Tasks",
-    `<p class="note">From ${escapeHtml(COST_LOG_PATH)}, one row per task, each with its notes below it. Open a note for the task's journal events from ${escapeHtml(JOURNAL_PATH)}.</p>\n<div class="table-wrap"><table class="tasks" data-tasks>${head}<tbody>${body}</tbody></table></div>${notes ? `\n${notes}` : ""}`,
-  );
-}
-
-/** The journal events that open or cross a gate. */
-const GATE_EVENTS = new Set(["gate-opened", "gate-crossed"]);
-
-/**
- * The gate (node P2-N023, iteration 3): the register's hold, the
- * journal's gate events for the node, and the Project model's gate
- * items that name it. The tree's gate line links here. Absent when the
- * node has none of the three.
- */
-function gateField(input: NodePageInput, commit: PageCommit): string {
-  const { node, journal } = input;
-  const events = journal.events.filter(
-    ({ event }) =>
-      eventString(event, "node") === node.id &&
-      GATE_EVENTS.has(eventString(event, "event") ?? ""),
-  );
-  const items =
-    input.model.kind === "absent"
-      ? []
-      : resourcesOf(input.model.parsed, node.id).mentions.filter(
-          (m) => m.as === "gate item",
-        );
-  const gated = node.hold?.kind === "gated";
-  if (!gated && events.length === 0 && items.length === 0) return "";
   const parts = [
-    gated
-      ? `<p class="gate" data-gate-reason>Gated: ${escapeHtml(node.hold!.reason)}</p>`
-      : `<p class="note">The register holds no open gate on ${escapeHtml(node.id)}.</p>`,
+    `<a href="${escapeHtml(viewLink("/view", commit.requestedRef))}">Plan</a>`,
   ];
-  parts.push(
-    events.length === 0
-      ? `<p class="note">No journal event opens or crosses a gate on ${escapeHtml(node.id)} at this commit.</p>`
-      : `<div class="table-wrap">${journalTable(events, undefined)}</div>`,
-  );
-  if (items.length > 0) {
+  for (const c of chain) {
     parts.push(
-      `<p class="label">Project model gate items:</p>\n<ul>${items.map((m) => mentionHtml(m, commit)).join("")}</ul>`,
+      `<a href="${escapeHtml(nodeHref(c.id, commit.requestedRef))}">${escapeHtml(c.title)}</a>`,
     );
   }
-  return field("gate", "Gate", parts.join("\n")).replace(
-    '<section data-field="gate">',
-    '<section data-field="gate" id="gate">',
+  return `<p class="crumbs" data-crumbs>${parts.join(" › ")}</p>`;
+}
+
+function documentsField(node: Node, commit: PageCommit): string {
+  const links: string[] = [];
+  for (const [label, p] of [
+    ["plan", node.docs.plan],
+    ["spec", node.docs.spec],
+  ] as const) {
+    if (p) {
+      links.push(
+        `<a data-document="${label}" href="${escapeHtml(blobUrl(commit, commit.sha, p))}">${escapeHtml(label)}: ${escapeHtml(p)}</a>`,
+      );
+    }
+  }
+  return links.length > 0
+    ? links.join("<br>")
+    : '<span class="note">none</span>';
+}
+
+function decisionRow(d: Decision): string {
+  const status =
+    d.chosen === null
+      ? `<span class="badge c-gated">open</span> ${d.default ? `default: ${escapeHtml(d.default)}` : ""}`
+      : `<span class="badge c-done">${d.standing ? "standing" : "closed"}</span> ${escapeHtml(d.chosen)}${d.decided ? ` <span class="note">(${escapeHtml(d.decided)})</span>` : ""}`;
+  const source = d.source
+    ? `<br><span class="note">${escapeHtml(d.source)}</span>`
+    : "";
+  return `<li data-decision="${escapeHtml(d.id)}"><span class="id">${escapeHtml(d.id)}</span> ${escapeHtml(d.question)}<br>${status}${d.rationale ? `<br><span class="note">${escapeHtml(d.rationale)}</span>` : ""}${source}</li>`;
+}
+
+function decisionsSection(node: Node, state: State): string {
+  const own = state.decisions.filter((d) => d.node === node.id);
+  if (own.length === 0) return "";
+  const open = own.filter((d) => d.chosen === null);
+  const closed = own.filter((d) => d.chosen !== null);
+  return [
+    "<section data-decisions>",
+    "<h2>Decisions</h2>",
+    '<ul class="plain">',
+    ...open.map(decisionRow),
+    ...closed.map(decisionRow),
+    "</ul>",
+    "</section>",
+  ].join("\n");
+}
+
+function taskRow(t: Task, commit: PageCommit): string {
+  const pr = t.pr ? pullRequestUrl(t.pr) : null;
+  const prCell = t.pr
+    ? pr
+      ? `<a href="${escapeHtml(pr)}">${escapeHtml(t.pr)}</a>`
+      : escapeHtml(t.pr)
+    : "";
+  return [
+    `<tr data-task="${escapeHtml(t.id)}">`,
+    `<td><a href="${escapeHtml(viewLink(taskPagePath(t.id), commit.requestedRef))}">${escapeHtml(t.id)}</a></td>`,
+    `<td>${escapeHtml(t.step)}</td>`,
+    `<td>${escapeHtml(t.status)}</td>`,
+    `<td>${escapeHtml(t.opened?.slice(0, 10) ?? "")}</td>`,
+    `<td>${escapeHtml(t.closed?.slice(0, 10) ?? "")}</td>`,
+    `<td>${prCell}</td>`,
+    `<td>${escapeHtml(t.summary ?? "")}</td>`,
+    "</tr>",
+  ].join("");
+}
+
+function tasksSection(node: Node, state: State, commit: PageCommit): string {
+  const own = state.tasks
+    .filter((t) => t.node === node.id)
+    .sort((a, b) => a.id.localeCompare(b.id));
+  const body =
+    own.length === 0
+      ? '<p class="note" data-empty>No task has run on this node.</p>'
+      : [
+          '<div class="table-wrap"><table class="tasks">',
+          "<thead><tr><th>Task</th><th>Step</th><th>Status</th><th>Opened</th><th>Closed</th><th>Pull request</th><th>Summary</th></tr></thead>",
+          "<tbody>",
+          ...own.map((t) => taskRow(t, commit)),
+          "</tbody></table></div>",
+        ].join("\n");
+  return ["<section data-tasks>", "<h2>Tasks</h2>", body, "</section>"].join(
+    "\n",
   );
 }
 
-/** Renders the node page from the files at `commit.sha`. */
 export function renderNodePage(
-  input: NodePageInput,
+  state: State,
+  node: Node,
   commit: PageCommit,
 ): string {
-  const { node } = input;
+  const byId = nodesById(state);
+  const classes = classifyAll(state);
+  const children = childrenOf(state);
+  const cls = classes.get(node.id)!;
+  const waitsOn = node.after
+    .map((d) => byId.get(d))
+    .filter((n): n is Node => n !== undefined);
+  const neededBy = state.nodes.filter((n) => n.after.includes(node.id));
+  const parent = node.parent === null ? undefined : byId.get(node.parent);
+  const stage =
+    node.stage === "done" && node.done ? `done ${node.done}` : node.stage;
+  const hold = node.hold
+    ? `<p class="hold" data-hold>${escapeHtml(node.hold.kind)}: ${escapeHtml(node.hold.reason)}</p>`
+    : "";
   const body = [
     pageHeader(commit, nodePagePath(node.id)),
-    limitLine(commit, commit.sha),
+    sourceLine(commit, commit.sha),
     "<main>",
-    `<p><a href="${escapeHtml(viewLink("/view", commit.requestedRef))}">Plan tree</a></p>`,
-    `<h1><span data-node-id>${escapeHtml(node.id)}</span> <span data-title>${escapeHtml(node.title)}</span></h1>`,
-    stageField(input),
-    gateField(input, commit),
-    outcomeField(input, commit),
-    dependsOnField(input, commit),
-    neededByField(input, commit),
-    documentsField(input, commit),
-    resourcesField(input, commit),
-    tasksField(input, commit),
+    crumbs(node, byId, commit),
+    `<h1 data-title>${escapeHtml(node.title)}<span class="id" data-node-id>${escapeHtml(node.id)}</span></h1>`,
+    `<p>${classBadge(cls)} <span class="stage" data-stage>${escapeHtml(stage)}</span>${cls === "done" || cls === "parked" ? "" : ` <span class="note">${escapeHtml(NODE_CLASS_LABELS[cls])}</span>`}</p>`,
+    hold,
+    node.outcome
+      ? `<p class="outcome" data-outcome>${escapeHtml(node.outcome)}</p>`
+      : '<p class="note" data-outcome>No outcome sentence recorded yet.</p>',
+    node.note ? `<p class="note" data-note>${escapeHtml(node.note)}</p>` : "",
+    '<div class="columns">',
+    "<section>",
+    "<h2>Position</h2>",
+    "<dl>",
+    field(
+      "parent",
+      "Parent",
+      parent
+        ? nodeRef(parent, classes, commit)
+        : '<span class="note">a top-level line of work</span>',
+    ),
+    field(
+      "children",
+      "Children",
+      nodeRefs(children.get(node.id) ?? [], classes, commit, "none"),
+    ),
+    field("documents", "Documents", documentsField(node, commit)),
+    "</dl>",
+    "</section>",
+    "<section>",
+    "<h2>Dependencies</h2>",
+    "<dl>",
+    field(
+      "waits-on",
+      "Waits on",
+      nodeRefs(waitsOn, classes, commit, "nothing recorded"),
+    ),
+    field(
+      "needed-by",
+      "Needed by",
+      nodeRefs(neededBy, classes, commit, "nothing recorded"),
+    ),
+    "</dl>",
+    "</section>",
+    "</div>",
+    decisionsSection(node, state),
+    tasksSection(node, state, commit),
     "</main>",
   ].join("\n");
-  return pageShell(`${node.id}: node`, body);
+  return pageShell(`${node.title} (${node.id})`, body);
 }

@@ -11,12 +11,11 @@ import {
   PREVIEW_SHA,
   previewViewOptions,
 } from "../src/view/fixtureReader.js";
-import { COMMIT_2DA1843, FILES_2DA1843 } from "./support/fixtures2da1843.js";
+import { COMMIT_325C502, FILES_325C502 } from "./support/fixtures325c502.js";
 import {
   FAKE_VIEW_TOKEN,
   attributeText,
   expectLinksPinned,
-  expectPhoneWidth,
   expectViewHeaders,
   validCookie,
   viewEnv,
@@ -41,7 +40,7 @@ afterEach(() => {
 /** A temporary directory holding the 2da1843 files at their paths. */
 function fixtureDir(): string {
   const dir = mkdtempSync(path.join(tmpdir(), "view-fixture-"));
-  for (const [repoPath, content] of FILES_2DA1843) {
+  for (const [repoPath, content] of FILES_325C502) {
     const file = path.join(dir, repoPath);
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, content);
@@ -89,18 +88,18 @@ describe("FixtureDirReader", () => {
   });
 
   it("takes the SHA from VIEW_FIXTURE_SHA and refuses one that is not a full SHA", async () => {
-    const reader = new FixtureDirReader(fixtureDir(), { sha: COMMIT_2DA1843 });
-    expect((await reader.resolveRef()).sha).toBe(COMMIT_2DA1843);
+    const reader = new FixtureDirReader(fixtureDir(), { sha: COMMIT_325C502 });
+    expect((await reader.resolveRef()).sha).toBe(COMMIT_325C502);
     expect(
-      () => new FixtureDirReader(fixtureDir(), { sha: "2da1843" }),
+      () => new FixtureDirReader(fixtureDir(), { sha: "325c502" }),
     ).toThrow(/full/);
   });
 
   it("reads files at their repository paths, byte for byte", async () => {
     const reader = new FixtureDirReader(fixtureDir());
     expect(
-      await reader.readFileAtSha(PREVIEW_SHA, "docs/plan-register.md"),
-    ).toBe(FILES_2DA1843.get("docs/plan-register.md"));
+      await reader.readFileAtSha(PREVIEW_SHA, "orchestration/state.json"),
+    ).toBe(FILES_325C502.get("orchestration/state.json"));
   });
 
   it("answers 404 for a missing file, another SHA and a path outside the directory", async () => {
@@ -112,7 +111,7 @@ describe("FixtureDirReader", () => {
     ).toBe(404);
     expect(
       await statusOf(
-        reader.readFileAtSha("b".repeat(40), "docs/plan-register.md"),
+        reader.readFileAtSha("b".repeat(40), "orchestration/state.json"),
       ),
     ).toBe(404);
     expect(
@@ -133,10 +132,10 @@ describe("previewViewOptions", () => {
   it("answers a fixture reader at VIEW_FIXTURE_SHA when the directory is set", async () => {
     const options = previewViewOptions({
       VIEW_FIXTURE_DIR: fixtureDir(),
-      VIEW_FIXTURE_SHA: COMMIT_2DA1843,
+      VIEW_FIXTURE_SHA: COMMIT_325C502,
     });
     expect(options?.reader).toBeInstanceOf(FixtureDirReader);
-    expect((await options!.reader!.resolveRef()).sha).toBe(COMMIT_2DA1843);
+    expect((await options!.reader!.resolveRef()).sha).toBe(COMMIT_325C502);
   });
 });
 
@@ -149,7 +148,7 @@ describe("the preview serves the three reference pages from the directory", () =
       const app = createApp({
         view: previewViewOptions({
           VIEW_FIXTURE_DIR: fixtureDir(),
-          VIEW_FIXTURE_SHA: COMMIT_2DA1843,
+          VIEW_FIXTURE_SHA: COMMIT_325C502,
         }),
       });
       const res = await app.request(page, {
@@ -158,10 +157,9 @@ describe("the preview serves the three reference pages from the directory", () =
       expect(res.status).toBe(200);
       expectViewHeaders(res);
       const html = await res.text();
-      expect(attributeText(html, "data-sha")).toBe(COMMIT_2DA1843);
-      expect(html).toContain("no progress authority");
+      expect(attributeText(html, "data-sha")).toBe(COMMIT_325C502);
+      expect(html).toContain("the progress truth during the rebuild");
       expectLinksPinned(html, undefined);
-      expectPhoneWidth(html);
     },
   );
 

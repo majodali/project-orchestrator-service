@@ -145,8 +145,11 @@ const DOCUMENT_LINK = new RegExp(
   `^https://github\\.com/${OWNER}/${REPO}/blob/[0-9a-f]{40}/`,
 );
 const COMMIT_LINK = new RegExp(
-  `^https://github\\.com/${OWNER}/${REPO}/commit/[0-9a-f]{40}$`,
+  `^https://github\\.com/${OWNER}/${REPO}/commit/[0-9a-f]{7,40}$`,
 );
+/** A pull request link, which a task row may carry (`owner/repo#n`). */
+const PULL_REQUEST_LINK =
+  /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+$/;
 
 /**
  * Walks a page's links (V10). A GitHub link is a document link pinned
@@ -163,6 +166,8 @@ export function expectLinksPinned(
     if (href.startsWith("https://github.com/")) {
       if (href.includes("/commit/")) {
         expect(href).toMatch(COMMIT_LINK);
+      } else if (href.includes("/pull/")) {
+        expect(href).toMatch(PULL_REQUEST_LINK);
       } else {
         expect(href).toMatch(DOCUMENT_LINK);
         documentLinks += 1;
