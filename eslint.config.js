@@ -30,6 +30,17 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   eslintConfigPrettier,
   {
+    // Plain Node scripts: the recommended rules with Node's globals.
+    files: ["scripts/**/*.mjs"],
+    languageOptions: {
+      globals: { console: "readonly", process: "readonly" },
+    },
+  },
+  {
+    // Type-aware linting for the TypeScript sources only; a plain
+    // JavaScript file such as scripts/prepare.mjs takes the recommended
+    // rules without a TypeScript project.
+    files: ["**/*.ts"],
     languageOptions: {
       parserOptions: {
         project: "./tsconfig.eslint.json",
