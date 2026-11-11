@@ -53,6 +53,7 @@ export const TOOL_NAMES = [
   "task_next",
   "task_open",
   "task_close",
+  "task_cost",
   "decision_open",
   "decision_close",
 ] as const;

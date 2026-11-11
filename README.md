@@ -150,13 +150,18 @@ repository, the state file (the rebuild plan there,
     arose (`standing` in the answer of `task_next` and `task_open`).
   - The view's header shows the check status of the commit it reads
     (`src/planRegister/commitChecks.ts`).
+  - `task_cost` records a task's measured cost: tokens by type, the
+    model, and where the figure came from (`transcript`, `headless`
+    or `reported`). The coordinating repository's hook calls it when
+    `task_close` returns; a headless runner calls it with its run's
+    result. Tokens, not money: sessions bill to the subscription.
 
 ### HTTP routes
 
 | Method and path                           | Auth                        | Answers                                                                                                                                                                                                                                                                                                                         |
 | ----------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /health`                             | none                        | liveness, as JSON                                                                                                                                                                                                                                                                                                               |
-| `ANY /mcp`                                | `Authorization: Bearer`     | the MCP endpoint and its ten tools                                                                                                                                                                                                                                                                                              |
+| `ANY /mcp`                                | `Authorization: Bearer`     | the MCP endpoint and its eleven tools                                                                                                                                                                                                                                                                                           |
 | `GET /view/sign-in`                       | none                        | the web view's sign-in form                                                                                                                                                                                                                                                                                                     |
 | `POST /view/sign-in`                      | the view token, in the form | `303` to `/view` with the view cookie, or `401`                                                                                                                                                                                                                                                                                 |
 | `GET /view`                               | the view cookie             | the plan of the coordinating repository at one commit, from `orchestration/state.json`: every node in its tree with its class and outcome, what waits on the owner marked in context and unfolded, and the problems `check` reports; `?ref=` picks a branch, tag or SHA; `?open=` picks what is unfolded                        |

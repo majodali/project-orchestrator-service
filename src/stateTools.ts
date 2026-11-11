@@ -12,6 +12,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { NODE_CLASS_LABELS, classifyAll, type Finding } from "./model/check.js";
 import {
+  COST_SOURCES,
   STAGES,
   STEPS,
   TASK_STATUSES,
@@ -31,6 +32,7 @@ import {
   nextTaskId,
   openTask,
   pullRequestsOf,
+  recordCost,
   removeNode,
   scopeOf,
   staleTasks,
@@ -80,6 +82,7 @@ export const SERVER_INSTRUCTIONS = [
   "4. `task_close` records the result: status, a summary of at most sixty words, the pull request (or the branch, and the service opens one), and questions for the owner as `asks`. A plan or specify step delivers the node's outcome and documents here.",
   "5. When the answer carries `stop`, or `task_next` answers nothing, return to the person: the owner answers decisions and lifts holds in the view.",
   "A node that turns out to be obsolete is removed with `node_remove`, not parked or held; git keeps its history. A hold or a park is for work that will resume.",
+  "Do not estimate token counts at `task_close`: the repository's hook measures a task's cost and records it with `task_cost`.",
   "Pass `session` on every write: your session's own name or identifier, so the journal says who wrote.",
 ].join("\n");
 
@@ -682,6 +685,36 @@ export function registerStateTools(
           decisionsOpened: done.decisions,
           stop: done.stop,
         });
+      }),
+  );
+
+  server.registerTool(
+    "task_cost",
+    {
+      title: "Record a task's cost",
+      description:
+        "Records a task's measured cost: tokens by type and the model. Called by " +
+        "the repository's hook when task_close returns, or by a headless runner " +
+        "with its run's result; a session does not call it with estimates. A " +
+        "later record replaces an earlier one.",
+      inputSchema: {
+        taskId: z.string().regex(/^T\d{3,}$/),
+        tokensIn: z.number().int().nonnegative(),
+        tokensOut: z.number().int().nonnegative(),
+        cacheRead: z.number().int().nonnegative().optional(),
+        cacheWrite: z.number().int().nonnegative().optional(),
+        model: z.string().min(1).optional(),
+        source: z.enum(COST_SOURCES),
+        session: sessionField,
+      },
+    },
+    async (input) =>
+      run(async () => {
+        const result = await store().write(
+          `${input.taskId}: cost recorded`,
+          (state) => recordCost(state, input).event,
+        );
+        return writeResult(result, { taskId: input.taskId });
       }),
   );
 

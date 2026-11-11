@@ -45,7 +45,7 @@ export function renderTaskPage(
   const tokens =
     task.tokens.in === null && task.tokens.out === null
       ? '<span class="note">not recorded</span>'
-      : `${text(task.tokens.in)} in, ${text(task.tokens.out)} out`;
+      : `${text(task.tokens.in)} in, ${text(task.tokens.out)} out${task.tokens.cacheRead === undefined ? "" : `, ${task.tokens.cacheRead} cache read`}${task.tokens.cacheWrite === undefined ? "" : `, ${task.tokens.cacheWrite} cache write`}${task.costSource ? ` (${task.costSource})` : ""}`;
   const body = [
     pageHeader(commit, taskPagePath(task.id)),
     sourceLine(commit, commit.sha),

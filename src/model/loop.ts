@@ -12,6 +12,7 @@
 import { childrenOf, nodesById, openTaskByNode, pausedBy } from "./check.js";
 import { NotFoundError, type WriteEvent } from "./store.js";
 import type {
+  CostSource,
   Decision,
   Node,
   State,
@@ -616,6 +617,12 @@ export function closeTask(
   if (input.ref !== undefined) task.ref = input.ref;
   if (input.tokensIn !== undefined) task.tokens.in = input.tokensIn;
   if (input.tokensOut !== undefined) task.tokens.out = input.tokensOut;
+  if (
+    (input.tokensIn !== undefined || input.tokensOut !== undefined) &&
+    task.costSource === undefined
+  ) {
+    task.costSource = "reported";
+  }
 
   const decisions: string[] = [];
   if (status === "closed") {
@@ -820,4 +827,48 @@ export function mergesAtClose(
     return pullRequestsOf(state, check.parent);
   }
   return pr === null ? [] : [pr];
+}
+
+export interface CostInput {
+  taskId: string;
+  tokensIn: number;
+  tokensOut: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  /** The model that produced most of the output. */
+  model?: string;
+  source: CostSource;
+  session?: string;
+}
+
+/**
+ * Records a task's measured cost (owner, 2026-11-11): tokens by type
+ * and the model, on an open or a closed task. A later record replaces
+ * an earlier one, so a hook that fires again after a refused close
+ * leaves the whole span's figure. Tokens, not money: sessions bill to
+ * the subscription.
+ */
+export function recordCost(
+  state: State,
+  input: CostInput,
+): { task: Task; event: WriteEvent } {
+  const task = state.tasks.find((t) => t.id === input.taskId);
+  if (!task) throw new NotFoundError(`no task ${input.taskId}`);
+  task.tokens = {
+    in: input.tokensIn,
+    out: input.tokensOut,
+    ...(input.cacheRead === undefined ? {} : { cacheRead: input.cacheRead }),
+    ...(input.cacheWrite === undefined ? {} : { cacheWrite: input.cacheWrite }),
+  };
+  task.costSource = input.source;
+  if (input.model !== undefined) task.model = input.model;
+  return {
+    task,
+    event: {
+      task: task.id,
+      node: task.node,
+      session: input.session ?? null,
+      note: `task_cost ${task.id}: ${input.tokensIn} in, ${input.tokensOut} out${input.cacheRead === undefined ? "" : `, ${input.cacheRead} cache read`}${input.cacheWrite === undefined ? "" : `, ${input.cacheWrite} cache write`}${input.model ? `, ${input.model}` : ""} (${input.source})`,
+    },
+  };
 }
