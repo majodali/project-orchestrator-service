@@ -63,8 +63,9 @@ npm run lint            # eslint .
 npm run format           # prettier --check .
 ```
 
-Node 22+. A real MCP server exists — `service_identity`, `plan_read`
-and the five write tools over the state file, through an installed
+Node 22+. A real MCP server exists — `service_identity`, `plan_read`,
+the write tools over the state file and the task loop
+(`task_next`, `task_open`, `task_close`), through an installed
 GitHub App — runnable locally and deployable to Lambda — see README.md
 "Build / run / test" and docs/runbook.md.
 Nothing is deployed by cloning this repository; deployment is an owner

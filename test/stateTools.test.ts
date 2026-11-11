@@ -7,6 +7,7 @@ import { GitConflictError } from "../src/planRegister/gitWriter.js";
 import { sampleState, stateJson } from "./support/states.js";
 import {
   FAKE_MCP_TOKEN,
+  FakePullRequests,
   FakeRepository,
   NOW,
   SHA_A,
@@ -36,7 +37,9 @@ function repoWith(state: State): FakeRepository {
 
 function appOver(repo: FakeRepository) {
   const store = new StateStore({ reader: repo, writer: repo, now: () => NOW });
-  return createApp({ state: { store, now: () => NOW } });
+  return createApp({
+    state: { store, now: () => NOW, pullRequests: new FakePullRequests() },
+  });
 }
 
 async function call(
@@ -226,7 +229,7 @@ describe("node_update", () => {
 });
 
 describe("tasks and decisions", () => {
-  it("answers, on task_open, the closed decisions on the node and its ancestors and the standing project decisions", async () => {
+  it("answers, on task_open, the closed decisions on the node and its ancestors, and every standing decision wherever it arose", async () => {
     const state = sampleState();
     state.decisions.push(
       {
@@ -275,7 +278,19 @@ describe("tasks and decisions", () => {
       (opened.structuredContent!.decisions as Array<{ id: string }>).map(
         (d) => d.id,
       ),
-    ).toEqual(["D020", "D021"]);
+    ).toEqual(["D020"]);
+    // RU-001 is standing and sits on another node; D021 on none. The
+    // one-off project decision D022 is not a precedent.
+    const standing = opened.structuredContent!.standing as Array<
+      Record<string, unknown>
+    >;
+    expect(standing.map((d) => d.id)).toEqual(["RU-001", "D021"]);
+    expect(Object.keys(standing[1]!).sort()).toEqual([
+      "chosen",
+      "id",
+      "question",
+      "source",
+    ]);
   });
 
   it("opens and closes a task with the next identifier, one commit each", async () => {

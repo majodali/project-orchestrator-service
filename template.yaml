@@ -186,13 +186,13 @@ Globals:
     # installation token, resolve the default branch when no ref is
     # given, resolve the ref to a commit SHA, fetch file content) —
     # still small individually, but a wider backstop than the
-    # reachability slice needed. 20s leaves comfortable headroom
-    # below the enlistment file's 30s per-server timeout (G7) while
-    # still failing well before a caller's own timeout does. Not yet
-    # measured against a real deployment (owner action O3 is
-    # outstanding); revisit this value once docs/runbook.md records
-    # plan_read's actual cold/warm latency.
-    Timeout: 20
+    # reachability slice needed. 29s is just under the HTTP API's own
+    # 30s integration limit and the enlistment file's 30s per-server
+    # timeout (G7). Raised from 20s on 2026-11-11: a write is about
+    # seven GitHub calls and measured 6 to 9 seconds, and a close that
+    # also merges a pull request adds up to four more calls and a
+    # short wait for GitHub to compute mergeability.
+    Timeout: 29
 
 Resources:
   McpFunction:

@@ -11,6 +11,7 @@ import {
   childrenOf,
   classifyAll,
   nodesById,
+  pausedBy,
   shownNodes,
   type NodeClass,
 } from "./check.js";
@@ -159,6 +160,18 @@ export function renderPlan(full: State): string {
         extra = ` — ${tasks.map((t) => t.id).join(", ")}`;
       }
       lines.push(`- ${nodeLabel(n)} [${n.stage}]${extra}`);
+    }
+    lines.push("");
+  }
+
+  // Written only when there is one, so that a plan with none renders
+  // as it did before the class existed.
+  const paused = byClass("paused");
+  if (paused.length > 0) {
+    lines.push("## Paused by a hold or a park above", "");
+    for (const n of paused) {
+      const by = pausedBy(n, byId)!;
+      lines.push(`- ${nodeLabel(n)} [${n.stage}] — under ${nodeLabel(by)}`);
     }
     lines.push("");
   }

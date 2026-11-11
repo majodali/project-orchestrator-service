@@ -27,6 +27,7 @@ const BADGE_TEXT: Readonly<Record<NodeClass, string>> = {
   "in-progress": "in progress",
   waiting: "waiting on a dependency",
   actionable: "ready",
+  paused: "paused above",
   done: "done",
   parked: "parked",
 };

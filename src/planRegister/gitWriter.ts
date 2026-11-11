@@ -1,9 +1,10 @@
 /**
  * The write boundary of the service (the rebuild plan, milestone 3).
  * One commit with several files, made through GitHub's Git Data API
- * as the installed App: blobs, a tree on the current head's tree, a
- * commit with that head as its parent, and a fast-forward update of
- * the branch ref. The ref update is the concurrency check: GitHub
+ * as the installed App: a tree on the current head's tree, carrying
+ * each file's content inline so that GitHub writes the blobs itself
+ * (four calls fewer than creating them one by one), a commit with that
+ * head as its parent, and a fast-forward update of the branch ref. The ref update is the concurrency check: GitHub
  * refuses it when the branch has moved, and `GitConflictError` tells
  * the caller to read again and retry. Nothing here knows what the
  * files mean; the store (src/model/store.ts) decides what may be
@@ -117,14 +118,10 @@ export class GithubAppGitWriter implements GitWriter {
       path: string;
       mode: string;
       type: string;
-      sha: string;
+      content: string;
     }> = [];
     for (const [path, content] of request.files) {
-      const blob = (await this.post("git/blobs", headers, {
-        content,
-        encoding: "utf-8",
-      })) as { sha: string };
-      tree.push({ path, mode: "100644", type: "blob", sha: blob.sha });
+      tree.push({ path, mode: "100644", type: "blob", content });
     }
     const newTree = (await this.post("git/trees", headers, {
       base_tree: head.tree.sha,

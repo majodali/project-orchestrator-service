@@ -19,6 +19,7 @@ import {
 } from "./support/states.js";
 import {
   FAKE_MCP_TOKEN,
+  FakePullRequests,
   FakeRepository,
   NOW,
   SHA_A,
@@ -40,9 +41,13 @@ function repoWith(state: State): FakeRepository {
   return repo;
 }
 
-function appOver(repo: FakeRepository, now: () => Date = () => NOW) {
+function appOver(
+  repo: FakeRepository,
+  now: () => Date = () => NOW,
+  pullRequests = new FakePullRequests(),
+) {
   const store = new StateStore({ reader: repo, writer: repo, now });
-  return createApp({ state: { store, now } });
+  return createApp({ state: { store, now, pullRequests } });
 }
 
 async function call(
@@ -254,7 +259,7 @@ describe("task_next", () => {
         status: "open",
         opened,
         closed: null,
-        summary: null,
+        summary: "Build the part.",
       }),
     );
     const repo = repoWith(state);
@@ -264,7 +269,13 @@ describe("task_next", () => {
     const t = stateAtHead(repo).tasks[0]!;
     expect(t.status).toBe("stale");
     expect(t.closed).toBe("2026-10-30T12:00:00Z");
-    expect(t.summary).toContain("stale");
+    // The summary stays what the task set out to do; the journal says why.
+    expect(t.summary).toBe("Build the part.");
+    expect(
+      repo.files
+        .get(repo.heads.get("main")!)!
+        .get("orchestration/journal.jsonl"),
+    ).toContain("task_next closed T001 as stale");
     // The node is free again, so it is the answer.
     expect(
       (next.structuredContent!.next as { node: { id: string } }).node.id,

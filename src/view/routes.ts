@@ -56,8 +56,10 @@ import {
 import { GithubAppAuthError } from "../planRegister/githubAppAuth.js";
 import {
   GithubAppNotConfiguredError,
+  getDefaultCommitChecks,
   getDefaultCommitReader,
   getDefaultGitWriter,
+  getDefaultPullRequests,
 } from "../planRegister/defaultFetcher.js";
 import { GitConflictError, GitWriteError } from "../planRegister/gitWriter.js";
 import type { CommitReader } from "../planRegister/registerFetcher.js";
@@ -65,6 +67,14 @@ import {
   FileTooLargeError,
   GithubFetchError,
 } from "../planRegister/registerFetcher.js";
+import type { CommitChecks } from "../planRegister/commitChecks.js";
+import {
+  NotMergeableError,
+  PullRequestError,
+  ensureMerged,
+  type PullRequests,
+} from "../planRegister/pullRequests.js";
+import { pullRequestsOf } from "../model/loop.js";
 import { OTHER_ANSWER } from "./actions.js";
 import { PageReadError, ShaPathCache, readPageFiles } from "./commitRead.js";
 import type { PageFiles } from "./commitRead.js";
@@ -96,6 +106,10 @@ export interface ViewOptions {
   /** Test-only: the store the forms write through. Production builds
    * one over the GitHub App. */
   store?: StateStore;
+  /** Test-only: the pull request client. Production uses the App. */
+  pullRequests?: PullRequests;
+  /** Test-only: the commit check reader. Production uses the App. */
+  checks?: CommitChecks;
   /** Test-only: the clock. */
   now?: () => Date;
 }
@@ -282,6 +296,26 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
       writer: getDefaultGitWriter(),
       now,
     });
+  const pullRequests = (): PullRequests =>
+    options.pullRequests ?? getDefaultPullRequests();
+
+  /** The commit's check status, or null when it cannot be read: the
+   * page is shown either way. A test that injects a reader and no
+   * check reader gets none. */
+  async function checksOf(
+    source: CommitReader,
+    sha: string,
+  ): Promise<{ state: string; failing: string[] } | null | undefined> {
+    if (options.checks === undefined && options.reader !== undefined) {
+      return undefined;
+    }
+    try {
+      const checks = options.checks ?? getDefaultCommitChecks();
+      return await checks.summary(source.owner, source.repo, sha);
+    } catch {
+      return null;
+    }
+  }
 
   // Headers first, so every `/view` response carries them, refusals
   // and errors included (V11).
@@ -438,12 +472,10 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
         [STATE_PATH],
         now,
       );
-      return {
-        ok: true,
-        source,
-        page,
-        commit: pageCommit(source, requestedRef, page),
-      };
+      const commit = pageCommit(source, requestedRef, page);
+      const checks = await checksOf(source, page.sha);
+      if (checks !== undefined) commit.checks = checks;
+      return { ok: true, source, page, commit };
     } catch (err) {
       return {
         ok: false,
@@ -532,6 +564,15 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
         back,
       );
     }
+    if (err instanceof NotMergeableError) {
+      return simplePage(
+        c,
+        "A pull request cannot be merged",
+        `${err.message}. A node is done only when its pull requests are merged. Nothing was committed.`,
+        409,
+        back,
+      );
+    }
     if (err instanceof GitConflictError) {
       return simplePage(
         c,
@@ -560,6 +601,7 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
       );
     }
     if (
+      err instanceof PullRequestError ||
       err instanceof GithubAppAuthError ||
       err instanceof GithubFetchError ||
       err instanceof GitWriteError
@@ -643,6 +685,14 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
       VIEW_SESSION,
     );
     try {
+      if (input.stage === "done") {
+        // Done needs the node's pull requests merged: the service
+        // merges them here, before the commit (owner, 2026-11-11).
+        const head = await store().read();
+        if (head.state !== null) {
+          await ensureMerged(pullRequests, pullRequestsOf(head.state, id));
+        }
+      }
       const result = await store().write(
         `${id}: ${input.reason}`,
         (state) =>

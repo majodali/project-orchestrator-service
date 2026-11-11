@@ -2,9 +2,13 @@
  * Sign-in for the web view (node P2-N021; the specification of P2-N003,
  * "Sign-in: the view token and the view cookie", decisions 4 and 13).
  *
- * The view token is a read-only credential held in Secrets Manager
- * apart from the MCP bearer token, and resolved into the `VIEW_TOKEN`
- * environment variable at deploy time. Sign-in exchanges it for the
+ * The view token is held in Secrets Manager apart from the MCP bearer
+ * token. It was a read-only credential until the rebuild's milestone
+ * 4; since then the view also writes (a decision's answer, a node's
+ * lifecycle action, and with them the merge of a node's pull
+ * requests), so the token and the cookie it buys are write
+ * credentials for the coordinating repository's plan. It is resolved
+ * into the `VIEW_TOKEN` environment variable at deploy time. Sign-in exchanges it for the
  * view cookie. The cookie's value carries an expiry and an
  * HMAC-SHA256 signature, checked without a session store. The
  * signature key is derived from the view token by HMAC-SHA256 over a

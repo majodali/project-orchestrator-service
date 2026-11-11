@@ -174,6 +174,12 @@ export const stateSchema = z.object({
   nodes: z.array(nodeSchema),
   tasks: z.array(taskSchema),
   decisions: z.array(decisionSchema),
+  /** The highest number ever used under each identifier prefix whose
+   * holder was removed: `P2` for nodes of a plan line, `T` for tasks,
+   * `D` for decisions. An identifier is never reused (invariant 1), so
+   * the next one is above both this and every identifier in use.
+   * Absent until something is removed. */
+  highWater: z.record(z.string(), z.number().int().nonnegative()).optional(),
 });
 export type State = z.infer<typeof stateSchema>;
 

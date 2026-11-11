@@ -7,6 +7,7 @@
  * event's fields; a mutation that names nothing throws `NotFoundError`.
  */
 
+import { enterVerifying, removeNode } from "./loop.js";
 import { NotFoundError, type WriteEvent } from "./store.js";
 import type { Decision, Hold, Node, Stage, State } from "./schema.js";
 
@@ -44,6 +45,35 @@ export function updateNode(
   const changes: string[] = [];
   if (input.stage !== undefined && input.stage !== n.stage) {
     changes.push(`stage ${n.stage} -> ${input.stage}`);
+    const openChecks = state.nodes.filter(
+      (c) => c.parent === n.id && c.kind === "check" && c.stage !== "done",
+    );
+    if (
+      n.stage === "verifying" &&
+      input.stage !== "done" &&
+      input.stage !== "verifying"
+    ) {
+      // Leaving verifying another way than done: a check node that
+      // never ran goes with it, one that ran is parked.
+      for (const c of openChecks) {
+        if (state.tasks.some((t) => t.node === c.id)) {
+          c.stage = "parked";
+          c.hold = null;
+          changes.push(`${c.id} parked`);
+        } else {
+          removeNode(state, {
+            nodeId: c.id,
+            reason: "its node left verifying",
+          });
+          changes.push(`${c.id} removed`);
+        }
+      }
+    }
+    if (input.stage === "verifying" && openChecks.length === 0) {
+      // Verification runs on a check node (invariant 11).
+      const check = enterVerifying(state, n);
+      changes.push(`check node ${check.id}`);
+    }
     n.stage = input.stage;
     if (input.stage === "done" && n.done === null) n.done = today;
     if (input.stage !== "done") n.done = null;
@@ -146,8 +176,9 @@ export function closeDecision(
 /**
  * The decisions a session opening a task on `nodeId` reads first (the
  * rebuild plan, milestone 4): the closed decisions on the node and on
- * each of its ancestors, nearest first, and the standing project
- * decisions, which decide the same question again without asking.
+ * each of its ancestors, nearest first. The standing decisions, which
+ * hold project-wide wherever they arose, come from
+ * `standingDecisions`.
  */
 export function decisionsForTask(state: State, nodeId: string): Decision[] {
   const byId = new Map(state.nodes.map((n) => [n.id, n]));
@@ -163,12 +194,28 @@ export function decisionsForTask(state: State, nodeId: string): Decision[] {
       ...state.decisions.filter((d) => d.node === id && d.chosen !== null),
     );
   }
-  out.push(
-    ...state.decisions.filter(
-      (d) => d.node === null && d.chosen !== null && d.standing,
-    ),
-  );
   return out;
+}
+
+export interface StandingDecision {
+  id: string;
+  question: string;
+  chosen: string;
+  source: string | null;
+}
+
+/** Every standing decision, compact: a precedent decides the same
+ * question again without asking, on whichever node it arose. The
+ * rationale stays in the state file. */
+export function standingDecisions(state: State): StandingDecision[] {
+  return state.decisions
+    .filter((d) => d.standing && d.chosen !== null)
+    .map((d) => ({
+      id: d.id,
+      question: d.question,
+      chosen: d.chosen!,
+      source: d.source,
+    }));
 }
 
 /** The one-click lifecycle actions the view offers a node (the rebuild

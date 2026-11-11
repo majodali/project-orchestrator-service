@@ -8,9 +8,9 @@ import {
 
 /**
  * The GitHub writer (the rebuild plan, milestone 3) makes one commit
- * through the Git Data API: blobs, a tree on the head's tree, a commit
- * with the head as parent, and a fast-forward ref update, which is
- * the concurrency check.
+ * through the Git Data API: a tree on the head's tree with each
+ * file's content inline, a commit with the head as parent, and a
+ * fast-forward ref update, which is the concurrency check.
  */
 
 const HEAD = "a".repeat(40);
@@ -78,32 +78,31 @@ const request = {
 };
 
 describe("GithubAppGitWriter", () => {
-  it("creates blobs, a tree on the head's tree, a commit with the head as parent, and fast-forwards the ref", async () => {
+  it("creates a tree on the head's tree with the files inline, a commit with the head as parent, and fast-forwards the ref", async () => {
     const { writer, calls, fetchImpl } = fakeGithub();
     const result = await writer.commitFiles(request);
     expect(result.sha).toBe("d".repeat(40));
     expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
       "GET git/ref/heads/main",
       `GET git/commits/${HEAD}`,
-      "POST git/blobs",
-      "POST git/blobs",
       "POST git/trees",
       "POST git/commits",
       "PATCH git/refs/heads/main",
     ]);
-    const tree = calls[4]!.body as {
+    const tree = calls[2]!.body as {
       base_tree: string;
-      tree: Array<{ path: string; mode: string }>;
+      tree: Array<{ path: string; mode: string; content: string }>;
     };
+    expect(tree.tree.map((t) => t.content)).toEqual(["{}\n", "# plan\n"]);
     expect(tree.base_tree).toBe(TREE);
     expect(tree.tree.map((t) => `${t.mode} ${t.path}`)).toEqual([
       "100644 orchestration/state.json",
       "100644 docs/plan.md",
     ]);
-    const commit = calls[5]!.body as { parents: string[]; message: string };
+    const commit = calls[3]!.body as { parents: string[]; message: string };
     expect(commit.parents).toEqual([HEAD]);
     expect(commit.message).toBe("a commit");
-    const update = calls[6]!.body as { force: boolean };
+    const update = calls[4]!.body as { force: boolean };
     expect(update.force).toBe(false);
     const headers = new Headers(fetchImpl.mock.calls[0]![1]?.headers);
     expect(headers.get("Authorization")).toBe("Bearer fake-token");

@@ -9,7 +9,7 @@
  * layer over this module.
  */
 
-import { childrenOf, nodesById, openTaskByNode } from "./check.js";
+import { childrenOf, nodesById, openTaskByNode, pausedBy } from "./check.js";
 import { NotFoundError, type WriteEvent } from "./store.js";
 import type {
   Decision,
@@ -39,6 +39,7 @@ export type Unavailable =
   | { reason: "approval" }
   | { reason: "open-task"; task: string }
   | { reason: "open-decision"; decisions: string[] }
+  | { reason: "paused"; by: string; how: string }
   | { reason: "dependency"; pending: string[] };
 
 export type Offer =
@@ -114,6 +115,20 @@ export function offerOn(
     .map((d) => d.id);
   if (decisions.length > 0)
     return { offered: false, why: { reason: "open-decision", decisions } };
+  const above = pausedBy(node, byId);
+  if (above !== undefined) {
+    return {
+      offered: false,
+      why: {
+        reason: "paused",
+        by: above.id,
+        how:
+          above.stage === "parked"
+            ? "parked"
+            : `held ${above.hold!.kind}: ${above.hold!.reason}`,
+      },
+    };
+  }
   const pending: string[] = [];
   for (const n of [node, ...ancestorsOf(node, byId)]) {
     for (const d of n.after) {
@@ -192,23 +207,76 @@ export function closeStale(
 ): string[] {
   const ids: string[] = [];
   for (const t of staleTasks(state, now)) {
+    // The summary stays what the task set out to do; the journal event
+    // says why it closed.
     t.status = "stale";
     t.closed = timestamp;
-    t.summary = `Closed as stale by task_next: open since ${t.opened}, past the ${TASK_TIME_LIMIT_HOURS}-hour limit.`;
     ids.push(t.id);
   }
   return ids;
 }
 
-/** The next identifier in a plan line: `P4-N009` after `P4-N008`. */
-export function nextNodeId(state: State, line: string): string {
-  let max = 0;
-  const re = new RegExp(`^${line}-N(\\d+)$`);
-  for (const n of state.nodes) {
-    const m = re.exec(n.id);
+/** The highest number in use under a prefix, or retired under it. */
+function highest(
+  state: State,
+  key: string,
+  pattern: RegExp,
+  ids: string[],
+): number {
+  let max = state.highWater?.[key] ?? 0;
+  for (const id of ids) {
+    const m = pattern.exec(id);
     if (m) max = Math.max(max, Number(m[1]));
   }
-  return `${line}-N${String(max + 1).padStart(3, "0")}`;
+  return max;
+}
+
+/** The next identifier in a plan line: `P4-N009` after `P4-N008`. An
+ * identifier is never reused, a removed node's included (invariant 1). */
+export function nextNodeId(state: State, line: string): string {
+  const n = highest(
+    state,
+    line,
+    new RegExp(`^${line}-N(\\d+)$`),
+    state.nodes.map((x) => x.id),
+  );
+  return `${line}-N${String(n + 1).padStart(3, "0")}`;
+}
+
+export function nextTaskId(state: State): string {
+  const n = highest(
+    state,
+    "T",
+    /^T(\d+)$/,
+    state.tasks.map((x) => x.id),
+  );
+  return `T${String(n + 1).padStart(3, "0")}`;
+}
+
+export function nextDecisionId(state: State): string {
+  const n = highest(
+    state,
+    "D",
+    /^D(\d+)$/,
+    state.decisions.map((x) => x.id),
+  );
+  return `D${String(n + 1).padStart(3, "0")}`;
+}
+
+/** Records removed identifiers' numbers, so none is minted again. */
+function retire(state: State, ids: string[]): void {
+  for (const id of ids) {
+    const m =
+      /^(P\d+)-N(\d+)$/.exec(id) ??
+      /^(T)(\d+)$/.exec(id) ??
+      /^(D)(\d+)$/.exec(id);
+    if (!m) continue;
+    state.highWater ??= {};
+    state.highWater[m[1]!] = Math.max(
+      state.highWater[m[1]!] ?? 0,
+      Number(m[2]),
+    );
+  }
 }
 
 /** The plan line of a node: `P4` of `P4-N006`. */
@@ -260,20 +328,110 @@ export function completeNode(
   node.done = today;
   moved.push(`${node.id} done ${today}`);
   const parent = node.parent === null ? undefined : byId.get(node.parent);
-  if (parent && parent.stage === "broken-down") {
-    const work = (children.get(parent.id) ?? []).filter(
-      (c) => c.kind === "work",
+  if (parent) moved.push(...climb(state, parent));
+  return moved;
+}
+
+/** A broken-down node whose work children are all done or parked, and
+ * which has at least one, enters verifying with a check node. */
+export function climb(state: State, parent: Node): string[] {
+  if (parent.stage !== "broken-down") return [];
+  const work = state.nodes.filter(
+    (c) => c.parent === parent.id && c.kind !== "check",
+  );
+  if (work.length === 0) return [];
+  if (!work.every((c) => c.stage === "done" || c.stage === "parked")) return [];
+  const check = enterVerifying(state, parent);
+  return [`${parent.id} verifying, check node ${check.id}`];
+}
+
+export interface RemoveInput {
+  nodeId: string;
+  /** Why the node is obsolete; goes in the commit and the journal. */
+  reason: string;
+  session?: string;
+}
+
+export interface RemoveResult {
+  /** The node and its descendants, removed. */
+  nodes: string[];
+  tasks: string[];
+  decisions: string[];
+  /** Dependencies on a removed node, dropped from the nodes that had
+   * them. */
+  unlinked: string[];
+  moved: string[];
+  event: WriteEvent;
+}
+
+/**
+ * Removes an obsolete node with its subtree, their tasks and their
+ * decisions (decision 12: the plan shows only its latest version; git
+ * keeps the history). A node that waited for a removed one no longer
+ * does. Refused while a task is open in the subtree.
+ */
+export function removeNode(state: State, input: RemoveInput): RemoveResult {
+  const node = state.nodes.find((n) => n.id === input.nodeId);
+  if (!node) throw new NotFoundError(`no node ${input.nodeId}`);
+  const children = childrenOf(state);
+  const gone = new Set<string>();
+  const collect = (n: Node): void => {
+    gone.add(n.id);
+    for (const c of children.get(n.id) ?? []) collect(c);
+  };
+  collect(node);
+  const open = state.tasks.filter(
+    (t) => gone.has(t.node) && t.status === "open",
+  );
+  if (open.length > 0) {
+    throw new NotFoundError(
+      `task ${open.map((t) => t.id).join(", ")} is open under ${node.id}; close it first`,
     );
-    if (
-      work.every(
-        (c) => c.id === node.id || c.stage === "done" || c.stage === "parked",
-      )
-    ) {
-      const check = enterVerifying(state, parent);
-      moved.push(`${parent.id} verifying, check node ${check.id}`);
+  }
+  const tasks = state.tasks.filter((t) => gone.has(t.node)).map((t) => t.id);
+  const decisions = state.decisions
+    .filter((d) => d.node !== null && gone.has(d.node))
+    .map((d) => d.id);
+  retire(state, [...gone, ...tasks, ...decisions]);
+  state.nodes = state.nodes.filter((n) => !gone.has(n.id));
+  state.tasks = state.tasks.filter((t) => !gone.has(t.node));
+  state.decisions = state.decisions.filter(
+    (d) => d.node === null || !gone.has(d.node),
+  );
+  const unlinked: string[] = [];
+  for (const n of state.nodes) {
+    const dropped = n.after.filter((d) => gone.has(d));
+    if (dropped.length > 0) {
+      n.after = n.after.filter((d) => !gone.has(d));
+      unlinked.push(`${n.id} no longer waits for ${dropped.join(", ")}`);
     }
   }
-  return moved;
+  const parent =
+    node.parent === null
+      ? undefined
+      : state.nodes.find((n) => n.id === node.parent);
+  const moved = parent ? climb(state, parent) : [];
+  const nodes = [...gone];
+  const detail = [
+    nodes.length > 1 ? `with ${nodes.length - 1} node(s) below it` : "",
+    tasks.length > 0 ? `tasks ${tasks.join(", ")}` : "",
+    decisions.length > 0 ? `decisions ${decisions.join(", ")}` : "",
+    ...unlinked,
+    ...moved,
+  ].filter((s) => s !== "");
+  return {
+    nodes,
+    tasks,
+    decisions,
+    unlinked,
+    moved,
+    event: {
+      task: null,
+      node: parent?.id ?? null,
+      session: input.session ?? null,
+      note: `node_remove ${node.id} "${node.title}"${detail.length > 0 ? ` (${detail.join("; ")})` : ""}: ${input.reason}`,
+    },
+  };
 }
 
 /** The fields of a node a task's scope is: a change to any of them
@@ -375,6 +533,8 @@ export function describeUnavailable(why: Unavailable): string {
       return `task ${why.task} is open on it`;
     case "open-decision":
       return `decision ${why.decisions.join(", ")} is open on it; the owner answers it in the view`;
+    case "paused":
+      return `${why.by} above it is ${why.how}`;
     case "dependency":
       return `it waits for ${why.pending.join(", ")}`;
   }
@@ -627,4 +787,37 @@ export function addNode(
       note: `node_add ${node.id} under ${input.parentId ?? "no parent"}: ${node.title}${parentMoved}`,
     },
   };
+}
+
+/** The pull requests of a node's closed tasks: what must be merged
+ * for the node to be done (owner, 2026-11-11). */
+export function pullRequestsOf(state: State, nodeId: string): string[] {
+  const out: string[] = [];
+  for (const t of state.tasks) {
+    if (t.node === nodeId && t.status === "closed" && t.pr !== null) {
+      if (!out.includes(t.pr)) out.push(t.pr);
+    }
+  }
+  return out;
+}
+
+/**
+ * The pull requests a task's close merges before it commits, when the
+ * close is `closed`: a planning step (plan, specify, break down) has
+ * no verification, so its own pull request merges at its close; an
+ * execute step's merges at its verification; a verify step merges the
+ * pull requests of the node it verifies.
+ */
+export function mergesAtClose(
+  state: State,
+  task: Task,
+  pr: string | null,
+): string[] {
+  if (task.step === "execute") return [];
+  if (task.step === "verify") {
+    const check = state.nodes.find((n) => n.id === task.node);
+    if (!check || check.kind !== "check" || check.parent === null) return [];
+    return pullRequestsOf(state, check.parent);
+  }
+  return pr === null ? [] : [pr];
 }

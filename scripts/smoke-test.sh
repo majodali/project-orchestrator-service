@@ -3,7 +3,7 @@
 # Smoke test for project-orchestrator-service (node P2-N016, chunk 2
 # child D of docs/specs/p2-n012-deploy-from-ci-on-merge.md in the
 # coordinating repository). Four checks, in order: `/health` returns
-# 200; `tools/list` carries the nine tools; `plan_read` answers the
+# 200; `tools/list` carries the ten tools; `plan_read` answers the
 # state file at a commit (a read: the smoke test never writes); and (node
 # P2-N021, the web view) signing in with the view token and reading
 # `/view` returns 200 with a 40-character SHA in the page's header.
@@ -110,7 +110,7 @@ fi
 echo "OK — /health returned 200."
 
 echo
-echo "== Check 2/4: tools/list carries the nine tools =="
+echo "== Check 2/4: tools/list carries the ten tools =="
 TOOLS_RESPONSE="$(mcp_call '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}')"
 MISSING_TOOLS="$(TOOLS_RESPONSE="$TOOLS_RESPONSE" node -e '
   const required = [
@@ -118,6 +118,7 @@ MISSING_TOOLS="$(TOOLS_RESPONSE="$TOOLS_RESPONSE" node -e '
     "plan_read",
     "node_update",
     "node_add",
+    "node_remove",
     "task_next",
     "task_open",
     "task_close",
@@ -139,7 +140,7 @@ if [ -n "$MISSING_TOOLS" ]; then
   echo "Full response: ${TOOLS_RESPONSE}" >&2
   exit 1
 fi
-echo "OK — tools/list carries the nine tools."
+echo "OK — tools/list carries the ten tools."
 
 echo
 echo "== Check 3/4: plan_read answers the state file at a commit =="
