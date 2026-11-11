@@ -420,3 +420,85 @@ describe("over the coordinating repository's state file at d4cbb7e", () => {
     expect(task.html).toContain("/pull/18");
   });
 });
+
+describe("check nodes in the view", () => {
+  function withChecks(): FakeRepository {
+    const state = sampleState();
+    // P1-N004 is verifying with an idle check node; P1-N006 is
+    // verifying with a failed one; P1-N007's check node is in flight.
+    state.tasks = state.tasks.filter((t) => t.id !== "T002");
+    for (const id of ["P1-N004", "P1-N006", "P1-N007"]) {
+      const n = state.nodes.find((x) => x.id === id)!;
+      n.stage = "verifying";
+      n.hold = null;
+    }
+    state.nodes.push(
+      node({
+        id: "P1-N010",
+        kind: "check",
+        title: "Verification of the flight",
+        stage: "specified",
+        parent: "P1-N004",
+      }),
+      node({
+        id: "P1-N011",
+        kind: "check",
+        title: "Verification of the ready part",
+        stage: "specified",
+        parent: "P1-N006",
+        hold: { kind: "blocked", reason: "T009: no tests" },
+      }),
+      node({
+        id: "P1-N012",
+        kind: "check",
+        title: "Verification of the blocked part",
+        stage: "specified",
+        parent: "P1-N007",
+      }),
+    );
+    state.tasks.push(
+      task({
+        id: "T009",
+        node: "P1-N012",
+        step: "verify",
+        status: "open",
+        closed: null,
+        summary: null,
+      }),
+    );
+    const repo = new FakeRepository();
+    repo.heads.set("main", SHA_A);
+    repo.setFile(SHA_A, "orchestration/state.json", stateJson(state));
+    return repo;
+  }
+
+  it("hides an idle check node, shows a failed and an in-flight one under their node, and counts work nodes only", async () => {
+    const { html } = await get(appOver(withChecks()), "/view?open=all");
+    expect(html).not.toContain('data-node="P1-N010"');
+    expect(html).toContain('data-node="P1-N011"');
+    expect(html).toContain('data-node="P1-N012"');
+    expect(attributeText(html, "data-count-done")).toBe("1 of 9 done");
+    expect(attributeText(html, "data-count-flight")).toBe("0 in flight");
+    const failed = html.slice(html.indexOf('data-node="P1-N011"'));
+    expect(failed).toContain('data-kind="check"');
+    expect(textOf(failed.slice(0, failed.indexOf("</li>")))).toContain(
+      "blocked: T009: no tests",
+    );
+  });
+
+  it("lists a node's check nodes on its page, and shows a check node's own page", async () => {
+    const app = appOver(withChecks());
+    const parent = await get(app, "/view/node/P1-N004");
+    expect(fieldText(parent.html, "children")).toContain("none");
+    expect(fieldText(parent.html, "checks")).toContain(
+      "Verification of the flight",
+    );
+    expect(attributeText(parent.html, "data-stage")).toBe("verifying");
+    const check = await get(app, "/view/node/P1-N010");
+    expect(check.res.status).toBe(200);
+    expect(attributeText(check.html, "data-title")).toContain("check");
+    expect(attributeText(check.html, "data-crumbs")).toBe(
+      "Plan › The first line of work › The part in flight",
+    );
+  });
+});

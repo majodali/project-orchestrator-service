@@ -9,6 +9,7 @@ export function node(
   partial: Partial<Node> & Pick<Node, "id" | "title" | "stage">,
 ): Node {
   return {
+    kind: "work",
     outcome: `${partial.title} exists and works.`,
     parent: null,
     after: [],
@@ -30,6 +31,7 @@ export function task(partial: Partial<Task> & Pick<Task, "id" | "node">): Task {
     tokens: { in: null, out: null },
     opened: "2026-10-30T10:00:00Z",
     closed: "2026-10-30T12:00:00Z",
+    base: null,
     ref: "abc1234",
     pr: null,
     summary: "Did the thing.",

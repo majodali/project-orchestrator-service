@@ -537,6 +537,7 @@ export function importState(input: ImportInput): {
     if (r.stage === "done" && done === null) record.noDoneDate.push(id);
     nodes.push({
       id,
+      kind: "work",
       title,
       outcome,
       stage: r.stage as Node["stage"],
@@ -578,6 +579,7 @@ export function importState(input: ImportInput): {
         node: nodeId,
         step: asStep(stage!),
         status: "closed",
+        base: null,
         role: role!.trim() || null,
         model: model!.trim() || null,
         tokens: { in: tokens(tin!), out: tokens(tout!) },
@@ -618,6 +620,7 @@ export function importState(input: ImportInput): {
       node: j.node,
       step: asStep(j.step),
       status,
+      base: null,
       role: j.role,
       model: j.model,
       tokens: { in: null, out: null },

@@ -192,7 +192,7 @@ export function renderNodePage(
     "<main>",
     committedLine(commit, committed, commit.sha),
     crumbs(node, byId, commit),
-    `<h1 data-title>${escapeHtml(node.title)}<span class="id" data-node-id>${escapeHtml(node.id)}</span></h1>`,
+    `<h1 data-title>${node.kind === "check" ? '<span class="kind" data-kind="check">check</span> ' : ""}${escapeHtml(node.title)}<span class="id" data-node-id>${escapeHtml(node.id)}</span></h1>`,
     `<p>${classBadge(cls)} <span class="stage" data-stage>${escapeHtml(stage)}</span>${cls === "done" || cls === "parked" ? "" : ` <span class="note">${escapeHtml(NODE_CLASS_LABELS[cls])}</span>`}</p>`,
     hold,
     node.outcome
@@ -213,8 +213,27 @@ export function renderNodePage(
     field(
       "children",
       "Children",
-      nodeRefs(children.get(node.id) ?? [], classes, commit, "none"),
+      nodeRefs(
+        (children.get(node.id) ?? []).filter((c) => c.kind !== "check"),
+        classes,
+        commit,
+        "none",
+      ),
     ),
+    ...((children.get(node.id) ?? []).some((c) => c.kind === "check")
+      ? [
+          field(
+            "checks",
+            "Verification",
+            nodeRefs(
+              (children.get(node.id) ?? []).filter((c) => c.kind === "check"),
+              classes,
+              commit,
+              "none",
+            ),
+          ),
+        ]
+      : []),
     field("documents", "Documents", documentsField(node, commit)),
     field(
       "start",

@@ -267,7 +267,7 @@ describe("tasks and decisions", () => {
       },
     );
     const opened = await call(appOver(repoWith(state)), "task_open", {
-      nodeId: "P1-N002",
+      nodeId: "P1-N006",
       step: "execute",
     });
     expect(opened.isError).toBeUndefined();
@@ -275,7 +275,7 @@ describe("tasks and decisions", () => {
       (opened.structuredContent!.decisions as Array<{ id: string }>).map(
         (d) => d.id,
       ),
-    ).toEqual(["RU-001", "D020", "D021"]);
+    ).toEqual(["D020", "D021"]);
   });
 
   it("opens and closes a task with the next identifier, one commit each", async () => {
@@ -295,7 +295,7 @@ describe("tasks and decisions", () => {
       step: "execute",
     });
     expect(again.isError).toBe(true);
-    expect(again.content[0]!.text).toContain("at most one");
+    expect(again.content[0]!.text).toContain("task T004 is open on it");
 
     const closed = await call(app, "task_close", {
       taskId: "T004",

@@ -11,6 +11,7 @@ import {
   childrenOf,
   classifyAll,
   nodesById,
+  shownNodes,
   type NodeClass,
 } from "./check.js";
 import type { Decision, Node, State } from "./schema.js";
@@ -45,6 +46,12 @@ function stripDocs(p: string): string {
 }
 
 export function renderRegister(state: State): string {
+  // The register is the plugin's form checker's input: work nodes
+  // only; check nodes are the loop's and live in the plan.
+  const work: State = {
+    ...state,
+    nodes: state.nodes.filter((n) => n.kind !== "check"),
+  };
   const lines: string[] = [
     "# Plan register",
     "",
@@ -56,7 +63,7 @@ export function renderRegister(state: State): string {
     "Dependencies are in the state file, not in sibling order.",
     "",
   ];
-  for (const { node, depth } of treeOrder(state)) {
+  for (const { node, depth } of treeOrder(work)) {
     const indent = "  ".repeat(depth);
     const hold = node.hold ? ` [${node.hold.kind}: ${node.hold.reason}]` : "";
     lines.push(
@@ -87,7 +94,10 @@ function decisionLine(d: Decision, byId: Map<string, Node>): string {
   return `- ${d.id}${where}: ${md(d.question)}${dflt}`;
 }
 
-export function renderPlan(state: State): string {
+export function renderPlan(full: State): string {
+  // Hidden check nodes stay out of the plan; shown ones read as
+  // children of the node they verify.
+  const state: State = { ...full, nodes: shownNodes(full) };
   const byId = nodesById(state);
   const classes = classifyAll(state);
   const open = state.decisions.filter((d) => d.chosen === null);
@@ -170,7 +180,8 @@ export function renderPlan(state: State): string {
       const cls = classes.get(n.id)!;
       const hold = n.hold ? `, ${n.hold.kind}: ${md(n.hold.reason)}` : "";
       const stage = n.stage === "done" && n.done ? `done ${n.done}` : n.stage;
-      const head = `${indent}- **${md(n.title)}** (${n.id}, ${stage}${hold})`;
+      const kind = n.kind === "check" ? "check: " : "";
+      const head = `${indent}- ${kind}**${md(n.title)}** (${n.id}, ${stage}${hold})`;
       lines.push(head);
       if (n.outcome) lines.push(`${indent}  ${md(n.outcome)}`);
       const detail: string[] = [];
