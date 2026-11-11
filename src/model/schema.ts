@@ -38,6 +38,9 @@ export const STEPS = [
 ] as const;
 export type Step = (typeof STEPS)[number];
 
+export const COST_SOURCES = ["transcript", "headless", "reported"] as const;
+export type CostSource = (typeof COST_SOURCES)[number];
+
 export const TASK_STATUSES = [
   "open",
   "closed",
@@ -132,7 +135,16 @@ export const taskSchema = z.object({
   tokens: z.object({
     in: z.number().int().nonnegative().nullable(),
     out: z.number().int().nonnegative().nullable(),
+    /** Tokens read from and written to the prompt cache, when the
+     * cost was measured (owner, 2026-11-11). Absent otherwise. */
+    cacheRead: z.number().int().nonnegative().optional(),
+    cacheWrite: z.number().int().nonnegative().optional(),
   }),
+  /** Where the token counts came from: `transcript`, summed by the
+   * repository's hook from the session transcript; `headless`, the
+   * result of a headless run; `reported`, given by the session at
+   * `task_close`. Absent for tasks with no measured cost. */
+  costSource: z.enum(COST_SOURCES).optional(),
   opened: timestamp.nullable(),
   closed: timestamp.nullable(),
   /** The commit the task was opened on: `task_close` reads the node

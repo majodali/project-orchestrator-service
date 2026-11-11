@@ -393,7 +393,7 @@ in the environment (no other configuration). In each:
 
 1. List tools — `service_identity`, `plan_read`, `node_update`,
    `node_add`, `node_remove`, `task_next`, `task_open`, `task_close`,
-   `decision_open`, and `decision_close` should all appear.
+   `task_cost`, `decision_open`, and `decision_close` should all appear.
 2. Call `service_identity` — it should return within the configured
    timeout, matching Step 6's `curl` output.
 3. Call `plan_read` — it should return within the configured timeout,

@@ -555,7 +555,7 @@ describe("GithubAppPullRequests", () => {
 });
 
 describe("what a session is told", () => {
-  it("sends the loop's protocol as the server's instructions, and lists ten tools", async () => {
+  it("sends the loop's protocol as the server's instructions, and lists eleven tools", async () => {
     const app = appOver(repoWith(plan()));
     const init = await rpc(app, "initialize", {
       protocolVersion: "2025-03-26",
@@ -573,7 +573,7 @@ describe("what a session is told", () => {
       expect(SERVER_INSTRUCTIONS).toContain(word);
     }
     const tools = await rpc(app, "tools/list", {});
-    expect((tools.result.tools as unknown[]).length).toBe(10);
+    expect((tools.result.tools as unknown[]).length).toBe(11);
   });
 });
 
@@ -629,5 +629,83 @@ describe("the commit's check status in the view", () => {
       },
     });
     expect(attributeText(unavailable, "data-checks")).toBe("unavailable");
+  });
+});
+
+describe("task_cost", () => {
+  it("records measured tokens by type, the model and the source on a closed task, and a later record replaces it", async () => {
+    const repo = repoWith(plan());
+    const app = appOver(repo);
+    await call(app, "task_open", { nodeId: "P1-N002", step: "execute" });
+    await call(app, "task_close", {
+      taskId: "T001",
+      status: "closed",
+      summary: "Built.",
+    });
+    expect(stateAtHead(repo).tasks[0]!.costSource).toBeUndefined();
+    const first = await call(app, "task_cost", {
+      taskId: "T001",
+      tokensIn: 1200,
+      tokensOut: 300,
+      cacheRead: 90000,
+      cacheWrite: 15000,
+      model: "recorded-model",
+      source: "transcript",
+      session: "the hook",
+    });
+    expect(first.isError).toBeUndefined();
+    let t = stateAtHead(repo).tasks[0]!;
+    expect(t.tokens).toEqual({
+      in: 1200,
+      out: 300,
+      cacheRead: 90000,
+      cacheWrite: 15000,
+    });
+    expect(t.costSource).toBe("transcript");
+    expect(t.model).toBe("recorded-model");
+    expect(t.status).toBe("closed");
+    expect(
+      repo.files
+        .get(repo.heads.get("main")!)!
+        .get("orchestration/journal.jsonl"),
+    ).toContain(
+      "task_cost T001: 1200 in, 300 out, 90000 cache read, 15000 cache write, recorded-model (transcript)",
+    );
+    await call(app, "task_cost", {
+      taskId: "T001",
+      tokensIn: 2000,
+      tokensOut: 500,
+      source: "headless",
+    });
+    t = stateAtHead(repo).tasks[0]!;
+    expect(t.tokens).toEqual({ in: 2000, out: 500 });
+    expect(t.costSource).toBe("headless");
+    expect(checkState(stateAtHead(repo)).findings).toEqual([]);
+    const page = await app.request("/view/task/T001", {
+      headers: { Cookie: validCookie() },
+    });
+    expect(await page.text()).toContain("2000 in, 500 out (headless)");
+  });
+
+  it("marks tokens given at task_close as reported, and refuses an unknown task", async () => {
+    const repo = repoWith(plan());
+    const app = appOver(repo);
+    await call(app, "task_open", { nodeId: "P1-N002", step: "execute" });
+    await call(app, "task_close", {
+      taskId: "T001",
+      status: "closed",
+      summary: "Built.",
+      tokensIn: 10,
+      tokensOut: 5,
+    });
+    expect(stateAtHead(repo).tasks[0]!.costSource).toBe("reported");
+    const missing = await call(app, "task_cost", {
+      taskId: "T999",
+      tokensIn: 1,
+      tokensOut: 1,
+      source: "transcript",
+    });
+    expect(missing.isError).toBe(true);
+    expect(missing.content[0]!.text).toBe("no task T999");
   });
 });
