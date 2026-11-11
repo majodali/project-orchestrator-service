@@ -12,6 +12,10 @@ import { loadGithubAppConfig } from "../githubAppConfig.js";
 import { createInstallationTokenProvider } from "./githubAppAuth.js";
 import { GithubAppGitWriter } from "./gitWriter.js";
 import type { GitWriter } from "./gitWriter.js";
+import { GithubAppCommitChecks } from "./commitChecks.js";
+import type { CommitChecks } from "./commitChecks.js";
+import { GithubAppPullRequests } from "./pullRequests.js";
+import type { PullRequests } from "./pullRequests.js";
 import { GithubAppRegisterFetcher } from "./registerFetcher.js";
 import type { CommitReader, RegisterFetcher } from "./registerFetcher.js";
 
@@ -36,6 +40,49 @@ export class GithubAppNotConfiguredError extends Error {
 // fresh cache on every call.
 let cached: GithubAppRegisterFetcher | null = null;
 let cachedWriter: GithubAppGitWriter | null = null;
+let cachedPullRequests: GithubAppPullRequests | null = null;
+let cachedTokenProvider: (() => Promise<string>) | null = null;
+
+/** One installation-token provider, and so one cached token, for the
+ * reader, the writer and the pull request client. */
+function sharedTokenProvider(config: {
+  appId: string;
+  installationId: string;
+  privateKey: string;
+}): () => Promise<string> {
+  cachedTokenProvider ??= createInstallationTokenProvider(config);
+  return cachedTokenProvider;
+}
+
+let cachedChecks: GithubAppCommitChecks | null = null;
+
+/** The commit check reader: the same App and the same token. */
+export function getDefaultCommitChecks(
+  env: NodeJS.ProcessEnv = process.env,
+): CommitChecks {
+  if (cachedChecks) return cachedChecks;
+  const result = loadGithubAppConfig(env);
+  if (!result.ok) {
+    throw new GithubAppNotConfiguredError(result.missing);
+  }
+  cachedChecks = new GithubAppCommitChecks(sharedTokenProvider(result.config));
+  return cachedChecks;
+}
+
+/** The pull request client: the same App and the same token. */
+export function getDefaultPullRequests(
+  env: NodeJS.ProcessEnv = process.env,
+): PullRequests {
+  if (cachedPullRequests) return cachedPullRequests;
+  const result = loadGithubAppConfig(env);
+  if (!result.ok) {
+    throw new GithubAppNotConfiguredError(result.missing);
+  }
+  cachedPullRequests = new GithubAppPullRequests(
+    sharedTokenProvider(result.config),
+  );
+  return cachedPullRequests;
+}
 
 /** The writer the state store commits through: the same App and the
  * same token as the reads (the rebuild, milestone 3). */
@@ -47,11 +94,7 @@ export function getDefaultGitWriter(
   if (!result.ok) {
     throw new GithubAppNotConfiguredError(result.missing);
   }
-  const tokenProvider = createInstallationTokenProvider({
-    appId: result.config.appId,
-    installationId: result.config.installationId,
-    privateKey: result.config.privateKey,
-  });
+  const tokenProvider = sharedTokenProvider(result.config);
   cachedWriter = new GithubAppGitWriter(
     result.config.owner,
     result.config.repo,
@@ -86,11 +129,7 @@ function getDefaultGithubFetcher(
   if (!result.ok) {
     throw new GithubAppNotConfiguredError(result.missing);
   }
-  const tokenProvider = createInstallationTokenProvider({
-    appId: result.config.appId,
-    installationId: result.config.installationId,
-    privateKey: result.config.privateKey,
-  });
+  const tokenProvider = sharedTokenProvider(result.config);
   cached = new GithubAppRegisterFetcher(
     result.config.owner,
     result.config.repo,
@@ -106,4 +145,7 @@ function getDefaultGithubFetcher(
 export function resetDefaultRegisterFetcherForTests(): void {
   cached = null;
   cachedWriter = null;
+  cachedPullRequests = null;
+  cachedChecks = null;
+  cachedTokenProvider = null;
 }

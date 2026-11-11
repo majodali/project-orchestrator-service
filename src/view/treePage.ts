@@ -24,6 +24,7 @@ import {
   childrenOf,
   classifyAll,
   nodesById,
+  pausedBy,
   shownNodes,
   type Finding,
   type NodeClass,
@@ -149,6 +150,7 @@ function treeRow(
   own: Below,
   decisions: Decision[],
   commit: PageCommit,
+  pausedAbove: Node | undefined,
 ): string {
   const attention =
     cls === "gated"
@@ -156,6 +158,10 @@ function treeRow(
       : cls === "blocked"
         ? `<span class="hold" data-hold>blocked: ${escapeHtml(n.hold!.reason)}</span>`
         : "";
+  const paused =
+    cls === "paused" && pausedAbove
+      ? `<span class="note" data-paused-by="${escapeHtml(pausedAbove.id)}">paused by ${escapeHtml(pausedAbove.title)} (${escapeHtml(pausedAbove.id)}), ${pausedAbove.stage === "parked" ? "parked" : "held"}</span>`
+      : "";
   const stage =
     n.stage === "done" && n.done
       ? ` <span class="stage">done ${escapeHtml(n.done)}</span>`
@@ -171,7 +177,7 @@ function treeRow(
     n.kind === "check"
       ? '<span class="kind" data-kind="check">check</span> '
       : "";
-  return `${classBadge(cls)} ${kind}${titleLink(n, commit)}${stage} ${flags(below, own)}${outcome}${attention}${list}`;
+  return `${classBadge(cls)} ${kind}${titleLink(n, commit)}${stage} ${flags(below, own)}${outcome}${attention}${paused}${list}`;
 }
 
 function renderTree(
@@ -182,6 +188,7 @@ function renderTree(
   commit: PageCommit,
 ): string {
   const children = childrenOf(state);
+  const byId = nodesById(state);
   const below = countBelow(state, classes, openDecisions);
   const isOpen = (n: Node, depth: number): boolean => {
     if (mode === "all") return true;
@@ -200,7 +207,15 @@ function renderTree(
       decisions: openDecisions.get(n.id)?.length ?? 0,
     };
     const attention = needsAttention(own) ? " attention" : "";
-    const row = treeRow(n, cls, b, own, openDecisions.get(n.id) ?? [], commit);
+    const row = treeRow(
+      n,
+      cls,
+      b,
+      own,
+      openDecisions.get(n.id) ?? [],
+      commit,
+      pausedBy(n, byId),
+    );
     if (kids.length === 0) {
       return `<li data-node="${escapeHtml(n.id)}"><div class="leaf${attention}">${row}</div></li>`;
     }
@@ -277,6 +292,7 @@ function legend(): string {
     "in-progress",
     "waiting",
     "actionable",
+    "paused",
     "done",
     "parked",
   ];

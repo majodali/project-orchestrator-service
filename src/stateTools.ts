@@ -26,16 +26,23 @@ import {
   candidates,
   closeStale,
   closeTask,
+  mergesAtClose,
+  nextDecisionId,
+  nextTaskId,
   openTask,
+  pullRequestsOf,
+  removeNode,
   scopeOf,
   staleTasks,
   type CloseInput,
   type CloseResult,
   type OpenResult,
+  type RemoveResult,
 } from "./model/loop.js";
 import {
   closeDecision,
   decisionsForTask,
+  standingDecisions,
   updateNode,
 } from "./model/mutations.js";
 import {
@@ -50,14 +57,38 @@ import {
   GithubAppNotConfiguredError,
   getDefaultCommitReader,
   getDefaultGitWriter,
+  getDefaultPullRequests,
 } from "./planRegister/defaultFetcher.js";
 import { GitConflictError, GitWriteError } from "./planRegister/gitWriter.js";
+import {
+  NotMergeableError,
+  PullRequestError,
+  ensureMerged,
+  type PullRequests,
+} from "./planRegister/pullRequests.js";
 import { GithubFetchError } from "./planRegister/registerFetcher.js";
+
+/** What every enlisted session is told when it connects: the loop's
+ * protocol, since nothing else reaches a session that was simply
+ * asked to work on a node (owner, 2026-11-11). */
+export const SERVER_INSTRUCTIONS = [
+  "This service holds the plan of the project as one checked file, orchestration/state.json, and is the only writer of it, of docs/plan.md, of docs/plan-register.md and of orchestration/journal.jsonl. Never edit those four files; every change goes through these tools, one commit each.",
+  "Work on a plan node goes through a task, whoever asked for it:",
+  "1. `task_next` (with your role: planner, implementer or reviewer) answers the next node that offers a step, or call `plan_read` with a node to see one you were pointed at.",
+  "2. `task_open` claims the node for a step before you start. It answers the node, its documents, the decisions on it and above it, and the standing decisions, which bind every task. If it refuses, the reason is the answer: tell the person and stop.",
+  "3. Do the work on a branch and open a pull request. Do not merge it: the service merges it when the result is accepted.",
+  "4. `task_close` records the result: status, a summary of at most sixty words, the pull request (or the branch, and the service opens one), and questions for the owner as `asks`. A plan or specify step delivers the node's outcome and documents here.",
+  "5. When the answer carries `stop`, or `task_next` answers nothing, return to the person: the owner answers decisions and lifts holds in the view.",
+  "A node that turns out to be obsolete is removed with `node_remove`, not parked or held; git keeps its history. A hold or a park is for work that will resume.",
+  "Pass `session` on every write: your session's own name or identifier, so the journal says who wrote.",
+].join("\n");
 
 export interface StateToolsOptions {
   /** Test-only: the store over a fake repository. Production builds
    * one over the GitHub App. */
   store?: StateStore;
+  /** Test-only: the pull request client. Production uses the App. */
+  pullRequests?: PullRequests;
   now?: () => Date;
 }
 
@@ -101,7 +132,11 @@ export function describeError(err: unknown): string {
     return `${err.message}; the write was retried once and the branch moved again. Read and try again.`;
   }
   if (err instanceof GithubAppNotConfiguredError) return err.message;
+  if (err instanceof NotMergeableError) {
+    return `${err.message}. Nothing was committed; a node is done only when its pull requests are merged.`;
+  }
   if (
+    err instanceof PullRequestError ||
     err instanceof GithubAppAuthError ||
     err instanceof GithubFetchError ||
     err instanceof GitWriteError
@@ -145,15 +180,6 @@ function timestamp(now: () => Date): string {
     .replace(/\.\d{3}Z$/, "Z");
 }
 
-function nextId(prefix: string, ids: string[], width: number): string {
-  let max = 0;
-  for (const id of ids) {
-    const m = new RegExp(`^${prefix}(\\d+)$`).exec(id);
-    if (m) max = Math.max(max, Number(m[1]));
-  }
-  return `${prefix}${String(max + 1).padStart(width, "0")}`;
-}
-
 function writeResult(
   result: WriteResult,
   extra: Record<string, unknown>,
@@ -180,6 +206,9 @@ export function registerStateTools(
       writer: getDefaultGitWriter(),
       now,
     });
+
+  const pullRequests = (): PullRequests =>
+    options.pullRequests ?? getDefaultPullRequests();
 
   const run = async (fn: () => Promise<ToolResult>): Promise<ToolResult> => {
     try {
@@ -296,6 +325,19 @@ export function registerStateTools(
     async (input) =>
       run(async () => {
         let changes: string[] = [];
+        let merged: string[] = [];
+        if (input.stage === "done") {
+          // Done needs the node's pull requests merged.
+          const head = await store().read();
+          if (head.state !== null) {
+            merged = (
+              await ensureMerged(
+                pullRequests,
+                pullRequestsOf(head.state, input.nodeId),
+              )
+            ).merged;
+          }
+        }
         const result = await store().write(
           `${input.nodeId}: ${input.reason}`,
           (state) => {
@@ -304,7 +346,11 @@ export function registerStateTools(
             return applied.event;
           },
         );
-        return writeResult(result, { nodeId: input.nodeId, changes });
+        return writeResult(result, {
+          nodeId: input.nodeId,
+          changes,
+          ...(merged.length > 0 ? { merged } : {}),
+        });
       }),
   );
 
@@ -352,6 +398,7 @@ export function registerStateTools(
           summary: t.summary,
         })),
       decisions: decisionsForTask(state, node.id),
+      standing: standingDecisions(state),
     };
   }
 
@@ -464,11 +511,7 @@ export function registerStateTools(
             opened = openTask(
               state,
               input,
-              nextId(
-                "T",
-                state.tasks.map((t) => t.id),
-                3,
-              ),
+              nextTaskId(state),
               timestamp(now),
               baseSha,
             );
@@ -505,8 +548,12 @@ export function registerStateTools(
         "completes its parent), `blocked` and `needs-judgment` hold the node for " +
         "the owner, and each ask becomes an open decision on the node. A scope that " +
         "changed since the task opened closes it as needs-judgment. A planning step " +
-        "delivers the title, outcome and documents here, applied at close. Answers " +
-        "`stop` when the session should return to the owner.",
+        "delivers the title, outcome and documents here, applied at close. Pull " +
+        "requests are merged by the service, never by the session: a planning " +
+        "step's at its close, an execute step's when its verification closes; a " +
+        "pull request that cannot be merged refuses the close. Give `branch` " +
+        "instead of `pr` and the service opens the pull request. Answers `stop` " +
+        "when the session should return to the owner.",
       inputSchema: {
         taskId: z.string().regex(/^T\d{3,}$/),
         status: z.enum(
@@ -549,6 +596,20 @@ export function registerStateTools(
           })
           .optional()
           .describe("The documents a plan or specify step delivers."),
+        branch: z
+          .string()
+          .min(1)
+          .optional()
+          .describe(
+            "The branch the work is on, when no pull request is open yet: the service opens one.",
+          ),
+        repo: z
+          .string()
+          .regex(/^[\w.-]+\/[\w.-]+$/)
+          .optional()
+          .describe(
+            "The repository of `branch`, owner/name; default: the project.",
+          ),
         session: sessionField,
       },
     },
@@ -558,11 +619,37 @@ export function registerStateTools(
         // condition; a task from before the loop has no base.
         const head = await store().read();
         const task = head.state?.tasks.find((t) => t.id === input.taskId);
+        const headNode = head.state?.nodes.find((n) => n.id === task?.node);
         let scopeAtBase: string | null = null;
         if (task?.base) {
           const base = await store().readStateAt(task.base);
           const there = base.state?.nodes.find((n) => n.id === task.node);
           if (there) scopeAtBase = scopeOf(there);
+        }
+        // The pull request: opened here for a branch that has none,
+        // and merged here when this close is the done decision. Both
+        // happen before the commit, so a pull request that cannot be
+        // merged refuses the close with nothing committed.
+        let pr: string | undefined = input.pr;
+        let merged: string[] = [];
+        const accepted =
+          input.status === "closed" &&
+          head.state !== null &&
+          task !== undefined &&
+          task.status === "open" &&
+          headNode !== undefined &&
+          !(scopeAtBase !== null && scopeAtBase !== scopeOf(headNode));
+        if (accepted) {
+          if (pr === undefined && task.pr === null && input.branch) {
+            pr = await pullRequests().create({
+              repo: input.repo ?? head.state!.project,
+              branch: input.branch,
+              title: `${headNode.id} ${task.step}: ${headNode.title}`,
+              body: `${input.summary}\n\nTask ${task.id} on node ${headNode.id}, opened by the orchestration service at task_close.`,
+            });
+          }
+          const toMerge = mergesAtClose(head.state!, task, pr ?? task.pr);
+          merged = (await ensureMerged(pullRequests, toMerge)).merged;
         }
         let closed: CloseResult | null = null;
         const result = await store().write(
@@ -570,16 +657,15 @@ export function registerStateTools(
           (state) => {
             closed = closeTask(
               state,
-              { ...input, status: input.status as CloseInput["status"] },
+              {
+                ...input,
+                ...(pr === undefined ? {} : { pr }),
+                status: input.status as CloseInput["status"],
+              },
               scopeAtBase,
               today(now),
               timestamp(now),
-              (s) =>
-                nextId(
-                  "D",
-                  s.decisions.map((d) => d.id),
-                  3,
-                ),
+              nextDecisionId,
             );
             return closed.event;
           },
@@ -590,6 +676,8 @@ export function registerStateTools(
           status: done.task.status,
           nodeId: done.node.id,
           nodeStage: done.node.stage,
+          pr: done.task.pr,
+          merged,
           moved: done.moved,
           decisionsOpened: done.decisions,
           stop: done.stop,
@@ -643,6 +731,47 @@ export function registerStateTools(
   );
 
   server.registerTool(
+    "node_remove",
+    {
+      title: "Remove an obsolete node",
+      description:
+        "Removes an obsolete node with everything below it, their tasks and " +
+        "their decisions, and commits; git keeps the history. A node that waited " +
+        "for a removed one no longer does. Refused while a task is open under it. " +
+        "For work that will resume, hold or park the node instead.",
+      inputSchema: {
+        nodeId,
+        reason: z
+          .string()
+          .min(1)
+          .describe(
+            "Why the node is obsolete; goes in the commit and the journal.",
+          ),
+        session: sessionField,
+      },
+    },
+    async (input) =>
+      run(async () => {
+        let removed: RemoveResult | null = null;
+        const result = await store().write(
+          `${input.nodeId} removed: ${input.reason}`,
+          (state) => {
+            removed = removeNode(state, input);
+            return removed.event;
+          },
+        );
+        const done = removed!;
+        return writeResult(result, {
+          removed: done.nodes,
+          tasks: done.tasks,
+          decisions: done.decisions,
+          unlinked: done.unlinked,
+          moved: done.moved,
+        });
+      }),
+  );
+
+  server.registerTool(
     "decision_open",
     {
       title: "Open a decision",
@@ -676,11 +805,7 @@ export function registerStateTools(
             ) {
               throw new NotFoundError(`no node ${input.nodeId}`);
             }
-            id = nextId(
-              "D",
-              state.decisions.map((d) => d.id),
-              3,
-            );
+            id = nextDecisionId(state);
             const decision: Decision = {
               id,
               node: input.nodeId,

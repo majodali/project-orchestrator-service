@@ -71,14 +71,23 @@ decision 2 of the rebuild plan, never a personal access token.
    Apps → New GitHub App**. Repository permissions: **Contents:
    Read and write** (read-only was enough until the rebuild's
    milestone 3; an App created earlier needs the permission raised
-   and the new permission approved on its installation). No webhook
-   is needed — uncheck "Active" under Webhook, or leave the URL
-   blank.
+   and the new permission approved on its installation). Since
+   2026-11-11 also **Pull requests: Read and write**, because the
+   service merges a node's pull requests when the node is accepted,
+   and opens one for a branch that has none; and **Checks:
+   Read-only**, so the view's header can show the check status of
+   the commit it reads (without it the header says "unavailable" and
+   everything else works). No webhook is needed — uncheck "Active"
+   under Webhook, or leave the URL blank.
 2. Generate a private key for the App (App settings → **Generate a
    private key**) — this downloads a `.pem` file once; it cannot be
    downloaded again later.
-3. Install the App on `majodali/project-orchestrator` only (**Install
-   App**, select the repository — not "all repositories").
+3. Install the App on `majodali/project-orchestrator` (**Install
+   App**, select the repository — not "all repositories"), and on
+   each other repository whose pull requests the plan's tasks carry:
+   today `majodali/project-orchestrator-service`. The service writes
+   files only in the coordinating repository; on the others it only
+   reads and merges pull requests.
 4. Record two values from the App's settings pages, both **not
    secret**:
    - the App's numeric **ID** (General settings page), and
@@ -383,8 +392,8 @@ session and a Claude Code web session, with only `MCP_AUTH_TOKEN` set
 in the environment (no other configuration). In each:
 
 1. List tools — `service_identity`, `plan_read`, `node_update`,
-   `node_add`, `task_next`, `task_open`, `task_close`, `decision_open`,
-   and `decision_close` should all appear.
+   `node_add`, `node_remove`, `task_next`, `task_open`, `task_close`,
+   `decision_open`, and `decision_close` should all appear.
 2. Call `service_identity` — it should return within the configured
    timeout, matching Step 6's `curl` output.
 3. Call `plan_read` — it should return within the configured timeout,

@@ -99,7 +99,7 @@ repository, the state file (the rebuild plan there,
   branch): every node with its class, the open decisions and tasks,
   and the commit SHA; or one node in full with its tasks and
   decisions.
-- `node_update`, `node_add`, `task_open`, `task_close`,
+- `node_update`, `node_add`, `node_remove`, `task_open`, `task_close`,
   `decision_open`, `decision_close` — the writes. Each applies one change to the state
   read at the branch head, checks the result against the model's
   invariants and refuses a violation with nothing committed, renders
@@ -129,13 +129,34 @@ repository, the state file (the rebuild plan there,
   to the owner. Check nodes (`kind: "check"`) are hidden in the view
   and the plan unless they fail, are in flight or are selected, and
   count in no total.
+- What the first real use changed (owner, 2026-11-11):
+  - A session is told the protocol when it connects: the server's MCP
+    `instructions` carry it (`SERVER_INSTRUCTIONS` in
+    `src/stateTools.ts`).
+  - A node is done only when its pull requests are merged, and the
+    service merges them itself, so no merge waits on a person
+    (`src/planRegister/pullRequests.ts`): a planning step's at its
+    close, an execute step's when its verification closes, and on the
+    owner's acceptance in the view. A pull request that cannot be
+    merged (checks failing or running, a conflict, protection not
+    satisfied) refuses the close with nothing committed. `task_close`
+    with `branch` opens the pull request.
+  - `node_remove` removes an obsolete node with its subtree, tasks and
+    decisions; git keeps the history, and `highWater` in the state
+    file keeps a removed identifier from being minted again.
+  - A hold or a park on a node pauses everything below it: the class
+    `paused`.
+  - Every standing decision reaches a task, compact, wherever it
+    arose (`standing` in the answer of `task_next` and `task_open`).
+  - The view's header shows the check status of the commit it reads
+    (`src/planRegister/commitChecks.ts`).
 
 ### HTTP routes
 
 | Method and path                           | Auth                        | Answers                                                                                                                                                                                                                                                                                                                         |
 | ----------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /health`                             | none                        | liveness, as JSON                                                                                                                                                                                                                                                                                                               |
-| `ANY /mcp`                                | `Authorization: Bearer`     | the MCP endpoint and its nine tools                                                                                                                                                                                                                                                                                             |
+| `ANY /mcp`                                | `Authorization: Bearer`     | the MCP endpoint and its ten tools                                                                                                                                                                                                                                                                                              |
 | `GET /view/sign-in`                       | none                        | the web view's sign-in form                                                                                                                                                                                                                                                                                                     |
 | `POST /view/sign-in`                      | the view token, in the form | `303` to `/view` with the view cookie, or `401`                                                                                                                                                                                                                                                                                 |
 | `GET /view`                               | the view cookie             | the plan of the coordinating repository at one commit, from `orchestration/state.json`: every node in its tree with its class and outcome, what waits on the owner marked in context and unfolded, and the problems `check` reports; `?ref=` picks a branch, tag or SHA; `?open=` picks what is unfolded                        |

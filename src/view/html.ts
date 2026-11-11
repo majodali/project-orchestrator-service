@@ -24,6 +24,9 @@ export interface PageCommit extends RepoCoordinates {
   sha: string;
   /** ISO-8601 time the page's reads completed. */
   fetchedAt: string;
+  /** The commit's check status: a summary, or null when it could not
+   * be read; absent on a page that did not ask. */
+  checks?: { state: string; failing: string[] } | null;
 }
 
 /** What the header of an error page knows: the SHA is absent when the
@@ -82,7 +85,7 @@ export const PAGE_CSS = [
   ".id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--muted)}",
   ".stage{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}",
   ".badge{display:inline-block;font-size:12px;line-height:1.4;padding:0 8px;border-radius:10px;border:1px solid currentColor;white-space:nowrap;vertical-align:middle}",
-  ".c-done{color:var(--done)}.c-gated{color:var(--owner)}.c-blocked{color:var(--err)}.c-in-flight,.c-in-progress{color:var(--progress)}.c-waiting{color:var(--pending)}.c-actionable{color:var(--ready)}.c-parked{color:var(--muted)}",
+  ".c-done{color:var(--done)}.c-gated{color:var(--owner)}.c-blocked{color:var(--err)}.c-in-flight,.c-in-progress{color:var(--progress)}.c-waiting{color:var(--pending)}.c-actionable{color:var(--ready)}.c-parked,.c-paused{color:var(--muted)}",
   ".legend{list-style:none;display:flex;flex-wrap:wrap;gap:4px 14px;padding:0;margin:0 0 10px;font-size:13px;color:var(--muted)}",
   "ul.tree{list-style:none;margin:0;padding:0;background:var(--card);border:1px solid var(--line);border-radius:8px;overflow:hidden}",
   "ul.tree ul{list-style:none;margin:0 0 0 10px;padding:0 0 0 10px;border-left:1px solid var(--line)}",
@@ -124,6 +127,7 @@ export const PAGE_CSS = [
   "form.decide input[type=text],form.act input[type=text]{font-size:14px;padding:5px 8px}",
   "form.decide button,form.act button{font-size:14px;padding:5px 12px}",
   "form.act{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 8px}",
+  ".checks-failing{color:var(--err);font-weight:600}.checks-passing{color:var(--done)}",
   ".kind{display:inline-block;font-size:11px;line-height:1.4;padding:0 6px;border-radius:4px;background:var(--soft);color:var(--muted);text-transform:uppercase;letter-spacing:.04em;vertical-align:middle}",
   ".committed{margin:0 0 10px;padding:6px 12px;border-left:3px solid var(--done);background:var(--card);font-size:14px}",
   "input,button{font:inherit;font-size:16px;max-width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg)}",
@@ -233,11 +237,19 @@ export function pageHeader(
       ? `<p>Commit: <span data-sha>none, the ref did not resolve</span></p>`
       : `<p>Commit: <a href="${escapeHtml(commitUrl(commit, commit.sha))}"><code data-sha>${escapeHtml(commit.sha)}</code></a></p>`;
   const reload = viewLink(selfPath, commit.requestedRef);
+  const checks = "checks" in commit ? commit.checks : undefined;
+  const checksLine =
+    checks === undefined
+      ? ""
+      : checks === null
+        ? `<p>Checks: <span data-checks="unavailable">unavailable</span></p>`
+        : `<p>Checks: <span class="checks-${escapeHtml(checks.state)}" data-checks="${escapeHtml(checks.state)}">${escapeHtml(checks.state === "none" ? "none ran" : checks.state)}${checks.failing.length > 0 ? `: ${escapeHtml(checks.failing.join(", "))}` : ""}</span></p>`;
   return [
     "<header>",
     `<p>Repository: <code>${escapeHtml(commit.owner)}/${escapeHtml(commit.repo)}</code></p>`,
     refLine(commit.requestedRef, commit.resolvedRef),
     shaLine,
+    checksLine,
     `<p>Fetched: <time data-fetched>${escapeHtml(commit.fetchedAt)}</time></p>`,
     `<p><a href="${escapeHtml(reload)}">Reload at the requested ref</a></p>`,
     "</header>",

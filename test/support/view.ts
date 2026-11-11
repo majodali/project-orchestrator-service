@@ -19,6 +19,10 @@ import type {
   ResolvedCommit,
 } from "../../src/planRegister/registerFetcher.js";
 import { GithubFetchError } from "../../src/planRegister/registerFetcher.js";
+import type {
+  PullRequestState,
+  PullRequests,
+} from "../../src/planRegister/pullRequests.js";
 import { signViewCookie } from "../../src/view/viewAuth.js";
 import { VIEW_COOKIE_NAME } from "../../src/view/viewAuth.js";
 
@@ -133,6 +137,56 @@ export class FakeRepository implements CommitReader, GitWriter {
       throw new GithubFetchError(`no ${path} at ${sha}`, 404, "Not Found");
     }
     return content;
+  }
+}
+
+/**
+ * Pull requests in memory. One a test never set up is open, clean and
+ * unmerged, so a close that merges it succeeds; `set` overrides.
+ */
+export class FakePullRequests implements PullRequests {
+  readonly states = new Map<string, Partial<PullRequestState>>();
+  readonly merges: string[] = [];
+  readonly created: Array<{ repo: string; branch: string; title: string }> = [];
+
+  set(ref: string, state: Partial<PullRequestState>): void {
+    this.states.set(ref, state);
+  }
+
+  async get(ref: string): Promise<PullRequestState> {
+    return {
+      ref,
+      open: true,
+      merged: false,
+      draft: false,
+      mergeableState: "clean",
+      headSha: "h".repeat(40),
+      ...this.states.get(ref),
+    };
+  }
+
+  async merge(ref: string): Promise<{ sha: string }> {
+    this.merges.push(ref);
+    this.states.set(ref, {
+      ...this.states.get(ref),
+      open: false,
+      merged: true,
+    });
+    return { sha: "m".repeat(40) };
+  }
+
+  async create(request: {
+    repo: string;
+    branch: string;
+    title: string;
+    body: string;
+  }): Promise<string> {
+    this.created.push({
+      repo: request.repo,
+      branch: request.branch,
+      title: request.title,
+    });
+    return `${request.repo}#${900 + this.created.length}`;
   }
 }
 

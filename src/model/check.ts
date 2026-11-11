@@ -44,6 +44,7 @@ export type NodeClass =
   | "in-progress"
   | "waiting"
   | "actionable"
+  | "paused"
   | "done"
   | "parked";
 
@@ -54,6 +55,7 @@ export const NODE_CLASS_LABELS: Readonly<Record<NodeClass, string>> = {
   "in-progress": "in progress, its children carry the work",
   waiting: "waiting on a dependency",
   actionable: "ready, starts automatically",
+  paused: "paused by a hold or a park above",
   done: "done",
   parked: "parked",
 };
@@ -91,6 +93,7 @@ export function classifyNode(
   if (node.hold?.kind === "gated") return "gated";
   if (node.hold?.kind === "blocked") return "blocked";
   if ((openTasks.get(node.id) ?? []).length > 0) return "in-flight";
+  if (pausedBy(node, byId) !== undefined) return "paused";
   if (node.stage === "broken-down") return "in-progress";
   if (node.stage === "verifying") {
     // The check node carries the work; a failed check node hands the
@@ -107,6 +110,23 @@ export function classifyNode(
   if (node.after.some((d) => byId.get(d)?.stage !== "done")) return "waiting";
   if (node.start === "approve") return "gated";
   return "actionable";
+}
+
+/** The nearest ancestor that stops a node's subtree: one that is
+ * parked or carries a hold. A hold or a park on a parent pauses
+ * everything below it (owner, 2026-11-11). */
+export function pausedBy(
+  node: Node,
+  byId: Map<string, Node>,
+): Node | undefined {
+  let p = node.parent === null ? undefined : byId.get(node.parent);
+  const seen = new Set<string>();
+  while (p && !seen.has(p.id)) {
+    if (p.stage === "parked" || p.hold !== null) return p;
+    seen.add(p.id);
+    p = p.parent === null ? undefined : byId.get(p.parent);
+  }
+  return undefined;
 }
 
 /** Why a node waits on the owner: its hold's reason, or, for a ready

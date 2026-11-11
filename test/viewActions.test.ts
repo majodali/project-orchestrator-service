@@ -4,7 +4,9 @@ import { createApp } from "../src/httpApp.js";
 import { StateStore, WriteRefusedError } from "../src/model/store.js";
 import type { State } from "../src/model/schema.js";
 import { sampleState, stateJson } from "./support/states.js";
+import type { CommitChecks } from "../src/planRegister/commitChecks.js";
 import {
+  FakePullRequests,
   FakeRepository,
   NOW,
   SHA_A,
@@ -31,9 +33,21 @@ function repoWith(state: State = sampleState()): FakeRepository {
   return repo;
 }
 
-function appOver(repo: FakeRepository) {
+function appOver(
+  repo: FakeRepository,
+  pullRequests = new FakePullRequests(),
+  checks?: CommitChecks,
+) {
   const store = new StateStore({ reader: repo, writer: repo, now: () => NOW });
-  return createApp({ view: { reader: repo, store, now: () => NOW } });
+  return createApp({
+    view: {
+      reader: repo,
+      store,
+      pullRequests,
+      ...(checks ? { checks } : {}),
+      now: () => NOW,
+    },
+  });
 }
 
 async function get(app: ReturnType<typeof createApp>, path: string) {

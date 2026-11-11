@@ -11,7 +11,7 @@ import { z } from "zod";
 
 import { getServiceIdentity } from "./serviceInfo.js";
 import type { InvokedQualifierInfo } from "./serviceInfo.js";
-import { registerStateTools } from "./stateTools.js";
+import { SERVER_INSTRUCTIONS, registerStateTools } from "./stateTools.js";
 import type { StateToolsOptions } from "./stateTools.js";
 
 const identityOutputShape = {
@@ -49,6 +49,7 @@ export const TOOL_NAMES = [
   "plan_read",
   "node_update",
   "node_add",
+  "node_remove",
   "task_next",
   "task_open",
   "task_close",
@@ -59,10 +60,13 @@ export const TOOL_NAMES = [
 export function createMcpServer(
   options: CreateMcpServerOptions = {},
 ): McpServer {
-  const server = new McpServer({
-    name: "project-orchestrator-service",
-    version: getServiceIdentity().version,
-  });
+  const server = new McpServer(
+    {
+      name: "project-orchestrator-service",
+      version: getServiceIdentity().version,
+    },
+    { instructions: SERVER_INSTRUCTIONS },
+  );
 
   server.registerTool(
     "service_identity",
