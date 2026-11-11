@@ -21,6 +21,11 @@ import {
   type Task,
 } from "./model/schema.js";
 import {
+  closeDecision,
+  decisionsForTask,
+  updateNode,
+} from "./model/mutations.js";
+import {
   NotFoundError,
   StateStore,
   StateUnreadableError,
@@ -277,57 +282,13 @@ export function registerStateTools(
     },
     async (input) =>
       run(async () => {
-        const changes: string[] = [];
+        let changes: string[] = [];
         const result = await store().write(
           `${input.nodeId}: ${input.reason}`,
           (state) => {
-            const n = state.nodes.find((x) => x.id === input.nodeId);
-            if (!n) throw new NotFoundError(`no node ${input.nodeId}`);
-            if (input.stage !== undefined && input.stage !== n.stage) {
-              changes.push(`stage ${n.stage} -> ${input.stage}`);
-              n.stage = input.stage;
-              if (input.stage === "done" && n.done === null)
-                n.done = today(now);
-              if (input.stage !== "done") n.done = null;
-            }
-            if (input.hold !== undefined) {
-              changes.push(
-                input.hold
-                  ? `hold ${input.hold.kind}: ${input.hold.reason}`
-                  : "hold lifted",
-              );
-              n.hold = input.hold;
-            }
-            if (input.start !== undefined && input.start !== n.start) {
-              changes.push(`start ${input.start}`);
-              n.start = input.start;
-            }
-            if (input.outcome !== undefined) {
-              changes.push("outcome");
-              n.outcome = input.outcome;
-            }
-            if (input.title !== undefined) {
-              changes.push(`title "${input.title}"`);
-              n.title = input.title;
-            }
-            if (input.note !== undefined) {
-              changes.push("note");
-              n.note = input.note;
-            }
-            if (input.after !== undefined) {
-              changes.push(`after ${input.after.join(", ") || "nothing"}`);
-              n.after = input.after;
-            }
-            if (changes.length === 0)
-              throw new NotFoundError(
-                "nothing to change: no field given differs",
-              );
-            return {
-              task: null,
-              node: n.id,
-              session: input.session ?? null,
-              note: `node_update ${n.id}: ${changes.join("; ")}. ${input.reason}`,
-            };
+            const applied = updateNode(state, input, today(now));
+            changes = applied.changes;
+            return applied.event;
           },
         );
         return writeResult(result, { nodeId: input.nodeId, changes });
@@ -340,7 +301,9 @@ export function registerStateTools(
       title: "Open a task",
       description:
         "Opens a task on a node, with the next task identifier, and commits. A node " +
-        "has at most one open task.",
+        "has at most one open task. Answers the decisions the session reads " +
+        "first: those closed on the node and its ancestors, and the standing " +
+        "project decisions.",
       inputSchema: {
         nodeId,
         step: z.enum(STEPS),
@@ -356,12 +319,14 @@ export function registerStateTools(
     async (input) =>
       run(async () => {
         let id = "";
+        let decisions: Decision[] = [];
         const result = await store().write(
           `${input.nodeId}: task opened`,
           (state) => {
             if (!state.nodes.some((x) => x.id === input.nodeId)) {
               throw new NotFoundError(`no node ${input.nodeId}`);
             }
+            decisions = decisionsForTask(state, input.nodeId);
             id = nextId(
               "T",
               state.tasks.map((t) => t.id),
@@ -391,7 +356,7 @@ export function registerStateTools(
             };
           },
         );
-        return writeResult(result, { taskId: id });
+        return writeResult(result, { taskId: id, decisions });
       }),
   );
 
@@ -541,23 +506,9 @@ export function registerStateTools(
         const result = await store().write(
           `${input.decisionId}: ${input.chosen}`,
           (state) => {
-            const d = state.decisions.find((x) => x.id === input.decisionId);
-            if (!d) throw new NotFoundError(`no decision ${input.decisionId}`);
-            if (d.chosen !== null)
-              throw new NotFoundError(
-                `decision ${input.decisionId} is already closed`,
-              );
-            d.chosen = input.chosen;
-            d.decided = today(now);
-            if (input.rationale !== undefined) d.rationale = input.rationale;
-            if (input.standing !== undefined) d.standing = input.standing;
-            node = d.node;
-            return {
-              task: null,
-              node: d.node,
-              session: input.session ?? null,
-              note: `decision_close ${d.id}: ${input.chosen}`,
-            };
+            const applied = closeDecision(state, input, today(now));
+            node = applied.decision.node;
+            return applied.event;
           },
         );
         return writeResult(result, {

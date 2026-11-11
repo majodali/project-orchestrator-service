@@ -226,6 +226,58 @@ describe("node_update", () => {
 });
 
 describe("tasks and decisions", () => {
+  it("answers, on task_open, the closed decisions on the node and its ancestors and the standing project decisions", async () => {
+    const state = sampleState();
+    state.decisions.push(
+      {
+        id: "D020",
+        node: "P1-N001",
+        question: "Which runtime?",
+        options: ["node"],
+        default: "node",
+        chosen: "node",
+        decided: "2026-10-01",
+        rationale: null,
+        standing: false,
+        source: null,
+      },
+      {
+        id: "D021",
+        node: null,
+        question: "Which licence?",
+        options: [],
+        default: "MIT",
+        chosen: "MIT",
+        decided: "2026-10-01",
+        rationale: null,
+        standing: true,
+        source: null,
+      },
+      {
+        id: "D022",
+        node: null,
+        question: "A one-off project decision",
+        options: [],
+        default: "yes",
+        chosen: "yes",
+        decided: "2026-10-01",
+        rationale: null,
+        standing: false,
+        source: null,
+      },
+    );
+    const opened = await call(appOver(repoWith(state)), "task_open", {
+      nodeId: "P1-N002",
+      step: "execute",
+    });
+    expect(opened.isError).toBeUndefined();
+    expect(
+      (opened.structuredContent!.decisions as Array<{ id: string }>).map(
+        (d) => d.id,
+      ),
+    ).toEqual(["RU-001", "D020", "D021"]);
+  });
+
   it("opens and closes a task with the next identifier, one commit each", async () => {
     const repo = repoWith(sampleState());
     const app = appOver(repo);

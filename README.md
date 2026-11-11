@@ -111,19 +111,23 @@ repository, the state file (the rebuild plan there,
   reads again and retries once (`src/model/store.ts`,
   `src/planRegister/gitWriter.ts`, `src/stateTools.ts`). The service
   writes only those four paths; nothing else holds state, and there
-  is no lease.
+  is no lease. `task_open` also answers the decisions the session
+  reads first: those closed on the node and its ancestors, and the
+  standing project decisions (`src/model/mutations.ts`).
 
 ### HTTP routes
 
-| Method and path            | Auth                        | Answers                                                                                                                                                                                                                                                                                                  |
-| -------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /health`              | none                        | liveness, as JSON                                                                                                                                                                                                                                                                                        |
-| `ANY /mcp`                 | `Authorization: Bearer`     | the MCP endpoint and its seven tools                                                                                                                                                                                                                                                                     |
-| `GET /view/sign-in`        | none                        | the web view's sign-in form                                                                                                                                                                                                                                                                              |
-| `POST /view/sign-in`       | the view token, in the form | `303` to `/view` with the view cookie, or `401`                                                                                                                                                                                                                                                          |
-| `GET /view`                | the view cookie             | the plan of the coordinating repository at one commit, from `orchestration/state.json`: every node in its tree with its class and outcome, what waits on the owner marked in context and unfolded, and the problems `check` reports; `?ref=` picks a branch, tag or SHA; `?open=` picks what is unfolded |
-| `GET /view/node/<node ID>` | the view cookie             | a node page: class and stage, outcome, position in the tree, what it waits on and what waits on it, documents at the SHA, decisions and tasks; `404` for an ID the state file lacks                                                                                                                      |
-| `GET /view/task/<task ID>` | the view cookie             | a task page: the task's fields and notes from the state file; `404` for an ID it lacks                                                                                                                                                                                                                   |
+| Method and path                           | Auth                        | Answers                                                                                                                                                                                                                                                                                                                         |
+| ----------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /health`                             | none                        | liveness, as JSON                                                                                                                                                                                                                                                                                                               |
+| `ANY /mcp`                                | `Authorization: Bearer`     | the MCP endpoint and its seven tools                                                                                                                                                                                                                                                                                            |
+| `GET /view/sign-in`                       | none                        | the web view's sign-in form                                                                                                                                                                                                                                                                                                     |
+| `POST /view/sign-in`                      | the view token, in the form | `303` to `/view` with the view cookie, or `401`                                                                                                                                                                                                                                                                                 |
+| `GET /view`                               | the view cookie             | the plan of the coordinating repository at one commit, from `orchestration/state.json`: every node in its tree with its class and outcome, what waits on the owner marked in context and unfolded, and the problems `check` reports; `?ref=` picks a branch, tag or SHA; `?open=` picks what is unfolded                        |
+| `GET /view/node/<node ID>`                | the view cookie             | a node page: class and stage, outcome, position in the tree, what it waits on and what waits on it, documents at the SHA, decisions and tasks; `404` for an ID the state file lacks                                                                                                                                             |
+| `GET /view/task/<task ID>`                | the view cookie             | a task page: the task's fields and notes from the state file; `404` for an ID it lacks                                                                                                                                                                                                                                          |
+| `POST /view/decision/<decision ID>/close` | the view cookie             | the owner's answer to an open decision, from the form under it: one commit through the store, then `303` back to the page naming the commit; `400`, `404`, `409`, `422` or `502` with nothing committed when the answer is empty, the decision unknown or closed, the branch moved twice, the invariants refuse, or GitHub does |
+| `POST /view/node/<node ID>/action`        | the view cookie             | one lifecycle action on a node, `approve-start`, `lift-hold` or `accept-review`, each a `node_update`: one commit, then `303` back to the node page naming the commit; the same refusals as above                                                                                                                               |
 
 The `/view` routes are the web view: server-rendered HTML with no
 script, for a desktop browser (the rebuild plan, decision 9). Since
@@ -134,9 +138,24 @@ Markdown registers are no longer read. Each page resolves its ref to
 one commit SHA, names the ref, the SHA and the fetch time, and links
 documents to GitHub's file view at that SHA. The view has its own
 credential, the view token, which `/mcp` refuses, and the MCP bearer
-token does not open `/view`. Only `POST /view/sign-in` accepts a
-method other than `GET`, and it changes only the caller's cookie. See
-`src/view/` and `docs/runbook.md`, "The web view".
+token does not open `/view`. Only sign-in and the two write routes
+accept `POST`; a `POST` the browser marks cross-site is refused, and
+the cookie's `SameSite=Strict` keeps a cross-site request from
+carrying it at all. See `src/view/` and `docs/runbook.md`, "The web
+view".
+
+Since the rebuild's milestone 4 the view also writes (`src/view/actions.ts`,
+the write routes in `src/view/routes.ts`). An open decision carries
+the form that closes it, on its node page, or on the tree page for a
+project decision: the options as radio buttons with the default
+preselected, another answer as free text, a one-line note, and the
+standing flag. The lifecycle actions open on a node are one click
+each on its page: approve a start that waits on the owner, lift a
+hold, accept a review (the node is done with today's date). Each
+goes through the same store as the tools, as the journal's session
+"the owner, in the view", and the browser returns to the page, which
+names the commit and says whether it already reads it. Nothing is
+held outside git.
 
 The tree page is the plan hierarchy, the primary view (owner,
 2026-11-10): every node in its tree, read in the context of its parent

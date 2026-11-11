@@ -8,33 +8,64 @@
  *   GET  /view          the tree page over the state file
  *   GET  /view/node/<node ID>  a node page
  *   GET  /view/task/<task ID>  a task page
+ *   POST /view/decision/<decision ID>/close  the owner's answer to an
+ *        open decision, committed through the store (milestone 4)
+ *   POST /view/node/<node ID>/action  one lifecycle action on a node
+ *        (approve its start, lift its hold, accept its review),
+ *        committed through the store (milestone 4)
  *
  * Since the rebuild's milestone 2 every page reads one file,
  * `orchestration/state.json`, at the page's commit (./stateRead.ts).
+ * A write goes through the same store as the MCP tools
+ * (src/model/store.ts): checked, rendered, one commit on the default
+ * branch, one journal event; nothing is held outside git. After a
+ * write the browser is sent back to the page, which names the commit.
  *
  * Every other `/view` route requires a valid view cookie and refuses a
- * request without one by a `303` to the sign-in page. No `/view` route
- * but `POST /view/sign-in` accepts a method other than `GET` (V17).
- * Every `/view` response carries the security headers of
+ * request without one by a `303` to the sign-in page. Only the sign-in
+ * and the two write routes accept `POST`; nothing accepts any other
+ * method (V17). A `POST` the browser marks as cross-site
+ * (`Sec-Fetch-Site`), or whose `Origin` names another host, is refused
+ * (403); the pages' `Referrer-Policy: no-referrer` makes browsers send
+ * `Origin: null` on their own form posts, so a null origin decides
+ * nothing. The cookie's `SameSite=Strict` is the defence beneath both:
+ * a cross-site request carries no cookie and is sent to sign in. Every
+ * `/view` response carries the security headers of
  * `VIEW_SECURITY_HEADERS` (V11).
  *
- * The view reads the repository through `CommitReader` and nothing
- * else: it imports no lease backend and no AWS SDK client (V6).
+ * The view reads the repository through `CommitReader` and writes
+ * through `GitWriter`, and nothing else (V6).
  */
 
 import type { Context, Hono, MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 
+import {
+  NODE_ACTIONS,
+  closeDecision,
+  nodeActionInput,
+  updateNode,
+  type NodeAction,
+} from "../model/mutations.js";
+import {
+  NotFoundError,
+  StateStore,
+  StateUnreadableError,
+  WriteRefusedError,
+} from "../model/store.js";
 import { GithubAppAuthError } from "../planRegister/githubAppAuth.js";
 import {
   GithubAppNotConfiguredError,
   getDefaultCommitReader,
+  getDefaultGitWriter,
 } from "../planRegister/defaultFetcher.js";
+import { GitConflictError, GitWriteError } from "../planRegister/gitWriter.js";
 import type { CommitReader } from "../planRegister/registerFetcher.js";
 import {
   FileTooLargeError,
   GithubFetchError,
 } from "../planRegister/registerFetcher.js";
+import { OTHER_ANSWER } from "./actions.js";
 import { PageReadError, ShaPathCache, readPageFiles } from "./commitRead.js";
 import type { PageFiles } from "./commitRead.js";
 import type { ErrorPageCommit, PageCommit } from "./html.js";
@@ -62,11 +93,26 @@ import {
 export interface ViewOptions {
   /** Test-only: the repository reader. Production uses the GitHub App. */
   reader?: CommitReader;
+  /** Test-only: the store the forms write through. Production builds
+   * one over the GitHub App. */
+  store?: StateStore;
   /** Test-only: the clock. */
   now?: () => Date;
 }
 
 const SIGN_IN_PATH = "/view/sign-in";
+/** The journal's `session` for a write made in the view. */
+const VIEW_SESSION = "the owner, in the view";
+const DECISION_CLOSE = /^\/view\/decision\/[^/]+\/close$/;
+const NODE_ACTION = /^\/view\/node\/[^/]+\/action$/;
+const SHA = /^[0-9a-f]{40}$/;
+
+/** The paths that accept `POST`. */
+function acceptsPost(path: string): boolean {
+  return (
+    path === SIGN_IN_PATH || DECISION_CLOSE.test(path) || NODE_ACTION.test(path)
+  );
+}
 
 export function isViewPath(path: string): boolean {
   return path === "/view" || path.startsWith("/view/");
@@ -79,7 +125,7 @@ function nowSeconds(now: () => Date): number {
 function htmlResponse(
   c: Context,
   html: string,
-  status: 200 | 401 | 404 | 405 | 500 | 502,
+  status: 200 | 400 | 401 | 403 | 404 | 405 | 409 | 422 | 500 | 502,
 ): Response {
   return c.html(html, status);
 }
@@ -88,13 +134,15 @@ function simplePage(
   c: Context,
   title: string,
   message: string,
-  status: 401 | 404 | 405 | 500,
+  status: 400 | 401 | 403 | 404 | 405 | 409 | 422 | 500 | 502,
+  back?: string,
 ): Response {
   const body = [
     sourceLine(undefined, undefined),
     "<main>",
     `<h1>${escapeHtml(title)}</h1>`,
-    `<p class="error">${escapeHtml(message)}</p>`,
+    `<p class="error pre" data-error>${escapeHtml(message)}</p>`,
+    back ? `<p><a href="${escapeHtml(back)}">Back</a></p>` : "",
     "</main>",
   ].join("\n");
   return htmlResponse(c, pageShell(title, body), status);
@@ -227,6 +275,13 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
   const now = options.now ?? (() => new Date());
   const cache = new ShaPathCache();
   const reader = (): CommitReader => options.reader ?? getDefaultCommitReader();
+  const store = (): StateStore =>
+    options.store ??
+    new StateStore({
+      reader: getDefaultCommitReader(),
+      writer: getDefaultGitWriter(),
+      now,
+    });
 
   // Headers first, so every `/view` response carries them, refusals
   // and errors included (V11).
@@ -238,18 +293,51 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
     }
   };
 
-  // Only GET, and POST on the sign-in path (V17).
+  // Only GET, and POST on the sign-in and write paths (V17). A POST
+  // from another site is refused.
   const methodGuard: MiddlewareHandler = async (c, next) => {
     if (!isViewPath(c.req.path)) return next();
-    const allowed = c.req.path === SIGN_IN_PATH ? ["GET", "POST"] : ["GET"];
+    const allowed =
+      c.req.path === SIGN_IN_PATH
+        ? ["GET", "POST"]
+        : acceptsPost(c.req.path)
+          ? ["POST"]
+          : ["GET"];
     if (!allowed.includes(c.req.method)) {
       c.header("Allow", allowed.join(", "));
       return simplePage(
         c,
         "Method not allowed",
-        `${c.req.method} is not accepted here. The view changes nothing.`,
+        `${c.req.method} is not accepted here. Nothing changed.`,
         405,
       );
+    }
+    if (c.req.method === "POST") {
+      const site = c.req.header("Sec-Fetch-Site");
+      // The host the request was made to, as the adapter built the URL
+      // (on Lambda, the API's domain name): a `Host` header does not
+      // survive every conversion to a Request.
+      const origin = c.req.header("Origin");
+      const host = new URL(c.req.url).host;
+      let originHost: string | undefined;
+      if (origin !== undefined && origin !== "null") {
+        try {
+          originHost = new URL(origin).host;
+        } catch {
+          originHost = "";
+        }
+      }
+      const crossSite =
+        (site !== undefined && site !== "same-origin" && site !== "none") ||
+        (originHost !== undefined && originHost !== host);
+      if (crossSite) {
+        return simplePage(
+          c,
+          "Refused",
+          "This request came from another site. Nothing changed.",
+          403,
+        );
+      }
     }
     return next();
   };
@@ -364,6 +452,13 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
     }
   }
 
+  /** The commit a page was redirected to after a write, when the
+   * query names one. */
+  function committedQuery(c: Context): string | undefined {
+    const value = c.req.query("committed");
+    return value !== undefined && SHA.test(value) ? value : undefined;
+  }
+
   app.get("/view", async (c) => {
     // An empty `ref` names no ref, the same as an absent one.
     const requestedRef = c.req.query("ref") || undefined;
@@ -371,7 +466,11 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
     if (!read.ok) return read.response;
     const state = stateAtPage(read.page.files.get(STATE_PATH)!);
     const mode = openMode(c.req.query("open") || undefined);
-    return htmlResponse(c, renderTreePage(state, read.commit, mode), 200);
+    return htmlResponse(
+      c,
+      renderTreePage(state, read.commit, mode, committedQuery(c)),
+      200,
+    );
   });
 
   app.get("/view/node/:id", async (c) => {
@@ -392,7 +491,167 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
           : `No node ${id} in ${STATE_PATH} at ${read.page.sha}.`,
       );
     }
-    return htmlResponse(c, renderNodePage(state, node, read.commit), 200);
+    return htmlResponse(
+      c,
+      renderNodePage(state, node, read.commit, committedQuery(c)),
+      200,
+    );
+  });
+
+  /** One string field of a posted form, trimmed; empty when absent. */
+  function formField(form: Record<string, unknown>, name: string): string {
+    const value = form[name];
+    return typeof value === "string" ? value.trim() : "";
+  }
+
+  async function postedForm(c: Context): Promise<Record<string, unknown>> {
+    try {
+      return await c.req.parseBody();
+    } catch {
+      return {};
+    }
+  }
+
+  /** The page a write failed from: the error named, nothing committed. */
+  function writeFailed(c: Context, err: unknown, back: string): Response {
+    if (err instanceof WriteRefusedError) {
+      return simplePage(
+        c,
+        "Refused: the change would violate the state's invariants",
+        `Nothing was committed.\n${err.findings.map((f) => `violation ${f.invariant}${f.subject ? ` ${f.subject}` : ""}: ${f.message}`).join("\n")}`,
+        422,
+        back,
+      );
+    }
+    if (err instanceof NotFoundError) {
+      return simplePage(
+        c,
+        "Not found",
+        `${err.message}. Nothing was committed.`,
+        404,
+        back,
+      );
+    }
+    if (err instanceof GitConflictError) {
+      return simplePage(
+        c,
+        "The branch moved",
+        `${err.message}; the write was retried once and the branch moved again. Nothing was committed; go back and try again.`,
+        409,
+        back,
+      );
+    }
+    if (err instanceof StateUnreadableError) {
+      return simplePage(
+        c,
+        "The state file does not validate",
+        `${err.message}; fix the file by hand before the view can write. Nothing was committed.`,
+        409,
+        back,
+      );
+    }
+    if (err instanceof GithubAppNotConfiguredError) {
+      return simplePage(
+        c,
+        "The service is not configured",
+        err.message,
+        500,
+        back,
+      );
+    }
+    if (
+      err instanceof GithubAppAuthError ||
+      err instanceof GithubFetchError ||
+      err instanceof GitWriteError
+    ) {
+      return simplePage(
+        c,
+        "GitHub refused the write",
+        `${err.message} (HTTP ${err.status}): ${err.body}. Nothing was committed.`,
+        502,
+        back,
+      );
+    }
+    return simplePage(
+      c,
+      "The write failed",
+      `${err instanceof Error ? err.message : String(err)}. Nothing was committed.`,
+      500,
+      back,
+    );
+  }
+
+  app.post("/view/decision/:id/close", async (c) => {
+    const id = c.req.param("id");
+    const form = await postedForm(c);
+    const picked = formField(form, "chosen");
+    const chosen = picked === OTHER_ANSWER ? formField(form, "other") : picked;
+    const note = formField(form, "note");
+    const standing = formField(form, "standing") === "yes";
+    const back = "/view";
+    if (chosen === "") {
+      return simplePage(
+        c,
+        "No answer given",
+        "Choose an option or write another answer. Nothing was committed.",
+        400,
+        back,
+      );
+    }
+    let node: string | null = null;
+    try {
+      const result = await store().write(`${id}: ${chosen}`, (state) => {
+        const applied = closeDecision(
+          state,
+          {
+            decisionId: id,
+            chosen,
+            ...(note ? { rationale: note } : {}),
+            standing,
+            session: VIEW_SESSION,
+          },
+          now().toISOString().slice(0, 10),
+        );
+        node = applied.decision.node;
+        return applied.event;
+      });
+      const target = node === null ? "/view" : nodePagePath(node);
+      return c.redirect(`${target}?committed=${result.sha}`, 303);
+    } catch (err) {
+      return writeFailed(c, err, back);
+    }
+  });
+
+  app.post("/view/node/:id/action", async (c) => {
+    const id = c.req.param("id");
+    const back = nodePagePath(id);
+    const form = await postedForm(c);
+    const action = formField(form, "action");
+    if (!(NODE_ACTIONS as readonly string[]).includes(action)) {
+      return simplePage(
+        c,
+        "No such action",
+        `${JSON.stringify(action)} is not an action this view offers. Nothing was committed.`,
+        400,
+        back,
+      );
+    }
+    const input = nodeActionInput(
+      id,
+      action as NodeAction,
+      formField(form, "note"),
+      VIEW_SESSION,
+    );
+    try {
+      const result = await store().write(
+        `${id}: ${input.reason}`,
+        (state) =>
+          updateNode(state, input, now().toISOString().slice(0, 10)).event,
+      );
+      return c.redirect(`${back}?committed=${result.sha}`, 303);
+    } catch (err) {
+      return writeFailed(c, err, back);
+    }
   });
 
   app.get("/view/task/:id", async (c) => {

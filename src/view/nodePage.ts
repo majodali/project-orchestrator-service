@@ -3,7 +3,10 @@
  * milestone 2): one node of the state file at one commit. Its place in
  * the tree, its class and stage, its outcome, what it waits on and
  * what waits on it, its documents at the page's SHA, its decisions and
- * its tasks. No criteria labels and no rulings.
+ * its tasks. No criteria labels and no rulings. Since the rebuild's
+ * milestone 4 an open decision carries the form that closes it, and
+ * the lifecycle actions open on the node are one click each
+ * (./actions.ts).
  */
 
 import {
@@ -15,6 +18,7 @@ import {
   type NodeClass,
 } from "../model/check.js";
 import type { Decision, Node, State, Task } from "../model/schema.js";
+import { committedLine, decisionForm, nodeActionsSection } from "./actions.js";
 import type { PageCommit } from "./html.js";
 import {
   blobUrl,
@@ -102,7 +106,7 @@ function decisionRow(d: Decision): string {
   const source = d.source
     ? `<br><span class="note">${escapeHtml(d.source)}</span>`
     : "";
-  return `<li data-decision="${escapeHtml(d.id)}"><span class="id">${escapeHtml(d.id)}</span> ${escapeHtml(d.question)}<br>${status}${d.rationale ? `<br><span class="note">${escapeHtml(d.rationale)}</span>` : ""}${source}</li>`;
+  return `<li id="${escapeHtml(d.id)}" data-decision="${escapeHtml(d.id)}"><span class="id">${escapeHtml(d.id)}</span> ${escapeHtml(d.question)}<br>${status}${d.rationale ? `<br><span class="note">${escapeHtml(d.rationale)}</span>` : ""}${source}${decisionForm(d)}</li>`;
 }
 
 function decisionsSection(node: Node, state: State): string {
@@ -164,6 +168,7 @@ export function renderNodePage(
   state: State,
   node: Node,
   commit: PageCommit,
+  committed?: string,
 ): string {
   const byId = nodesById(state);
   const classes = classifyAll(state);
@@ -185,6 +190,7 @@ export function renderNodePage(
     pageHeader(commit, nodePagePath(node.id)),
     sourceLine(commit, commit.sha),
     "<main>",
+    committedLine(commit, committed, commit.sha),
     crumbs(node, byId, commit),
     `<h1 data-title>${escapeHtml(node.title)}<span class="id" data-node-id>${escapeHtml(node.id)}</span></h1>`,
     `<p>${classBadge(cls)} <span class="stage" data-stage>${escapeHtml(stage)}</span>${cls === "done" || cls === "parked" ? "" : ` <span class="note">${escapeHtml(NODE_CLASS_LABELS[cls])}</span>`}</p>`,
@@ -235,6 +241,7 @@ export function renderNodePage(
     "</dl>",
     "</section>",
     "</div>",
+    nodeActionsSection(node),
     decisionsSection(node, state),
     tasksSection(node, state, commit),
     "</main>",

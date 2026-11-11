@@ -28,6 +28,7 @@ import {
   type NodeClass,
 } from "../model/check.js";
 import type { Decision, Node, State } from "../model/schema.js";
+import { committedLine, decisionForm } from "./actions.js";
 import type { PageCommit } from "./html.js";
 import { escapeHtml, pageHeader, pageShell, sourceLine } from "./html.js";
 import { classBadge, nodeHref } from "./parts.js";
@@ -65,11 +66,25 @@ export function problemsSection(findings: Finding[]): string {
   ].join("\n");
 }
 
-function decisionLine(d: Decision): string {
+/** An open decision under its node: the question, the default, and a
+ * link to the node page, where the form that closes it is. */
+function decisionLine(d: Decision, commit: PageCommit): string {
   const dflt = d.default
     ? ` <span class="note">Default: ${escapeHtml(d.default)}</span>`
     : "";
-  return `<li data-open-decision="${escapeHtml(d.id)}"><span class="id">${escapeHtml(d.id)}</span> ${escapeHtml(d.question)}${dflt}</li>`;
+  const answer =
+    d.node === null
+      ? ""
+      : ` <a href="${escapeHtml(nodeHref(d.node, commit.requestedRef))}#${escapeHtml(d.id)}">answer</a>`;
+  return `<li data-open-decision="${escapeHtml(d.id)}"><span class="id">${escapeHtml(d.id)}</span> ${escapeHtml(d.question)}${dflt}${answer}</li>`;
+}
+
+/** A project decision, on no node, with the form that closes it. */
+function projectDecision(d: Decision): string {
+  const dflt = d.default
+    ? ` <span class="note">Default: ${escapeHtml(d.default)}</span>`
+    : "";
+  return `<li id="${escapeHtml(d.id)}" data-open-decision="${escapeHtml(d.id)}"><span class="id">${escapeHtml(d.id)}</span> ${escapeHtml(d.question)}${dflt}${decisionForm(d)}</li>`;
 }
 
 /** Counts over a node's subtree, the node itself included. */
@@ -149,7 +164,7 @@ function treeRow(
     : "";
   const list =
     decisions.length > 0
-      ? `<ul class="decisions" data-decisions-of="${escapeHtml(n.id)}">${decisions.map(decisionLine).join("")}</ul>`
+      ? `<ul class="decisions" data-decisions-of="${escapeHtml(n.id)}">${decisions.map((d) => decisionLine(d, commit)).join("")}</ul>`
       : "";
   return `${classBadge(cls)} ${titleLink(n, commit)}${stage} ${flags(below, own)}${outcome}${attention}${list}`;
 }
@@ -241,7 +256,7 @@ function summary(
   const project = openDecisions.get("") ?? [];
   const projectList =
     project.length > 0
-      ? `<p class="note">Project decisions, on no node:</p><ul class="decisions" data-decisions-of="">${project.map(decisionLine).join("")}</ul>`
+      ? `<p class="note">Project decisions, on no node:</p><ul class="decisions project" data-decisions-of="">${project.map(projectDecision).join("")}</ul>`
       : "";
   return `<section data-summary><p class="counts">${parts.join(" · ")}</p>${projectList}</section>`;
 }
@@ -264,6 +279,7 @@ export function renderTreePage(
   read: StateAtPage,
   commit: PageCommit,
   mode: OpenMode = "owner",
+  committed?: string,
 ): string {
   const title = read.state ? `Plan: ${read.state.project}` : "Plan";
   const body: string[] = [
@@ -291,6 +307,7 @@ export function renderTreePage(
   }
   body.push(
     `<h1>${escapeHtml(title)}</h1>`,
+    committedLine(commit, committed, commit.sha),
     summary(state, classes, openDecisions),
     "<section data-plan>",
     modeLinks(mode, commit),
