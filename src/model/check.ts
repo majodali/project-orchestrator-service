@@ -92,6 +92,18 @@ export function classifyNode(
   if (node.hold?.kind === "blocked") return "blocked";
   if ((openTasks.get(node.id) ?? []).length > 0) return "in-flight";
   if (node.stage === "broken-down") return "in-progress";
+  if (node.stage === "verifying") {
+    // The check node carries the work; a failed check node hands the
+    // node back for rework, which starts automatically.
+    const failed = [...byId.values()].some(
+      (c) =>
+        c.parent === node.id &&
+        c.kind === "check" &&
+        c.stage !== "done" &&
+        c.hold !== null,
+    );
+    if (!failed) return "in-progress";
+  }
   if (node.after.some((d) => byId.get(d)?.stage !== "done")) return "waiting";
   if (node.start === "approve") return "gated";
   return "actionable";
@@ -102,6 +114,27 @@ export function classifyNode(
 export function attentionReason(node: Node): string {
   if (node.hold) return node.hold.reason;
   return "start needs the owner's approval";
+}
+
+/** A check node is hidden unless it failed (a hold) or is in flight
+ * (an open task); its own page and its parent's page always show it
+ * (the rebuild plan, "The check node"). */
+export function isHiddenCheck(
+  node: Node,
+  openTasks: Map<string, string[]>,
+): boolean {
+  return (
+    node.kind === "check" &&
+    node.hold === null &&
+    (openTasks.get(node.id) ?? []).length === 0
+  );
+}
+
+/** The nodes a plan rendering shows: every work node, and the check
+ * nodes that are not hidden. */
+export function shownNodes(state: State): Node[] {
+  const open = openTaskByNode(state);
+  return state.nodes.filter((n) => !isHiddenCheck(n, open));
 }
 
 export function classifyAll(state: State): Map<string, NodeClass> {
@@ -349,6 +382,27 @@ export function checkState(value: unknown): {
         node,
         `has ${tasks.length} open tasks (${tasks.join(", ")}); at most one`,
       );
+    }
+  }
+
+  // 11. Check nodes (milestone 5): a check node has a parent, and a
+  // node at verifying has exactly one check node not done.
+  for (const n of state.nodes) {
+    if (n.kind === "check" && n.parent === null) {
+      find("violation", 11, n.id, "is a check node with no parent");
+    }
+    if (n.stage === "verifying") {
+      const checks = (children.get(n.id) ?? []).filter(
+        (c) => c.kind === "check" && c.stage !== "done",
+      );
+      if (checks.length !== 1) {
+        find(
+          "violation",
+          11,
+          n.id,
+          `is verifying with ${checks.length} check node(s) not done; exactly one`,
+        );
+      }
     }
   }
 

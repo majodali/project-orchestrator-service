@@ -24,6 +24,7 @@ import {
   childrenOf,
   classifyAll,
   nodesById,
+  shownNodes,
   type Finding,
   type NodeClass,
 } from "../model/check.js";
@@ -166,7 +167,11 @@ function treeRow(
     decisions.length > 0
       ? `<ul class="decisions" data-decisions-of="${escapeHtml(n.id)}">${decisions.map((d) => decisionLine(d, commit)).join("")}</ul>`
       : "";
-  return `${classBadge(cls)} ${titleLink(n, commit)}${stage} ${flags(below, own)}${outcome}${attention}${list}`;
+  const kind =
+    n.kind === "check"
+      ? '<span class="kind" data-kind="check">check</span> '
+      : "";
+  return `${classBadge(cls)} ${kind}${titleLink(n, commit)}${stage} ${flags(below, own)}${outcome}${attention}${list}`;
 }
 
 function renderTree(
@@ -241,8 +246,11 @@ function summary(
   classes: Map<string, NodeClass>,
   openDecisions: Map<string, Decision[]>,
 ): string {
+  // Counts are over the work nodes: check nodes count in no total.
   const count = (c: NodeClass): number =>
-    state.nodes.filter((n) => classes.get(n.id) === c).length;
+    state.nodes.filter((n) => n.kind !== "check" && classes.get(n.id) === c)
+      .length;
+  const total = state.nodes.filter((n) => n.kind !== "check").length;
   const decisions = state.decisions.filter((d) => d.chosen === null).length;
   const owner = count("gated");
   const parts = [
@@ -251,7 +259,7 @@ function summary(
     `<span data-count-flight="${count("in-flight")}">${count("in-flight")} in flight</span>`,
     `<span data-count-waiting="${count("waiting")}">${count("waiting")} waiting on a dependency</span>`,
     `<span data-count-blocked="${count("blocked")}">${count("blocked")} blocked</span>`,
-    `<span data-count-done="${count("done")}">${count("done")} of ${state.nodes.length} done</span>`,
+    `<span data-count-done="${count("done")}">${count("done")} of ${total} done</span>`,
   ];
   const project = openDecisions.get("") ?? [];
   const projectList =
@@ -295,7 +303,9 @@ export function renderTreePage(
     );
     return pageShell(title, body.join("\n"));
   }
-  const state = read.state;
+  // Hidden check nodes stay out of the tree; shown ones (failed or in
+  // flight) sit under the node they verify.
+  const state: State = { ...read.state, nodes: shownNodes(read.state) };
   const classes = classifyAll(state);
   nodesById(state); // the ids are valid: checkState passed the schema
   const openDecisions = new Map<string, Decision[]>();

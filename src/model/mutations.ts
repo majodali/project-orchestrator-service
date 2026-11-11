@@ -47,6 +47,17 @@ export function updateNode(
     n.stage = input.stage;
     if (input.stage === "done" && n.done === null) n.done = today;
     if (input.stage !== "done") n.done = null;
+    if (input.stage === "done") {
+      // The owner's acceptance closes the verification with the node.
+      for (const c of state.nodes) {
+        if (c.parent === n.id && c.kind === "check" && c.stage !== "done") {
+          c.stage = "done";
+          c.done = today;
+          c.hold = null;
+          changes.push(`${c.id} done`);
+        }
+      }
+    }
   }
   if (
     input.hold !== undefined &&

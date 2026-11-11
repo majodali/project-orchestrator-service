@@ -99,8 +99,8 @@ repository, the state file (the rebuild plan there,
   branch): every node with its class, the open decisions and tasks,
   and the commit SHA; or one node in full with its tasks and
   decisions.
-- `node_update`, `task_open`, `task_close`, `decision_open`,
-  `decision_close` — the writes. Each applies one change to the state
+- `node_update`, `node_add`, `task_open`, `task_close`,
+  `decision_open`, `decision_close` — the writes. Each applies one change to the state
   read at the branch head, checks the result against the model's
   invariants and refuses a violation with nothing committed, renders
   `docs/plan-register.md` and `docs/plan.md` from the new state,
@@ -111,16 +111,31 @@ repository, the state file (the rebuild plan there,
   reads again and retries once (`src/model/store.ts`,
   `src/planRegister/gitWriter.ts`, `src/stateTools.ts`). The service
   writes only those four paths; nothing else holds state, and there
-  is no lease. `task_open` also answers the decisions the session
-  reads first: those closed on the node and its ancestors, and the
-  standing project decisions (`src/model/mutations.ts`).
+  is no lease.
+- `task_next`, `task_open`, `task_close` — the task loop (the rebuild
+  plan, "The loop and the close-out"; `src/model/loop.ts`).
+  `task_next(role?)` answers the first node in tree order that offers
+  a step, with its documents at the commit, its ancestors, the tasks
+  that ran on it and the decisions to read first; it closes tasks
+  open past the time limit as stale first. `task_open` is the claim,
+  one conditional commit, refused with the reason when the node does
+  not offer the step. `task_close` records the result and runs the
+  close-out: a closed step moves the node on (an executed node enters
+  verifying with a hidden check node; a verified check node completes
+  its parent and climbs), blocked and needs-judgment hold the node
+  for the owner, each ask becomes an open decision on the node, and a
+  scope that changed since the task opened closes it as
+  needs-judgment. The answer's `stop` says when the session returns
+  to the owner. Check nodes (`kind: "check"`) are hidden in the view
+  and the plan unless they fail, are in flight or are selected, and
+  count in no total.
 
 ### HTTP routes
 
 | Method and path                           | Auth                        | Answers                                                                                                                                                                                                                                                                                                                         |
 | ----------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /health`                             | none                        | liveness, as JSON                                                                                                                                                                                                                                                                                                               |
-| `ANY /mcp`                                | `Authorization: Bearer`     | the MCP endpoint and its seven tools                                                                                                                                                                                                                                                                                            |
+| `ANY /mcp`                                | `Authorization: Bearer`     | the MCP endpoint and its nine tools                                                                                                                                                                                                                                                                                             |
 | `GET /view/sign-in`                       | none                        | the web view's sign-in form                                                                                                                                                                                                                                                                                                     |
 | `POST /view/sign-in`                      | the view token, in the form | `303` to `/view` with the view cookie, or `401`                                                                                                                                                                                                                                                                                 |
 | `GET /view`                               | the view cookie             | the plan of the coordinating repository at one commit, from `orchestration/state.json`: every node in its tree with its class and outcome, what waits on the owner marked in context and unfolded, and the problems `check` reports; `?ref=` picks a branch, tag or SHA; `?open=` picks what is unfolded                        |

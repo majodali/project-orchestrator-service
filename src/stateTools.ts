@@ -18,8 +18,21 @@ import {
   holdSchema,
   type Decision,
   type Node,
-  type Task,
+  type State,
 } from "./model/schema.js";
+import {
+  addNode,
+  ancestorsOf,
+  candidates,
+  closeStale,
+  closeTask,
+  openTask,
+  scopeOf,
+  staleTasks,
+  type CloseInput,
+  type CloseResult,
+  type OpenResult,
+} from "./model/loop.js";
 import {
   closeDecision,
   decisionsForTask,
@@ -295,15 +308,140 @@ export function registerStateTools(
       }),
   );
 
+  /** What a session needs to start on a node: the node in full, its
+   * step and role, its documents, its ancestors, the tasks that ran on
+   * it, and the decisions it reads first. */
+  function brief(
+    state: State,
+    node: Node,
+    step: string,
+    steps: string[],
+    role: string,
+    sha: string,
+  ): Record<string, unknown> {
+    const classes = classifyAll(state);
+    const byId = new Map(state.nodes.map((n) => [n.id, n]));
+    return {
+      node: {
+        ...node,
+        class: classes.get(node.id),
+        classLabel: NODE_CLASS_LABELS[classes.get(node.id)!],
+      },
+      step,
+      steps,
+      role,
+      ancestors: ancestorsOf(node, byId)
+        .reverse()
+        .map((a) => ({ id: a.id, title: a.title, stage: a.stage })),
+      documents: {
+        plan: node.docs.plan
+          ? `https://github.com/${state.project}/blob/${sha}/${node.docs.plan}`
+          : null,
+        spec: node.docs.spec
+          ? `https://github.com/${state.project}/blob/${sha}/${node.docs.spec}`
+          : null,
+      },
+      tasks: state.tasks
+        .filter((t) => t.node === node.id)
+        .map((t) => ({
+          id: t.id,
+          step: t.step,
+          status: t.status,
+          closed: t.closed,
+          pr: t.pr,
+          summary: t.summary,
+        })),
+      decisions: decisionsForTask(state, node.id),
+    };
+  }
+
+  server.registerTool(
+    "task_next",
+    {
+      title: "The next task",
+      description:
+        "Answers the first node in tree order that offers a step, for a role when " +
+        "given (planner, implementer, reviewer): the node in full, its step, its " +
+        "documents at the commit, its ancestors, the tasks that ran on it and the " +
+        "decisions to read first. Closes tasks open past the time limit as stale " +
+        "first, in one commit. The claim is `task_open`.",
+      inputSchema: {
+        role: z.enum(["planner", "implementer", "reviewer"]).optional(),
+        session: sessionField,
+      },
+    },
+    async (input) =>
+      run(async () => {
+        let read = await store().read();
+        if (read.state === null) {
+          return toolError(
+            `orchestration/state.json at ${read.sha} does not validate:\n${findingsText(read.findings)}`,
+          );
+        }
+        let staleClosed: string[] = [];
+        if (staleTasks(read.state, now()).length > 0) {
+          await store().write("stale tasks closed by task_next", (state) => {
+            staleClosed = closeStale(state, now(), timestamp(now));
+            return {
+              task: null,
+              node: null,
+              session: input.session ?? null,
+              note: `task_next closed ${staleClosed.join(", ")} as stale`,
+            };
+          });
+          read = await store().read();
+          if (read.state === null) {
+            return toolError(
+              `orchestration/state.json at ${read.sha} does not validate:\n${findingsText(read.findings)}`,
+            );
+          }
+        }
+        const state = read.state;
+        const found = candidates(state, input.role);
+        const first = found[0];
+        if (first === undefined) {
+          return ok({
+            ref: read.ref,
+            sha: read.sha,
+            fetchedAt: read.fetchedAt,
+            staleClosed,
+            next: null,
+            candidates: [],
+            message: `no node offers a step${input.role ? ` for ${input.role}` : ""}; what remains waits on the owner, on a dependency or on an open task`,
+          });
+        }
+        return ok({
+          ref: read.ref,
+          sha: read.sha,
+          fetchedAt: read.fetchedAt,
+          staleClosed,
+          next: brief(
+            state,
+            first.node,
+            first.step,
+            first.steps,
+            first.role,
+            read.sha,
+          ),
+          candidates: found.slice(0, 10).map((c) => ({
+            id: c.node.id,
+            title: c.node.title,
+            step: c.step,
+            role: c.role,
+          })),
+        });
+      }),
+  );
+
   server.registerTool(
     "task_open",
     {
-      title: "Open a task",
+      title: "Open a task: the claim",
       description:
-        "Opens a task on a node, with the next task identifier, and commits. A node " +
-        "has at most one open task. Answers the decisions the session reads " +
-        "first: those closed on the node and its ancestors, and the standing " +
-        "project decisions.",
+        "Claims a node for a step, with the next task identifier, and commits: one " +
+        "conditional commit, so two sessions cannot claim the same node. Refuses a " +
+        "node that does not offer the step, naming why. An `execute` step moves the " +
+        "node to `executing`. Answers what task_next answers for the node.",
       inputSchema: {
         nodeId,
         step: z.enum(STEPS),
@@ -318,45 +456,41 @@ export function registerStateTools(
     },
     async (input) =>
       run(async () => {
-        let id = "";
-        let decisions: Decision[] = [];
+        let opened: OpenResult | null = null;
+        let after: State | null = null;
         const result = await store().write(
           `${input.nodeId}: task opened`,
-          (state) => {
-            if (!state.nodes.some((x) => x.id === input.nodeId)) {
-              throw new NotFoundError(`no node ${input.nodeId}`);
-            }
-            decisions = decisionsForTask(state, input.nodeId);
-            id = nextId(
-              "T",
-              state.tasks.map((t) => t.id),
-              3,
+          (state, { baseSha }) => {
+            opened = openTask(
+              state,
+              input,
+              nextId(
+                "T",
+                state.tasks.map((t) => t.id),
+                3,
+              ),
+              timestamp(now),
+              baseSha,
             );
-            const task: Task = {
-              id,
-              node: input.nodeId,
-              step: input.step,
-              status: "open",
-              role: input.role ?? null,
-              model: input.model ?? null,
-              tokens: { in: null, out: null },
-              opened: timestamp(now),
-              closed: null,
-              ref: null,
-              pr: null,
-              summary: input.summary ?? null,
-              notes: null,
-            };
-            state.tasks.push(task);
-            return {
-              task: id,
-              node: input.nodeId,
-              session: input.session ?? null,
-              note: `task_open ${id} on ${input.nodeId}, ${input.step}${input.summary ? `: ${input.summary}` : ""}`,
-            };
+            after = state;
+            return opened.event;
           },
         );
-        return writeResult(result, { taskId: id, decisions });
+        const done = opened!;
+        const state = after!;
+        const node = state.nodes.find((n) => n.id === input.nodeId)!;
+        return writeResult(result, {
+          taskId: done.task.id,
+          moved: done.moved,
+          ...brief(
+            state,
+            node,
+            input.step,
+            [input.step],
+            done.task.role ?? "",
+            result.sha,
+          ),
+        });
       }),
   );
 
@@ -365,8 +499,14 @@ export function registerStateTools(
     {
       title: "Close a task",
       description:
-        "Closes an open task with its status, summary, pull request, commit and " +
-        "token counts, and commits.",
+        "Records a task's result (status, summary, pull request, commit, token " +
+        "counts) and runs the close-out: a `closed` step moves the node on (an " +
+        "executed node enters verifying with a check node; a verified check node " +
+        "completes its parent), `blocked` and `needs-judgment` hold the node for " +
+        "the owner, and each ask becomes an open decision on the node. A scope that " +
+        "changed since the task opened closes it as needs-judgment. A planning step " +
+        "delivers the title, outcome and documents here, applied at close. Answers " +
+        "`stop` when the session should return to the owner.",
       inputSchema: {
         taskId: z.string().regex(/^T\d{3,}$/),
         status: z.enum(
@@ -384,38 +524,121 @@ export function registerStateTools(
         ref: z.string().optional().describe("The commit the result landed at."),
         tokensIn: z.number().int().nonnegative().optional(),
         tokensOut: z.number().int().nonnegative().optional(),
+        asks: z
+          .array(
+            z.object({
+              question: z.string().min(1),
+              options: z.array(z.string().min(1)).optional(),
+              default: z.string().min(1),
+            }),
+          )
+          .optional()
+          .describe(
+            "Questions for the owner; each becomes an open decision on the node.",
+          ),
+        title: z.string().min(1).optional(),
+        outcome: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("What a plan step delivers: the node's outcome sentence."),
+        docs: z
+          .object({
+            plan: z.string().min(1).nullable().optional(),
+            spec: z.string().min(1).nullable().optional(),
+          })
+          .optional()
+          .describe("The documents a plan or specify step delivers."),
         session: sessionField,
       },
     },
     async (input) =>
       run(async () => {
-        let node = "";
+        // The node's scope at the task's base commit, for the stop
+        // condition; a task from before the loop has no base.
+        const head = await store().read();
+        const task = head.state?.tasks.find((t) => t.id === input.taskId);
+        let scopeAtBase: string | null = null;
+        if (task?.base) {
+          const base = await store().readStateAt(task.base);
+          const there = base.state?.nodes.find((n) => n.id === task.node);
+          if (there) scopeAtBase = scopeOf(there);
+        }
+        let closed: CloseResult | null = null;
         const result = await store().write(
           `${input.taskId}: ${input.status}`,
           (state) => {
-            const t = state.tasks.find((x) => x.id === input.taskId);
-            if (!t) throw new NotFoundError(`no task ${input.taskId}`);
-            if (t.status !== "open")
-              throw new NotFoundError(
-                `task ${input.taskId} is ${t.status}, not open`,
-              );
-            t.status = input.status as Task["status"];
-            t.closed = timestamp(now);
-            t.summary = input.summary;
-            if (input.pr !== undefined) t.pr = input.pr;
-            if (input.ref !== undefined) t.ref = input.ref;
-            if (input.tokensIn !== undefined) t.tokens.in = input.tokensIn;
-            if (input.tokensOut !== undefined) t.tokens.out = input.tokensOut;
-            node = t.node;
-            return {
-              task: t.id,
-              node: t.node,
-              session: input.session ?? null,
-              note: `task_close ${t.id} ${input.status}: ${input.summary}`,
-            };
+            closed = closeTask(
+              state,
+              { ...input, status: input.status as CloseInput["status"] },
+              scopeAtBase,
+              today(now),
+              timestamp(now),
+              (s) =>
+                nextId(
+                  "D",
+                  s.decisions.map((d) => d.id),
+                  3,
+                ),
+            );
+            return closed.event;
           },
         );
-        return writeResult(result, { taskId: input.taskId, nodeId: node });
+        const done = closed!;
+        return writeResult(result, {
+          taskId: done.task.id,
+          status: done.task.status,
+          nodeId: done.node.id,
+          nodeStage: done.node.stage,
+          moved: done.moved,
+          decisionsOpened: done.decisions,
+          stop: done.stop,
+        });
+      }),
+  );
+
+  server.registerTool(
+    "node_add",
+    {
+      title: "Add a node",
+      description:
+        "Adds a node with the next identifier in its plan line, as a child of a " +
+        "parent or as a root of a named line, and commits. Planning and breaking " +
+        "down add nodes this way.",
+      inputSchema: {
+        parentId: nodeId.nullable(),
+        line: z
+          .string()
+          .regex(/^P\d+$/)
+          .optional()
+          .describe("The plan line of a root node, such as P5."),
+        title: z.string().min(1),
+        outcome: z.string().min(1).nullable(),
+        after: z.array(nodeId).optional(),
+        docs: z
+          .object({
+            plan: z.string().min(1).nullable(),
+            spec: z.string().min(1).nullable(),
+          })
+          .optional(),
+        stage: z.enum(["identified", "planned", "specified"]).optional(),
+        start: z.enum(["auto", "approve"]).optional(),
+        note: z.string().optional(),
+        session: sessionField,
+      },
+    },
+    async (input) =>
+      run(async () => {
+        let id = "";
+        const result = await store().write(
+          `${input.parentId ?? input.line ?? "plan"}: node added`,
+          (state) => {
+            const added = addNode(state, input);
+            id = added.node.id;
+            return added.event;
+          },
+        );
+        return writeResult(result, { nodeId: id });
       }),
   );
 

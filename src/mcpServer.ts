@@ -48,6 +48,8 @@ export const TOOL_NAMES = [
   "service_identity",
   "plan_read",
   "node_update",
+  "node_add",
+  "task_next",
   "task_open",
   "task_close",
   "decision_open",

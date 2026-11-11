@@ -122,15 +122,25 @@ export class StateStore {
     };
   }
 
+  /** The state at one commit, or null with the findings when it does
+   * not validate. */
+  async readStateAt(sha: string): Promise<{
+    state: State | null;
+    findings: Finding[];
+  }> {
+    return parseState(await this.reader.readFileAtSha(sha, STATE_PATH));
+  }
+
   /**
    * Applies `mutate` to the state at the default branch's head and
    * commits the result. `mutate` edits the state it is given in place
    * and returns the journal event's fields; it may throw
-   * `NotFoundError` or `WriteRefusedError` of its own.
+   * `NotFoundError` or `WriteRefusedError` of its own. It is also told
+   * the commit the state was read at, the new commit's parent.
    */
   async write(
     message: string,
-    mutate: (state: State) => WriteEvent,
+    mutate: (state: State, context: { baseSha: string }) => WriteEvent,
   ): Promise<WriteResult> {
     let lastConflict: GitConflictError | null = null;
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -145,7 +155,7 @@ export class StateStore {
       const journal = await this.readOptional(baseSha, JOURNAL_PATH);
 
       const next = structuredClone(parsed.state);
-      const event = mutate(next);
+      const event = mutate(next, { baseSha });
       next.nodes = orderSiblingsByDependency(next);
       const { findings } = checkState(next);
       const violations = findings.filter((f) => f.severity === "violation");

@@ -87,8 +87,16 @@ export const holdSchema = z.object({
 });
 export type Hold = z.infer<typeof holdSchema>;
 
+/** A work node is the plan's; a check node is the verification of its
+ * parent, added by the loop when the parent enters `verifying` and
+ * hidden unless it fails, is in flight or is selected (the rebuild
+ * plan, milestone 5). */
+export const NODE_KINDS = ["work", "check"] as const;
+export type NodeKind = (typeof NODE_KINDS)[number];
+
 export const nodeSchema = z.object({
   id: nodeId,
+  kind: z.enum(NODE_KINDS).default("work"),
   /** Says what the node delivers. Shown beside the identifier everywhere. */
   title: z.string().min(1),
   /** One sentence. Required from `planned` on (invariant 4). */
@@ -127,6 +135,10 @@ export const taskSchema = z.object({
   }),
   opened: timestamp.nullable(),
   closed: timestamp.nullable(),
+  /** The commit the task was opened on: `task_close` reads the node
+   * there to tell a changed scope (milestone 5). Null for tasks
+   * written before the loop. */
+  base: z.string().min(1).nullable().default(null),
   /** The commit the result landed at, when known. */
   ref: z.string().min(1).nullable(),
   pr: z.string().regex(PULL_REQUEST, "owner/repo#number").nullable(),
