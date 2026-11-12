@@ -31,6 +31,23 @@ describe("scripts/prepare.mjs", () => {
     expect(pkg.scripts.prepare).toBe("node scripts/prepare.mjs");
   });
 
+  it("starts the compiler with this Node by path, never through npm or a shell, so that it runs on Windows", () => {
+    // On Windows `npm` is `npm.cmd`, which a process cannot start
+    // without a shell: `spawnSync("npm", …)` failed there and took the
+    // installing repository's `npm ci` with it (2026-11-12).
+    const code = readFileSync(
+      path.join(REPO_ROOT, "scripts", "prepare.mjs"),
+      "utf-8",
+    )
+      .split("\n")
+      .filter((line) => !line.trimStart().startsWith("//"))
+      .join("\n");
+    expect(code).not.toMatch(/spawnSync\(\s*["']npm/);
+    expect(code).not.toMatch(/shell:\s*true/);
+    expect(code).toContain("spawnSync(process.execPath, [compiler");
+    expect(code).toContain('"tsc.cmd"');
+  });
+
   it("skips the build, exit 0, where node_modules/.bin/tsc is absent", () => {
     // A copy of the script under a package root with no node_modules.
     const dir = mkdtempSync(path.join(tmpdir(), "prepare-"));
