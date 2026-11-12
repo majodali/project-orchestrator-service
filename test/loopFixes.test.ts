@@ -102,12 +102,37 @@ async function rpc(
   return (await res.json()) as { result: Record<string, unknown> };
 }
 
+/** The tools a session may call only under a task or on the owner's
+ * instruction. A test that gives neither writes as the owner
+ * dictated, so that it tests the write and not the authority. */
+const GUARDED = new Set([
+  "node_update",
+  "node_add",
+  "node_remove",
+  "decision_open",
+  "decision_close",
+]);
+const AS_OWNER = "the owner dictated this change";
+
+function withAuthority(
+  name: string,
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!GUARDED.has(name) || "task" in args || "ownerInstruction" in args) {
+    return args;
+  }
+  return { ...args, ownerInstruction: AS_OWNER };
+}
+
 async function call(
   app: ReturnType<typeof createApp>,
   name: string,
   args: Record<string, unknown> = {},
 ) {
-  const body = await rpc(app, "tools/call", { name, arguments: args });
+  const body = await rpc(app, "tools/call", {
+    name,
+    arguments: withAuthority(name, args),
+  });
   return body.result as {
     isError?: boolean;
     structuredContent?: Record<string, unknown>;
@@ -225,7 +250,7 @@ describe("node_remove", () => {
     expect(s.highWater).toEqual({ P1: 3, T: 1, D: 1 });
     expect(checkState(s).findings).toEqual([]);
     expect(repo.commits[0]!.message).toBe(
-      "P1-N003 removed: superseded by the rebuilt loop",
+      "P1-N003 removed: superseded by the rebuilt loop (no task: the owner's instruction)",
     );
     expect(
       repo.files
@@ -707,5 +732,177 @@ describe("task_cost", () => {
     });
     expect(missing.isError).toBe(true);
     expect(missing.content[0]!.text).toBe("no task T999");
+  });
+});
+
+describe("a session's write needs a task", () => {
+  const raw = (
+    app: ReturnType<typeof createApp>,
+    name: string,
+    args: Record<string, unknown>,
+  ) =>
+    rpc(app, "tools/call", { name, arguments: args }).then(
+      (b) =>
+        b.result as {
+          isError?: boolean;
+          structuredContent?: Record<string, unknown>;
+          content: Array<{ text: string }>;
+        },
+    );
+
+  it("refuses every node and decision write that names neither a task nor the owner's instruction, and commits nothing", async () => {
+    const state = plan();
+    state.decisions.push(
+      decision({
+        id: "D001",
+        node: "P1-N002",
+        question: "Which?",
+        default: "a",
+      }),
+    );
+    const repo = repoWith(state);
+    const app = appOver(repo);
+    const attempts: Array<[string, Record<string, unknown>]> = [
+      ["node_update", { nodeId: "P1-N002", reason: "x", note: "edited" }],
+      ["node_update", { nodeId: "P1-N002", reason: "x", stage: "done" }],
+      ["node_add", { parentId: "P1-N001", title: "A new part", outcome: null }],
+      ["node_remove", { nodeId: "P1-N003", reason: "x" }],
+      ["decision_open", { nodeId: "P1-N002", question: "Why?", default: "b" }],
+      ["decision_close", { decisionId: "D001", chosen: "a" }],
+      [
+        "node_update",
+        { nodeId: "P1-N002", reason: "x", note: "n", ownerInstruction: "   " },
+      ],
+    ];
+    for (const [name, args] of attempts) {
+      const result = await raw(app, name, args);
+      expect(result.isError, name).toBe(true);
+      expect(result.content[0]!.text, name).toContain(
+        "refused: this write is not under a task",
+      );
+    }
+    expect(repo.commits).toHaveLength(0);
+  });
+
+  it("accepts a write under an open task, and records the task on the commit and the journal event", async () => {
+    const repo = repoWith(plan());
+    const app = appOver(repo);
+    await call(app, "task_open", { nodeId: "P1-N002", step: "break down" });
+    const added = await raw(app, "node_add", {
+      parentId: "P1-N002",
+      title: "A first piece",
+      outcome: "The first piece exists.",
+      task: "T001",
+      session: "session one",
+    });
+    expect(added.isError).toBeUndefined();
+    expect(repo.commits.at(-1)!.message).toBe("P1-N002: node added (T001)");
+    const events = repo.files
+      .get(repo.heads.get("main")!)!
+      .get("orchestration/journal.jsonl")!
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as { task: string | null; note: string });
+    expect(events.at(-1)!.task).toBe("T001");
+    expect(events.at(-1)!.note).not.toContain("no task");
+  });
+
+  it("refuses a task that is closed or unknown, and one closed since the write began", async () => {
+    const repo = repoWith(plan());
+    const app = appOver(repo);
+    await call(app, "task_open", { nodeId: "P1-N002", step: "execute" });
+    await call(app, "task_close", {
+      taskId: "T001",
+      status: "blocked",
+      summary: "Stuck.",
+    });
+    const closed = await raw(app, "node_update", {
+      nodeId: "P1-N002",
+      reason: "x",
+      note: "n",
+      task: "T001",
+    });
+    expect(closed.isError).toBe(true);
+    expect(closed.content[0]!.text).toContain(
+      "task T001 is blocked, not open; a write needs an open task",
+    );
+    const unknown = await raw(app, "decision_open", {
+      nodeId: null,
+      question: "Why?",
+      default: "b",
+      task: "T999",
+    });
+    expect(unknown.isError).toBe(true);
+    expect(unknown.content[0]!.text).toBe("no task T999");
+  });
+
+  it("accepts a change the owner dictated, and says so on the commit and in the journal", async () => {
+    const repo = repoWith(plan());
+    const held = await raw(appOver(repo), "node_update", {
+      nodeId: "P1-N003",
+      reason: "held until the next milestone",
+      hold: { kind: "blocked", reason: "until the next milestone" },
+      ownerInstruction: "Hold P1-N003 until the next milestone",
+    });
+    expect(held.isError).toBeUndefined();
+    expect(repo.commits[0]!.message).toBe(
+      "P1-N003: held until the next milestone (no task: the owner's instruction)",
+    );
+    expect(
+      repo.files
+        .get(repo.heads.get("main")!)!
+        .get("orchestration/journal.jsonl"),
+    ).toContain(
+      '[no task; the owner\'s instruction: \\"Hold P1-N003 until the next milestone\\"]',
+    );
+  });
+
+  it("leaves the loop's own tools and the view's actions as they were", async () => {
+    const state = plan();
+    state.nodes[1]!.hold = { kind: "gated", reason: "owner review" };
+    const repo = repoWith(state);
+    const app = appOver(repo);
+    const lifted = await app.request("/view/node/P1-N002/action", {
+      method: "POST",
+      headers: {
+        Cookie: validCookie(),
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: "action=lift-hold",
+    });
+    expect(lifted.status).toBe(303);
+    const opened = await raw(app, "task_open", {
+      nodeId: "P1-N002",
+      step: "execute",
+    });
+    expect(opened.isError).toBeUndefined();
+    const cost = await raw(app, "task_cost", {
+      taskId: "T001",
+      tokensIn: 1,
+      tokensOut: 1,
+      source: "transcript",
+    });
+    expect(cost.isError).toBeUndefined();
+  });
+});
+
+describe("acceptance and holds", () => {
+  it("lifts a node's hold when the node is accepted as done", async () => {
+    const state = plan();
+    state.nodes[1]!.stage = "executing";
+    state.nodes[1]!.hold = { kind: "gated", reason: "the owner accepts it" };
+    const repo = repoWith(state);
+    const done = await call(appOver(repo), "node_update", {
+      nodeId: "P1-N002",
+      reason: "accepted",
+      stage: "done",
+    });
+    expect(done.structuredContent!.changes).toEqual([
+      "stage executing -> done",
+      "hold lifted",
+    ]);
+    const s = stateAtHead(repo);
+    expect(s.nodes.find((n) => n.id === "P1-N002")!.hold).toBeNull();
+    expect(checkState(s).findings).toEqual([]);
   });
 });

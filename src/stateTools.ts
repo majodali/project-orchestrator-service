@@ -52,6 +52,7 @@ import {
   StateStore,
   StateUnreadableError,
   WriteRefusedError,
+  type WriteEvent,
   type WriteResult,
 } from "./model/store.js";
 import { GithubAppAuthError } from "./planRegister/githubAppAuth.js";
@@ -81,6 +82,7 @@ export const SERVER_INSTRUCTIONS = [
   "3. Do the work on a branch and open a pull request. Do not merge it: the service merges it when the result is accepted.",
   "4. `task_close` records the result: status, a summary of at most sixty words, the pull request (or the branch, and the service opens one), and questions for the owner as `asks`. A plan or specify step delivers the node's outcome and documents here.",
   "5. When the answer carries `stop`, or `task_next` answers nothing, return to the person: the owner answers decisions and lifts holds in the view.",
+  "Every write to a node or a decision (`node_update`, `node_add`, `node_remove`, `decision_open`, `decision_close`) names the open task it is part of as `task`, and is refused without one. The only exception is a change the owner dictated to you in this conversation: pass their words as `ownerInstruction`. Being asked to work on a node is not that: claim it.",
   "A node that turns out to be obsolete is removed with `node_remove`, not parked or held; git keeps its history. A hold or a park is for work that will resume.",
   "Do not estimate token counts at `task_close`: the repository's hook measures a task's cost and records it with `task_cost`.",
   "Pass `session` on every write: your session's own name or identifier, so the journal says who wrote.",
@@ -150,6 +152,60 @@ export function describeError(err: unknown): string {
   return String(err);
 }
 
+/** How a session's write to a node or a decision is authorized (owner,
+ * 2026-11-12): by the open task it is part of, or, for a change the
+ * owner dictated, by the owner's words. */
+const authorityFields = {
+  task: z
+    .string()
+    .regex(/^T\d{3,}$/)
+    .optional()
+    .describe(
+      "The open task this write is part of: claim the node with task_open first. Required unless ownerInstruction is given.",
+    ),
+  ownerInstruction: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Only when the owner dictated this exact change to you in this conversation (hold, park, remove, retitle, answer a decision): their words, quoted. Never a way to do a node's work without a task.",
+    ),
+};
+
+interface Authority {
+  task?: string | undefined;
+  ownerInstruction?: string | undefined;
+}
+
+/** The task a write is under, or the owner's instruction it rests on;
+ * a write with neither is refused. */
+function authorize(
+  state: State,
+  input: Authority,
+): { task: string | null; note: string } {
+  if (input.task !== undefined) {
+    const task = state.tasks.find((t) => t.id === input.task);
+    if (!task) throw new NotFoundError(`no task ${input.task}`);
+    if (task.status !== "open") {
+      throw new NotFoundError(
+        `task ${input.task} is ${task.status}, not open; a write needs an open task: claim the node with task_open`,
+      );
+    }
+    return { task: task.id, note: "" };
+  }
+  const words = input.ownerInstruction?.trim() ?? "";
+  if (words !== "") {
+    return {
+      task: null,
+      note: ` [no task; the owner's instruction: ${JSON.stringify(words)}]`,
+    };
+  }
+  throw new NotFoundError(
+    "refused: this write is not under a task. Claim the node with task_open and pass the task's identifier as `task`. " +
+      "Only for a change the owner dictated to you in this conversation, pass their words as `ownerInstruction` instead. Nothing was committed.",
+  );
+}
+
 const nodeId = z
   .string()
   .regex(/^P\d+-N\d+$/, "a node identifier, P<plan>-N<seq>");
@@ -212,6 +268,27 @@ export function registerStateTools(
 
   const pullRequests = (): PullRequests =>
     options.pullRequests ?? getDefaultPullRequests();
+
+  /** A write to nodes or decisions by a session: under an open task,
+   * or on the owner's instruction; the commit and the journal say
+   * which. The view's own writes do not come through here. */
+  const guardedWrite = (
+    input: Authority,
+    message: string,
+    mutate: (state: State, context: { baseSha: string }) => WriteEvent,
+  ): Promise<WriteResult> =>
+    store().write(
+      `${message}${input.task ? ` (${input.task})` : input.ownerInstruction ? " (no task: the owner's instruction)" : ""}`,
+      (state, context) => {
+        const authority = authorize(state, input);
+        const event = mutate(state, context);
+        return {
+          ...event,
+          task: authority.task ?? event.task,
+          note: event.note + authority.note,
+        };
+      },
+    );
 
   const run = async (fn: () => Promise<ToolResult>): Promise<ToolResult> => {
     try {
@@ -322,6 +399,7 @@ export function registerStateTools(
           .array(nodeId)
           .optional()
           .describe("The full list of nodes this one waits for."),
+        ...authorityFields,
         session: sessionField,
       },
     },
@@ -333,6 +411,7 @@ export function registerStateTools(
           // Done needs the node's pull requests merged.
           const head = await store().read();
           if (head.state !== null) {
+            authorize(head.state, input);
             merged = (
               await ensureMerged(
                 pullRequests,
@@ -341,7 +420,8 @@ export function registerStateTools(
             ).merged;
           }
         }
-        const result = await store().write(
+        const result = await guardedWrite(
+          input,
           `${input.nodeId}: ${input.reason}`,
           (state) => {
             const applied = updateNode(state, input, today(now));
@@ -745,13 +825,15 @@ export function registerStateTools(
         stage: z.enum(["identified", "planned", "specified"]).optional(),
         start: z.enum(["auto", "approve"]).optional(),
         note: z.string().optional(),
+        ...authorityFields,
         session: sessionField,
       },
     },
     async (input) =>
       run(async () => {
         let id = "";
-        const result = await store().write(
+        const result = await guardedWrite(
+          input,
           `${input.parentId ?? input.line ?? "plan"}: node added`,
           (state) => {
             const added = addNode(state, input);
@@ -780,13 +862,15 @@ export function registerStateTools(
           .describe(
             "Why the node is obsolete; goes in the commit and the journal.",
           ),
+        ...authorityFields,
         session: sessionField,
       },
     },
     async (input) =>
       run(async () => {
         let removed: RemoveResult | null = null;
-        const result = await store().write(
+        const result = await guardedWrite(
+          input,
           `${input.nodeId} removed: ${input.reason}`,
           (state) => {
             removed = removeNode(state, input);
@@ -823,13 +907,15 @@ export function registerStateTools(
           .describe("The recommended answer; required for an open decision."),
         rationale: z.string().optional(),
         source: z.string().optional().describe("Where the full text is."),
+        ...authorityFields,
         session: sessionField,
       },
     },
     async (input) =>
       run(async () => {
         let id = "";
-        const result = await store().write(
+        const result = await guardedWrite(
+          input,
           `${input.nodeId ?? "project"}: decision opened`,
           (state) => {
             if (
@@ -878,13 +964,15 @@ export function registerStateTools(
           .boolean()
           .optional()
           .describe("True when the answer is a precedent."),
+        ...authorityFields,
         session: sessionField,
       },
     },
     async (input) =>
       run(async () => {
         let node: string | null = null;
-        const result = await store().write(
+        const result = await guardedWrite(
+          input,
           `${input.decisionId}: ${input.chosen}`,
           (state) => {
             const applied = closeDecision(state, input, today(now));

@@ -50,6 +50,28 @@ function appOver(
   return createApp({ state: { store, now, pullRequests } });
 }
 
+/** The tools a session may call only under a task or on the owner's
+ * instruction. A test that gives neither writes as the owner
+ * dictated, so that it tests the write and not the authority. */
+const GUARDED = new Set([
+  "node_update",
+  "node_add",
+  "node_remove",
+  "decision_open",
+  "decision_close",
+]);
+const AS_OWNER = "the owner dictated this change";
+
+function withAuthority(
+  name: string,
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!GUARDED.has(name) || "task" in args || "ownerInstruction" in args) {
+    return args;
+  }
+  return { ...args, ownerInstruction: AS_OWNER };
+}
+
 async function call(
   app: ReturnType<typeof createApp>,
   name: string,
@@ -66,7 +88,7 @@ async function call(
       jsonrpc: "2.0",
       id: 1,
       method: "tools/call",
-      params: { name, arguments: args },
+      params: { name, arguments: withAuthority(name, args) },
     }),
   });
   expect(res.status).toBe(200);
