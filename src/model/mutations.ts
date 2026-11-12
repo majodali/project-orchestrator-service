@@ -77,6 +77,11 @@ export function updateNode(
     n.stage = input.stage;
     if (input.stage === "done" && n.done === null) n.done = today;
     if (input.stage !== "done") n.done = null;
+    if (input.stage === "done" && n.hold !== null && input.hold === undefined) {
+      // A done node carries no hold: the acceptance lifts it.
+      n.hold = null;
+      changes.push("hold lifted");
+    }
     if (input.stage === "done") {
       // The owner's acceptance closes the verification with the node.
       for (const c of state.nodes) {

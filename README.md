@@ -150,6 +150,14 @@ repository, the state file (the rebuild plan there,
     arose (`standing` in the answer of `task_next` and `task_open`).
   - The view's header shows the check status of the commit it reads
     (`src/planRegister/commitChecks.ts`).
+  - A session's write to a node or a decision (`node_update`,
+    `node_add`, `node_remove`, `decision_open`, `decision_close`) is
+    refused unless it names the open task it is part of (`task`), or,
+    for a change the owner dictated, carries the owner's words
+    (`ownerInstruction`). The commit message and the journal event
+    say which. The view's own actions are the owner's and need
+    neither (owner, 2026-11-12).
+  - Accepting a node as done lifts its hold.
   - `task_cost` records a task's measured cost: tokens by type, the
     model, and where the figure came from (`transcript`, `headless`
     or `reported`). The coordinating repository's hook calls it when
