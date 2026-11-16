@@ -1,8 +1,9 @@
 /**
  * Renderings of a state file: `docs/plan-register.md`, in the Plan
- * register grammar the plugin's form checker reads, and
- * `docs/plan.md`, the plan a person reads. Both carry a generated-file
- * header. `check` fails when a rendered file differs from this output.
+ * register grammar the plugin's form checker reads, `docs/plan.md`,
+ * the plan a person reads, and `docs/backlog.md`, the Backlog: one
+ * row per work node, finished and remaining. All three carry a
+ * generated-file header. `check` fails when a rendered file differs from this output.
  */
 
 import {
@@ -237,4 +238,60 @@ export function renderPlan(full: State): string {
     lines.push("");
   }
   return lines.join("\n");
+}
+
+/**
+ * The Backlog (methodology K-003, under the amendment that makes the
+ * state file the progress truth): one row per work node in tree
+ * order, which is dependency order among siblings. A done node is a
+ * checked row under Completed; every other node is an unchecked row
+ * under Upcoming. Each row has the four fields of the methodology's
+ * row shape: what, when, status, pointer. Check nodes are the loop's
+ * and stay out, as they do in the register.
+ */
+export function renderBacklog(full: State): string {
+  const classes = classifyAll(full);
+  const byId = nodesById(full);
+  const work = treeOrder({
+    ...full,
+    nodes: full.nodes.filter((n) => n.kind !== "check"),
+  }).map((t) => t.node);
+  const pointer = (n: Node): string =>
+    docLinks(n) || "`orchestration/state.json`";
+  const lines: string[] = [
+    "# Backlog",
+    "",
+    GENERATED_LINE,
+    "",
+    "Reader: the owner, and any session working on the project. The reader",
+    "knows the README. The state file is the progress truth; this file is",
+    "a rendering of it, one row per node of the plan, in dependency order.",
+    "[The project plan](plan.md) shows the same nodes with their outcomes.",
+    "",
+    "Each row has four fields, in this order: what, when, status, pointer.",
+    "",
+    "## Completed",
+    "",
+  ];
+  const done = work.filter((n) => n.stage === "done");
+  if (done.length === 0) lines.push("None.");
+  for (const n of done) {
+    lines.push(
+      `- [x] **${md(n.title)}** (${n.id}) — When: ${n.done ?? "not recorded"}. Status: done. Pointer: ${pointer(n)}.`,
+    );
+  }
+  lines.push("", "## Upcoming", "");
+  const upcoming = work.filter((n) => n.stage !== "done");
+  if (upcoming.length === 0) lines.push("None.");
+  for (const n of upcoming) {
+    const pending = n.after.filter((d) => byId.get(d)?.stage !== "done");
+    const when =
+      pending.length > 0 ? `after ${pending.join(", ")}` : "not dated";
+    const label = NODE_CLASS_LABELS[classes.get(n.id)!];
+    const status = label === n.stage ? label : `${n.stage}, ${label}`;
+    lines.push(
+      `- [ ] **${md(n.title)}** (${n.id}) — When: ${when}. Status: ${status}. Pointer: ${pointer(n)}.`,
+    );
+  }
+  return lines.join("\n") + "\n";
 }

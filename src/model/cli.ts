@@ -14,6 +14,7 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 
 import {
+  BACKLOG_PATH,
   PLAN_PATH,
   REGISTER_PATH,
   STATE_PATH,
@@ -28,7 +29,7 @@ import {
   type Overrides,
 } from "./importState.js";
 import { orderSiblingsByDependency } from "./order.js";
-import { renderPlan, renderRegister } from "./render.js";
+import { renderBacklog, renderPlan, renderRegister } from "./render.js";
 import { formatState } from "./schema.js";
 
 const RECORD_PATH = "orchestration/import-record.md";
@@ -41,7 +42,7 @@ function usage(): never {
       "commands:",
       "  import   read the frozen registers and write the state file and its import record (--write)",
       "  check    validate the state file and its renderings in the repository",
-      "  render   write docs/plan-register.md and docs/plan.md from the state file (--write)",
+      "  render   write docs/plan-register.md, docs/plan.md and docs/backlog.md from the state file (--write)",
       "",
       "options:",
       "  --repo <path>            the managed repository (default: cwd)",
@@ -187,14 +188,19 @@ function main(argv: string[]): number {
     const ordered = { ...state, nodes: orderSiblingsByDependency(state) };
     const register = renderRegister(ordered);
     const plan = renderPlan(ordered);
+    const backlog = renderBacklog(ordered);
     if (values.write) {
       writeFileSync(path.join(root, STATE_PATH), formatState(ordered));
       writeFileSync(path.join(root, REGISTER_PATH), register);
       writeFileSync(path.join(root, PLAN_PATH), plan);
-      console.log(`plan-state: wrote ${REGISTER_PATH} and ${PLAN_PATH}`);
+      writeFileSync(path.join(root, BACKLOG_PATH), backlog);
+      console.log(
+        `plan-state: wrote ${REGISTER_PATH}, ${PLAN_PATH} and ${BACKLOG_PATH}`,
+      );
     } else {
       console.log(register);
       console.log(plan);
+      console.log(backlog);
     }
     return report(findings);
   }

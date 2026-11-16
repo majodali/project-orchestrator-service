@@ -2,8 +2,8 @@
  * The state store (the rebuild plan, milestone 3): reads the state
  * file at a commit, and writes a mutation of it as one commit on the
  * default branch. Every write checks the result and refuses a
- * violation, renders the Markdown register and plan from the new
- * state, appends one journal event, and writes only the paths on the
+ * violation, renders the Markdown register, plan and Backlog from the
+ * new state, appends one journal event, and writes only the paths on the
  * allowlist. The branch head the state was read at is the commit's
  * parent; if the branch moved meanwhile the store reads again and
  * retries once. There is no lease and no other store: git is the only
@@ -12,7 +12,7 @@
 
 import { checkState, type Finding } from "./check.js";
 import { orderSiblingsByDependency } from "./order.js";
-import { renderPlan, renderRegister } from "./render.js";
+import { renderBacklog, renderPlan, renderRegister } from "./render.js";
 import { formatState, type State } from "./schema.js";
 import type { CommitReader } from "../planRegister/registerFetcher.js";
 import { GithubFetchError } from "../planRegister/registerFetcher.js";
@@ -22,6 +22,7 @@ export const STATE_PATH = "orchestration/state.json";
 export const JOURNAL_PATH = "orchestration/journal.jsonl";
 export const REGISTER_PATH = "docs/plan-register.md";
 export const PLAN_PATH = "docs/plan.md";
+export const BACKLOG_PATH = "docs/backlog.md";
 
 /** The only paths a service write may touch. Enforced here, so no
  * tool can reach past it. */
@@ -30,6 +31,7 @@ export const WRITABLE_PATHS: ReadonlySet<string> = new Set([
   JOURNAL_PATH,
   REGISTER_PATH,
   PLAN_PATH,
+  BACKLOG_PATH,
 ]);
 
 /** The journal event a write appends. `ref` is the commit the write
@@ -179,6 +181,7 @@ export class StateStore {
         [STATE_PATH, formatState(next)],
         [REGISTER_PATH, renderRegister(next)],
         [PLAN_PATH, renderPlan(next)],
+        [BACKLOG_PATH, renderBacklog(next)],
         [JOURNAL_PATH, appendLine(journal, line)],
       ]);
       for (const path of files.keys()) {

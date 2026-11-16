@@ -15,7 +15,7 @@ P2-N009 — the first real plan-state read, through an installed GitHub
 App), and the write path — `node_update`, `task_open`, `task_close`,
 `decision_open`, `decision_close` (the rebuild plan's milestone 3).
 **The service writes git only under its allowlist** (the state file,
-its two renderings and the journal, `src/model/store.ts`): each write
+its three renderings and the journal, `src/model/store.ts`): each write
 tool validates the result, refuses a violation with nothing
 committed, and otherwise makes one commit on the default branch as
 the installed GitHub App. The one owner action the write path adds
