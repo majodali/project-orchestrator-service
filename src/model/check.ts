@@ -11,7 +11,7 @@ import path from "node:path";
 import type { ZodError } from "zod";
 
 import { isOrdered, orderSiblingsByDependency } from "./order.js";
-import { renderPlan, renderRegister } from "./render.js";
+import { renderBacklog, renderPlan, renderRegister } from "./render.js";
 import {
   INTERIOR_STAGES,
   OUTCOME_MAX_WORDS,
@@ -494,6 +494,7 @@ function findCycles(
 export const STATE_PATH = "orchestration/state.json";
 export const REGISTER_PATH = "docs/plan-register.md";
 export const PLAN_PATH = "docs/plan.md";
+export const BACKLOG_PATH = "docs/backlog.md";
 
 /** Invariants 8 and 9: documents exist, renderings are current. */
 export function checkRepository(
@@ -520,6 +521,7 @@ export function checkRepository(
   for (const [p, render] of [
     [REGISTER_PATH, renderRegister],
     [PLAN_PATH, renderPlan],
+    [BACKLOG_PATH, renderBacklog],
   ] as const) {
     const current = read(p);
     const expected = render(state);

@@ -168,6 +168,7 @@ describe("closing a decision", () => {
     expect(repo.commits).toHaveLength(1);
     expect(repo.commits[0]!.message).toBe("D001: git");
     expect([...repo.commits[0]!.files.keys()].sort()).toEqual([
+      "docs/backlog.md",
       "docs/plan-register.md",
       "docs/plan.md",
       "orchestration/journal.jsonl",

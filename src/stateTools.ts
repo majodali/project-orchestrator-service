@@ -75,7 +75,7 @@ import { GithubFetchError } from "./planRegister/registerFetcher.js";
  * protocol, since nothing else reaches a session that was simply
  * asked to work on a node (owner, 2026-11-11). */
 export const SERVER_INSTRUCTIONS = [
-  "This service holds the plan of the project as one checked file, orchestration/state.json, and is the only writer of it, of docs/plan.md, of docs/plan-register.md and of orchestration/journal.jsonl. Never edit those four files; every change goes through these tools, one commit each.",
+  "This service holds the plan of the project as one checked file, orchestration/state.json, and is the only writer of it, of docs/plan.md, of docs/plan-register.md, of docs/backlog.md and of orchestration/journal.jsonl. Never edit those five files; every change goes through these tools, one commit each.",
   "Work on a plan node goes through a task, whoever asked for it:",
   "1. `task_next` (with your role: planner, implementer or reviewer) answers the next node that offers a step, or call `plan_read` with a node to see one you were pointed at.",
   "2. `task_open` claims the node for a step before you start. It answers the node, its documents, the decisions on it and above it, and the standing decisions, which bind every task. If it refuses, the reason is the answer: tell the person and stop.",

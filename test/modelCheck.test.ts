@@ -7,7 +7,11 @@ import {
   classifyAll,
   type Finding,
 } from "../src/model/check.js";
-import { renderPlan, renderRegister } from "../src/model/render.js";
+import {
+  renderBacklog,
+  renderPlan,
+  renderRegister,
+} from "../src/model/render.js";
 import { formatState, type Node, type State } from "../src/model/schema.js";
 
 function node(
@@ -355,6 +359,7 @@ describe("checkRepository", () => {
       ["docs/plan-register.md", "stale"],
       ["docs/plan.md", renderPlan(s)],
     ]);
+    // The Backlog is absent: a third rendering the check requires.
     const findings = checkRepository(
       s,
       "/nonexistent",
@@ -372,13 +377,17 @@ describe("checkRepository", () => {
       ),
     );
     expect(found.some((m) => m.includes("docs/plan.md"))).toBe(false);
+    expect(found).toContainEqual(
+      expect.stringContaining("9 - docs/backlog.md is missing"),
+    );
   });
 
-  it("is clean when both renderings are current", () => {
+  it("is clean when the three renderings are current", () => {
     const s = state();
     const files = new Map<string, string>([
       ["docs/plan-register.md", renderRegister(s)],
       ["docs/plan.md", renderPlan(s)],
+      ["docs/backlog.md", renderBacklog(s)],
     ]);
     expect(
       checkRepository(s, "/nonexistent", (p) => files.get(p) ?? null),

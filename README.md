@@ -103,14 +103,15 @@ repository, the state file (the rebuild plan there,
   `decision_open`, `decision_close` — the writes. Each applies one change to the state
   read at the branch head, checks the result against the model's
   invariants and refuses a violation with nothing committed, renders
-  `docs/plan-register.md` and `docs/plan.md` from the new state,
+  `docs/plan-register.md`, `docs/plan.md` and `docs/backlog.md` from
+  the new state,
   appends one `state-written` event to `orchestration/journal.jsonl`,
   and makes one commit on the default branch through the GitHub App,
   with the head it read as the parent. The branch moving meanwhile
   is the concurrency check: the ref update is refused, the store
   reads again and retries once (`src/model/store.ts`,
   `src/planRegister/gitWriter.ts`, `src/stateTools.ts`). The service
-  writes only those four paths; nothing else holds state, and there
+  writes only those five paths; nothing else holds state, and there
   is no lease.
 - `task_next`, `task_open`, `task_close` — the task loop (the rebuild
   plan, "The loop and the close-out"; `src/model/loop.ts`).
@@ -254,7 +255,8 @@ readable while both exist.
 model"): a `zod` schema (`schema.ts`) for one file per managed
 project, `orchestration/state.json`, holding nodes, tasks and
 decisions; the invariants over it (`check.ts`); the renderings of it
-to `docs/plan-register.md` and `docs/plan.md` (`render.ts`); and a
+to `docs/plan-register.md`, `docs/plan.md` and `docs/backlog.md`
+(`render.ts`); and a
 one-time importer from the frozen Markdown registers
 (`importState.ts`). The schema is the type's definition; the Markdown
 files are renderings and are never hand-edited.

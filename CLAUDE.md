@@ -101,8 +101,8 @@ entries live there (docs/classification.md § Custom definitions).
   only through environment variables (README.md "Configuration and
   secrets").
 - This service writes git only under the allowlist in
-  `src/model/store.ts`: the state file, its two renderings and the
-  journal, one commit per change, on the default branch, as its
+  `src/model/store.ts`: the state file, its three renderings (the
+  register, the plan and the Backlog) and the journal, one commit per change, on the default branch, as its
   GitHub App (the rebuild plan, decision 2). It never writes anything
   else, and nothing else holds state.
 

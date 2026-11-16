@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { parseRegister } from "../src/planRegister/parser.js";
-import { renderPlan, renderRegister, treeOrder } from "../src/model/render.js";
+import {
+  renderBacklog,
+  renderPlan,
+  renderRegister,
+  treeOrder,
+} from "../src/model/render.js";
 import type { State } from "../src/model/schema.js";
 
 const sample: State = {
@@ -157,5 +162,54 @@ describe("renderPlan", () => {
       "## Ready, starting automatically when the loop runs\n\nNone.",
     );
     expect(text).toContain("## Decisions taken\n\nNone.");
+  });
+});
+
+describe("renderBacklog", () => {
+  it("writes one row per work node: done rows checked under Completed, the rest under Upcoming", () => {
+    const text = renderBacklog(sample);
+    expect(text).toContain("Generated from `orchestration/state.json`");
+    expect(text.indexOf("## Completed")).toBeLessThan(
+      text.indexOf("## Upcoming"),
+    );
+    const completed = text.slice(
+      text.indexOf("## Completed"),
+      text.indexOf("## Upcoming"),
+    );
+    expect(completed).toContain(
+      "- [x] **The first part done** (P1-N002) — When: 2026-11-01. Status: done. Pointer: [spec](specs/first.md).",
+    );
+    expect(completed).not.toContain("- [ ]");
+    const upcoming = text.slice(text.indexOf("## Upcoming"));
+    expect(upcoming).toContain(
+      "- [ ] **The root of the plan** (P1-N001) — When: not dated. Status: broken-down, in progress, its children carry the work. Pointer: [plan](plans/root.md).",
+    );
+    expect(upcoming).toContain(
+      "- [ ] **The second part gated** (P1-N003) — When: not dated. Status: planned, waiting on the owner. Pointer: `orchestration/state.json`.",
+    );
+    expect(upcoming).toContain(
+      "- [ ] **The third part waits** (P1-N004) — When: after P1-N003. Status: identified, waiting on a dependency. Pointer: `orchestration/state.json`.",
+    );
+    expect(text.match(/^- \[[ x]\] /gm)).toHaveLength(4);
+    expect(text.endsWith("\n")).toBe(true);
+  });
+
+  it("leaves check nodes out and states an empty section", () => {
+    const text = renderBacklog({
+      ...sample,
+      nodes: [
+        { ...sample.nodes[1]!, parent: null },
+        {
+          ...sample.nodes[1]!,
+          id: "P1-N005",
+          kind: "check",
+          title: "Verification of the first part done",
+          parent: "P1-N002",
+        },
+      ],
+      decisions: [],
+    });
+    expect(text).not.toContain("P1-N005");
+    expect(text).toContain("## Upcoming\n\nNone.\n");
   });
 });

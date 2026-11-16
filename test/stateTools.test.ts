@@ -161,6 +161,7 @@ describe("node_update", () => {
       "P1-N006: work started (no task: the owner's instruction)",
     );
     expect([...commit.files.keys()].sort()).toEqual([
+      "docs/backlog.md",
       "docs/plan-register.md",
       "docs/plan.md",
       "orchestration/journal.jsonl",
