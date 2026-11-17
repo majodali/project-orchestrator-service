@@ -10,7 +10,12 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-import { NODE_CLASS_LABELS, classifyAll, type Finding } from "./model/check.js";
+import {
+  NODE_CLASS_LABELS,
+  childrenOf,
+  classifyAll,
+  type Finding,
+} from "./model/check.js";
 import {
   COST_SOURCES,
   STAGES,
@@ -27,6 +32,8 @@ import {
   candidates,
   closeStale,
   closeTask,
+  expectedHeads,
+  failedCheckNode,
   mergesAtClose,
   nextDecisionId,
   nextTaskId,
@@ -79,8 +86,12 @@ export const SERVER_INSTRUCTIONS = [
   "Work on a plan node goes through a task, whoever asked for it:",
   "1. `task_next` (with your role: planner, implementer or reviewer) answers the next node that offers a step, or call `plan_read` with a node to see one you were pointed at.",
   "2. `task_open` claims the node for a step before you start. It answers the node, its documents, the decisions on it and above it, and the standing decisions, which bind every task. If it refuses, the reason is the answer: tell the person and stop.",
-  "3. Do the work on a branch and open a pull request. Do not merge it: the service merges it when the result is accepted.",
+  "3. Do the work on a branch and open a pull request. Do not merge it: the service merges it when the result is accepted. Commit to it only while your task is open: the service refuses to merge a pull request that has commits made after its last execute task closed.",
   "4. `task_close` records the result: status, a summary of at most sixty words, the pull request (or the branch, and the service opens one), and questions for the owner as `asks`. A plan or specify step delivers the node's outcome and documents here.",
+  "   - `closed`: the step is finished and its criteria are met. Never close `closed` with a criterion unmet.",
+  "   - `needs-judgment`, with `asks`: the work cannot finish until the owner answers. The questions gate the node; once they are answered it offers the same step again, and a new task continues on the same pull request.",
+  "   - `blocked`: something outside the session stops the work, and the node is held for the owner. With `asks`, the questions gate it instead.",
+  "   - A reviewer closes a failed verification as `blocked`, with each unmet criterion in the summary. That is not a stop for the owner: the node offers `execute` again for the rework, the rework's task is told what failed, and its close sends the node back for verification.",
   "5. When the answer carries `stop`, or `task_next` answers nothing, return to the person: the owner answers decisions and lifts holds in the view.",
   "Every write to a node or a decision (`node_update`, `node_add`, `node_remove`, `decision_open`, `decision_close`) names the open task it is part of as `task`, and is refused without one. The only exception is a change the owner dictated to you in this conversation: pass their words as `ownerInstruction`. Being asked to work on a node is not that: claim it.",
   "A node that turns out to be obsolete is removed with `node_remove`, not parked or held; git keeps its history. A hold or a park is for work that will resume.",
@@ -416,6 +427,8 @@ export function registerStateTools(
               await ensureMerged(
                 pullRequests,
                 pullRequestsOf(head.state, input.nodeId),
+                undefined,
+                expectedHeads(head.state, input.nodeId),
               )
             ).merged;
           }
@@ -450,6 +463,12 @@ export function registerStateTools(
   ): Record<string, unknown> {
     const classes = classifyAll(state);
     const byId = new Map(state.nodes.map((n) => [n.id, n]));
+    // An execute step on a node under verification is the rework of
+    // a failed verification: what failed is the first thing to read.
+    const failed =
+      step === "execute" && node.stage === "verifying"
+        ? failedCheckNode(node, childrenOf(state))
+        : undefined;
     return {
       node: {
         ...node,
@@ -459,6 +478,14 @@ export function registerStateTools(
       step,
       steps,
       role,
+      rework: failed
+        ? {
+            checkNode: failed.id,
+            failed: failed.hold!.reason,
+            pullRequests: pullRequestsOf(state, node.id),
+            note: "This is the rework of a failed verification. Fix what the verification names, on the same pull request, then close this task: the check node gets a new round.",
+          }
+        : null,
       ancestors: ancestorsOf(node, byId)
         .reverse()
         .map((a) => ({ id: a.id, title: a.title, stage: a.stage })),
@@ -558,6 +585,7 @@ export function registerStateTools(
             title: c.node.title,
             step: c.step,
             role: c.role,
+            rework: c.step === "execute" && c.node.stage === "verifying",
           })),
         });
       }),
@@ -628,13 +656,18 @@ export function registerStateTools(
         "Records a task's result (status, summary, pull request, commit, token " +
         "counts) and runs the close-out: a `closed` step moves the node on (an " +
         "executed node enters verifying with a check node; a verified check node " +
-        "completes its parent), `blocked` and `needs-judgment` hold the node for " +
-        "the owner, and each ask becomes an open decision on the node. A scope that " +
+        "completes its parent). Each ask becomes an open decision, whatever the " +
+        "status. `blocked` or `needs-judgment` with asks leaves the node gated by " +
+        "those decisions, and it offers its step again once they are answered; " +
+        "without asks the node is held for the owner. A verification closed " +
+        "`blocked` has failed: the verified node offers `execute` again for the " +
+        "rework, with no owner action. A scope that " +
         "changed since the task opened closes it as needs-judgment. A planning step " +
         "delivers the title, outcome and documents here, applied at close. Pull " +
         "requests are merged by the service, never by the session: a planning " +
         "step's at its close, an execute step's when its verification closes; a " +
-        "pull request that cannot be merged refuses the close. Give `branch` " +
+        "pull request that cannot be merged refuses the close, and so does one " +
+        "with commits made after its last execute task closed. Give `branch` " +
         "instead of `pr` and the service opens the pull request. Answers `stop` " +
         "when the session should return to the owner.",
       inputSchema: {
@@ -715,6 +748,7 @@ export function registerStateTools(
         // merged refuses the close with nothing committed.
         let pr: string | undefined = input.pr;
         let merged: string[] = [];
+        let headAtClose: string | undefined;
         const accepted =
           input.status === "closed" &&
           head.state !== null &&
@@ -732,7 +766,26 @@ export function registerStateTools(
             });
           }
           const toMerge = mergesAtClose(head.state!, task, pr ?? task.pr);
-          merged = (await ensureMerged(pullRequests, toMerge)).merged;
+          const verified =
+            task.step === "verify" ? (headNode.parent ?? null) : null;
+          merged = (
+            await ensureMerged(
+              pullRequests,
+              toMerge,
+              undefined,
+              verified === null
+                ? new Map()
+                : expectedHeads(head.state!, verified),
+            )
+          ).merged;
+          // An execute step's pull request waits for its verification.
+          // Its head at this close is recorded as the task's commit:
+          // the merge later refuses a pull request that has moved on,
+          // since those commits would belong to no task.
+          const waiting = pr ?? task.pr;
+          if (task.step === "execute" && waiting !== null) {
+            headAtClose = (await pullRequests().get(waiting)).headSha;
+          }
         }
         let closed: CloseResult | null = null;
         const result = await store().write(
@@ -743,6 +796,7 @@ export function registerStateTools(
               {
                 ...input,
                 ...(pr === undefined ? {} : { pr }),
+                ...(headAtClose === undefined ? {} : { ref: headAtClose }),
                 status: input.status as CloseInput["status"],
               },
               scopeAtBase,

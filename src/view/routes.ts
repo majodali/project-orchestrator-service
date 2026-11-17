@@ -74,7 +74,7 @@ import {
   ensureMerged,
   type PullRequests,
 } from "../planRegister/pullRequests.js";
-import { pullRequestsOf } from "../model/loop.js";
+import { expectedHeads, pullRequestsOf } from "../model/loop.js";
 import { OTHER_ANSWER } from "./actions.js";
 import { PageReadError, ShaPathCache, readPageFiles } from "./commitRead.js";
 import type { PageFiles } from "./commitRead.js";
@@ -685,12 +685,34 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
       VIEW_SESSION,
     );
     try {
+      // A failed verification is not the owner's to lift: the hold on
+      // the check node is what offers the rework, and a posted lift
+      // would withdraw it. The page does not offer it; this refuses it.
+      const head = await store().read();
+      const there = head.state?.nodes.find((n) => n.id === id);
+      if (
+        action === "lift-hold" &&
+        there?.kind === "check" &&
+        there.hold?.kind === "blocked"
+      ) {
+        return simplePage(
+          c,
+          "A failed verification is not lifted",
+          `${id} is a verification that failed. The rework is offered on the node it verifies and starts without you; to overrule the verification, accept the review on that node. Nothing was committed.`,
+          409,
+          back,
+        );
+      }
       if (input.stage === "done") {
         // Done needs the node's pull requests merged: the service
         // merges them here, before the commit (owner, 2026-11-11).
-        const head = await store().read();
         if (head.state !== null) {
-          await ensureMerged(pullRequests, pullRequestsOf(head.state, id));
+          await ensureMerged(
+            pullRequests,
+            pullRequestsOf(head.state, id),
+            undefined,
+            expectedHeads(head.state, id),
+          );
         }
       }
       const result = await store().write(

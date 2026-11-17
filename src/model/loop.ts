@@ -11,14 +11,15 @@
 
 import { childrenOf, nodesById, openTaskByNode, pausedBy } from "./check.js";
 import { NotFoundError, type WriteEvent } from "./store.js";
-import type {
-  CostSource,
-  Decision,
-  Node,
-  State,
-  Step,
-  Task,
-  TaskStatus,
+import {
+  SUMMARY_MAX_WORDS,
+  type CostSource,
+  type Decision,
+  type Node,
+  type State,
+  type Step,
+  type Task,
+  type TaskStatus,
 } from "./schema.js";
 
 /** A task open longer than this is closed as stale by `task_next`. */
@@ -68,6 +69,19 @@ export function openCheckNodes(
   );
 }
 
+/**
+ * The check node of a node whose verification failed: a reviewer
+ * closed it `blocked`, which holds it `blocked`. A check node held
+ * `gated` is a different thing, a question for the owner, and hands
+ * nothing back for rework.
+ */
+export function failedCheckNode(
+  node: Node,
+  children: Map<string, Node[]>,
+): Node | undefined {
+  return openCheckNodes(node, children).find((c) => c.hold?.kind === "blocked");
+}
+
 /** The steps a node's stage admits, the first being the one the loop
  * takes; none for a stage whose work lies elsewhere. */
 export function stepsForStage(
@@ -88,9 +102,7 @@ export function stepsForStage(
       return ["execute"];
     case "verifying":
       // Rework, when the check node failed.
-      return openCheckNodes(node, children).some((c) => c.hold !== null)
-        ? ["execute"]
-        : [];
+      return failedCheckNode(node, children) !== undefined ? ["execute"] : [];
     default:
       return [];
   }
@@ -389,7 +401,22 @@ export function removeNode(state: State, input: RemoveInput): RemoveResult {
       `task ${open.map((t) => t.id).join(", ")} is open under ${node.id}; close it first`,
     );
   }
-  const tasks = state.tasks.filter((t) => gone.has(t.node)).map((t) => t.id);
+  const removedTasks = state.tasks.filter((t) => gone.has(t.node));
+  const tasks = removedTasks.map((t) => t.id);
+  // A removed task leaves the state file with its cost. The journal
+  // keeps the sum on this line, so the record of what the removed
+  // work cost does not depend on finding each task's own line.
+  const cost = { in: 0, out: 0, cacheRead: 0, cacheWrite: 0 };
+  for (const t of removedTasks) {
+    cost.in += t.tokens.in ?? 0;
+    cost.out += t.tokens.out ?? 0;
+    cost.cacheRead += t.tokens.cacheRead ?? 0;
+    cost.cacheWrite += t.tokens.cacheWrite ?? 0;
+  }
+  const costNote =
+    cost.in + cost.out + cost.cacheRead + cost.cacheWrite > 0
+      ? `, which cost ${cost.in} in, ${cost.out} out, ${cost.cacheRead} cache read, ${cost.cacheWrite} cache write`
+      : "";
   const decisions = state.decisions
     .filter((d) => d.node !== null && gone.has(d.node))
     .map((d) => d.id);
@@ -415,7 +442,7 @@ export function removeNode(state: State, input: RemoveInput): RemoveResult {
   const nodes = [...gone];
   const detail = [
     nodes.length > 1 ? `with ${nodes.length - 1} node(s) below it` : "",
-    tasks.length > 0 ? `tasks ${tasks.join(", ")}` : "",
+    tasks.length > 0 ? `tasks ${tasks.join(", ")}${costNote}` : "",
     decisions.length > 0 ? `decisions ${decisions.join(", ")}` : "",
     ...unlinked,
     ...moved,
@@ -437,6 +464,14 @@ export function removeNode(state: State, input: RemoveInput): RemoveResult {
 
 /** The fields of a node a task's scope is: a change to any of them
  * during the task is a stop condition. */
+/** `text` cut to at most `max` words, the cut marked. */
+export function fitWords(text: string, max: number): string {
+  const words = text.trim().split(/\s+/);
+  return words.length <= max
+    ? text
+    : `${words.slice(0, max - 1).join(" ")} [cut]`;
+}
+
 export function scopeOf(node: Node): string {
   return JSON.stringify({
     title: node.title,
@@ -606,7 +641,12 @@ export function closeTask(
   const scopeChanged = scopeAtBase !== null && scopeAtBase !== scopeOf(node);
   if (scopeChanged) {
     status = "needs-judgment";
-    summary = `Scope changed during ${task.id}: the node's title, outcome, parent, dependencies or documents differ from its base commit. Given status ${input.status}: ${input.summary}`;
+    // The prefix must not push a summary that fitted past the limit,
+    // or the write itself is refused (invariant on a task's summary).
+    summary = fitWords(
+      `Scope changed during ${task.id}: the node's title, outcome, parent, dependencies or documents differ from its base commit. Given status ${input.status}: ${input.summary}`,
+      SUMMARY_MAX_WORDS,
+    );
     stop = `scope changed during ${task.id}; the owner confirms the result and lifts the hold`;
   }
 
@@ -624,18 +664,17 @@ export function closeTask(
     task.costSource = "reported";
   }
 
+  // Every ask becomes an open decision, whatever the status (owner,
+  // 2026-11-16): a question is how a task that cannot finish hands
+  // over, so it must not be lost when the task does not close
+  // `closed`.
   const decisions: string[] = [];
-  if (status === "closed") {
-    if (input.title !== undefined) node.title = input.title;
-    if (input.outcome !== undefined) node.outcome = input.outcome;
-    if (input.docs?.plan !== undefined) node.docs.plan = input.docs.plan;
-    if (input.docs?.spec !== undefined) node.docs.spec = input.docs.spec;
-    moved.push(...closeOut(state, node, task, today));
+  const openAsks = (on: Node): void => {
     for (const ask of input.asks ?? []) {
       const id = nextDecisionId(state);
       const decision: Decision = {
         id,
-        node: node.id,
+        node: on.id,
         question: ask.question,
         options: ask.options ?? [],
         default: ask.default,
@@ -648,9 +687,49 @@ export function closeTask(
       state.decisions.push(decision);
       decisions.push(id);
     }
+  };
+  const verifies =
+    task.step === "verify" && node.kind === "check" && node.parent !== null
+      ? state.nodes.find((n) => n.id === node.parent)
+      : undefined;
+  if (status === "closed") {
+    if (input.title !== undefined) node.title = input.title;
+    if (input.outcome !== undefined) node.outcome = input.outcome;
+    if (input.docs?.plan !== undefined) node.docs.plan = input.docs.plan;
+    if (input.docs?.spec !== undefined) node.docs.spec = input.docs.spec;
+    moved.push(...closeOut(state, node, task, today));
+    // A verification's questions go on the node it verified: its own
+    // check node is done now, and hidden.
+    const on = verifies ?? node;
+    openAsks(on);
     if (decisions.length > 0) {
-      stop = `${decisions.join(", ")} opened on ${node.id}; the owner answers in the view before the next step`;
+      stop = `${decisions.join(", ")} opened on ${on.id}; the owner answers in the view${on.stage === "done" ? "" : " before the next step"}`;
     }
+  } else if (verifies !== undefined && status === "blocked") {
+    // A failed verification. The hold on the check node is what hands
+    // the node back: it offers `execute` again, for the rework, and
+    // the rework's close gives the check node a new round. Nothing
+    // here waits on the owner.
+    node.hold = { kind: "blocked", reason: `${task.id}: ${summary}` };
+    moved.push(
+      `${node.id} failed`,
+      `${verifies.id} offers execute again, for the rework`,
+    );
+    openAsks(node);
+    if (decisions.length > 0) {
+      stop = `${decisions.join(", ")} opened on ${node.id}; the owner answers in the view before the next verification`;
+    }
+  } else if (scopeChanged) {
+    node.hold = { kind: "gated", reason: `${task.id}: ${summary}` };
+    moved.push(`${node.id} held gated`);
+    openAsks(node);
+  } else if ((input.asks ?? []).length > 0) {
+    // The questions are the hand-over: they gate the node until the
+    // owner answers, and then it offers its step again. No hold, so
+    // answering is the only thing the owner does.
+    openAsks(node);
+    moved.push(`${node.id} waits for ${decisions.join(", ")}`);
+    stop = `${decisions.join(", ")} opened on ${node.id}; the owner answers in the view, and the node offers its step again once they are answered`;
   } else if (status === "blocked") {
     node.hold = { kind: "blocked", reason: `${task.id}: ${summary}` };
     moved.push(`${node.id} held blocked`);
@@ -658,7 +737,7 @@ export function closeTask(
   } else if (status === "needs-judgment") {
     node.hold = { kind: "gated", reason: `${task.id}: ${summary}` };
     moved.push(`${node.id} held gated`);
-    stop ??= `${node.id} needs the owner's judgment; the owner lifts the hold in the view`;
+    stop = `${node.id} needs the owner's judgment; the owner lifts the hold in the view`;
   }
 
   return {
@@ -803,6 +882,35 @@ export function pullRequestsOf(state: State, nodeId: string): string[] {
   for (const t of state.tasks) {
     if (t.node === nodeId && t.status === "closed" && t.pr !== null) {
       if (!out.includes(t.pr)) out.push(t.pr);
+    }
+  }
+  return out;
+}
+
+const FULL_SHA = /^[0-9a-f]{40}$/;
+
+/**
+ * For each pull request of a node, the head it had when the last
+ * execute task on it closed, which the service recorded as that
+ * task's `ref`. A pull request no execute task closed with a recorded
+ * head, as every one from before 2026-11-17, has no entry.
+ */
+export function expectedHeads(
+  state: State,
+  nodeId: string,
+): Map<string, { sha: string; task: string }> {
+  const out = new Map<string, { sha: string; task: string }>();
+  for (const t of state.tasks) {
+    if (
+      t.node === nodeId &&
+      t.status === "closed" &&
+      t.step === "execute" &&
+      t.pr !== null &&
+      t.ref !== null &&
+      FULL_SHA.test(t.ref)
+    ) {
+      // Tasks are in the order they were opened: the last one wins.
+      out.set(t.pr, { sha: t.ref, task: t.id });
     }
   }
   return out;

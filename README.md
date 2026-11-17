@@ -123,13 +123,38 @@ repository, the state file (the rebuild plan there,
   not offer the step. `task_close` records the result and runs the
   close-out: a closed step moves the node on (an executed node enters
   verifying with a hidden check node; a verified check node completes
-  its parent and climbs), blocked and needs-judgment hold the node
-  for the owner, each ask becomes an open decision on the node, and a
+  its parent and climbs), each ask becomes an open decision whatever
+  the status, blocked and needs-judgment leave the node gated by
+  those decisions or, with no ask, held for the owner, and a
   scope that changed since the task opened closes it as
   needs-judgment. The answer's `stop` says when the session returns
   to the owner. Check nodes (`kind: "check"`) are hidden in the view
   and the plan unless they fail, are in flight or are selected, and
   count in no total.
+- What the review of milestone 6's first days changed (owner,
+  2026-11-16):
+  - A failed verification hands the node back by itself. A reviewer
+    closes it `blocked`; the hold on the check node offers `execute`
+    again on the verified node, the rework's task is told what
+    failed, and its close gives the check node a new round. The
+    service no longer says "the owner lifts the hold", and the view
+    neither offers nor accepts that lift: lifting it withdrew the
+    rework. A check node held `gated`, a reviewer's question, offers
+    no rework.
+  - A question asked at a close is kept whatever the status. With
+    `needs-judgment` or `blocked` it gates the node with no hold, and
+    the node offers its step again once the owner has answered.
+  - A pull request with commits made after its last execute task
+    closed is not merged. The service records the pull request's head
+    as the task's commit when an execute task closes, and every merge
+    (a verification's close, `node_update` to done, the owner's
+    acceptance in the view) refuses a head that has moved on.
+  - A node gated or blocked under a paused line is `paused`: it asks
+    nothing until the line resumes, and the view no longer counts it
+    as waiting on the owner. The tree's summary counts the nodes
+    ready to start.
+  - `node_remove` writes the cost of the tasks it removes on its
+    journal line.
 - What the first real use changed (owner, 2026-11-11):
   - A session is told the protocol when it connects: the server's MCP
     `instructions` carry it (`SERVER_INSTRUCTIONS` in

@@ -181,11 +181,16 @@ export function renderNodePage(
   const parent = node.parent === null ? undefined : byId.get(node.parent);
   const stage =
     node.stage === "done" && node.done ? `done ${node.done}` : node.stage;
-  const hold = node.hold
-    ? `<p class="hold" data-hold>${escapeHtml(node.hold.kind)}: ${escapeHtml(node.hold.reason)}</p>`
-    : cls === "gated"
-      ? `<p class="hold" data-hold>${escapeHtml(attentionReason(node))}</p>`
-      : "";
+  // A failed verification holds its check node, and that hold is the
+  // loop's, not a question for the owner: say so where it is shown.
+  const failedCheck = node.kind === "check" && node.hold?.kind === "blocked";
+  const hold = failedCheck
+    ? `<p class="hold" data-hold data-failed-check>verification failed: ${escapeHtml(node.hold!.reason)}</p><p class="note" data-rework>The rework is offered on ${parent ? `${escapeHtml(parent.title)} (${escapeHtml(parent.id)})` : "the verified node"} and starts without you. To overrule the verification, accept the review on that node.</p>`
+    : node.hold
+      ? `<p class="hold" data-hold>${escapeHtml(node.hold.kind)}: ${escapeHtml(node.hold.reason)}</p>`
+      : cls === "gated"
+        ? `<p class="hold" data-hold>${escapeHtml(attentionReason(node))}</p>`
+        : "";
   const body = [
     pageHeader(commit, nodePagePath(node.id)),
     sourceLine(commit, commit.sha),

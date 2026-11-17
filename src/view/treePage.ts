@@ -271,6 +271,7 @@ function summary(
   const parts = [
     `<span data-count-owner="${owner}">${owner} node${owner === 1 ? "" : "s"} waiting on you</span>`,
     `<span data-count-decisions="${decisions}">${decisions} open decision${decisions === 1 ? "" : "s"}</span>`,
+    `<span data-count-ready="${count("actionable")}">${count("actionable")} ready to start</span>`,
     `<span data-count-flight="${count("in-flight")}">${count("in-flight")} in flight</span>`,
     `<span data-count-waiting="${count("waiting")}">${count("waiting")} waiting on a dependency</span>`,
     `<span data-count-blocked="${count("blocked")}">${count("blocked")} blocked</span>`,
