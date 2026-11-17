@@ -15,7 +15,10 @@ import { orderSiblingsByDependency } from "./order.js";
 import { renderBacklog, renderPlan, renderRegister } from "./render.js";
 import { formatState, type State } from "./schema.js";
 import type { CommitReader } from "../planRegister/registerFetcher.js";
-import { GithubFetchError } from "../planRegister/registerFetcher.js";
+import {
+  FileTooLargeError,
+  GithubFetchError,
+} from "../planRegister/registerFetcher.js";
 import { GitConflictError, type GitWriter } from "../planRegister/gitWriter.js";
 
 export const STATE_PATH = "orchestration/state.json";
@@ -122,6 +125,23 @@ export class StateStore {
       sha: resolved.sha,
       fetchedAt: this.now().toISOString(),
     };
+  }
+
+  /** The head of the default branch. */
+  async headSha(): Promise<string> {
+    return (await this.reader.resolveRef()).sha;
+  }
+
+  /** Whether the repository has a file at `path` at one commit. */
+  async fileExistsAt(sha: string, path: string): Promise<boolean> {
+    try {
+      await this.reader.readFileAtSha(sha, path);
+      return true;
+    } catch (err) {
+      if (err instanceof FileTooLargeError) return true;
+      if (err instanceof GithubFetchError && err.status === 404) return false;
+      throw err;
+    }
   }
 
   /** The state at one commit, or null with the findings when it does

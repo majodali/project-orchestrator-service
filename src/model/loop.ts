@@ -340,8 +340,50 @@ export function completeNode(
   node.stage = "done";
   node.done = today;
   moved.push(`${node.id} done ${today}`);
+  moved.push(...applyDocsOnMerge(state, node.id));
   const parent = node.parent === null ? undefined : byId.get(node.parent);
   if (parent) moved.push(...climb(state, parent));
+  return moved;
+}
+
+/**
+ * The document paths the tasks of a node named for the time its pull
+ * requests merge (P4-N031): every node, document and new path, in the
+ * order the tasks were opened, a later entry replacing an earlier one.
+ */
+export function pendingDocs(
+  state: State,
+  nodeId: string,
+): Array<{ node: string; kind: "plan" | "spec"; path: string }> {
+  const byKey = new Map<
+    string,
+    { node: string; kind: "plan" | "spec"; path: string }
+  >();
+  for (const t of state.tasks) {
+    if (t.node !== nodeId) continue;
+    for (const entry of t.docsOnMerge ?? []) {
+      for (const kind of ["plan", "spec"] as const) {
+        const path = entry[kind];
+        if (path !== undefined) {
+          byKey.set(`${entry.node} ${kind}`, { node: entry.node, kind, path });
+        }
+      }
+    }
+  }
+  return [...byKey.values()];
+}
+
+/** Sets the paths `pendingDocs` lists: called when the node is done,
+ * which is when its pull requests have merged and the files are at
+ * their new paths. A node removed since is passed by. */
+export function applyDocsOnMerge(state: State, nodeId: string): string[] {
+  const moved: string[] = [];
+  for (const { node, kind, path } of pendingDocs(state, nodeId)) {
+    const target = state.nodes.find((n) => n.id === node);
+    if (!target || target.docs[kind] === path) continue;
+    target.docs[kind] = path;
+    moved.push(`${node} ${kind} ${path}`);
+  }
   return moved;
 }
 

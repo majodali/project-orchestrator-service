@@ -149,6 +149,17 @@ repository, the state file (the rebuild plan there,
     as the task's commit when an execute task closes, and every merge
     (a verification's close, `node_update` to done, the owner's
     acceptance in the view) refuses a head that has moved on.
+  - `node_update` changes a node's plan and specification paths
+    (P4-N031, 2026-11-17). `docs` sets a path now and is refused
+    unless the path is a file on the default branch. `docsOnMerge`,
+    under an open execute task, is for moving a linked document: the
+    node's path is cleared at once, so the task's pull request may
+    move the file, and the new path is set when the task's node is
+    done. Every done decision first checks that a pull request of the
+    node brings a file to each such path, and refuses, merging
+    nothing, when one is missing. That order keeps every path the
+    state file names a file on the default branch and on the pull
+    request at every commit.
   - A node gated or blocked under a paused line is `paused`: it asks
     nothing until the line resumes, and the view no longer counts it
     as waiting on the owner. The tree's summary counts the nodes

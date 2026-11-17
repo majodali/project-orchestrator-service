@@ -77,6 +77,7 @@ import {
   type PullRequests,
 } from "./planRegister/pullRequests.js";
 import { GithubFetchError } from "./planRegister/registerFetcher.js";
+import { requirePendingDocs } from "./pendingDocs.js";
 
 /** What every enlisted session is told when it connects: the loop's
  * protocol, since nothing else reaches a session that was simply
@@ -95,6 +96,7 @@ export const SERVER_INSTRUCTIONS = [
   "5. When the answer carries `stop`, or `task_next` answers nothing, return to the person: the owner answers decisions and lifts holds in the view.",
   "Every write to a node or a decision (`node_update`, `node_add`, `node_remove`, `decision_open`, `decision_close`) names the open task it is part of as `task`, and is refused without one. The only exception is a change the owner dictated to you in this conversation: pass their words as `ownerInstruction`. Being asked to work on a node is not that: claim it.",
   "A node that turns out to be obsolete is removed with `node_remove`, not parked or held; git keeps its history. A hold or a park is for work that will resume.",
+  "To move a document a node links: under your open execute task, call `node_update` on that node with `docsOnMerge` naming the new path, then move the file in your task's pull request. The old path is cleared at once and the new one is set when your node is done. Never move a linked file without it: the state file would name a path that is gone.",
   "Do not estimate token counts at `task_close`: the repository's hook measures a task's cost and records it with `task_cost`.",
   "Pass `session` on every write: your session's own name or identifier, so the journal says who wrote.",
 ].join("\n");
@@ -386,9 +388,11 @@ export function registerStateTools(
     {
       title: "Update a node",
       description:
-        "Changes one node's stage, hold, start, outcome, title, note or dependencies " +
-        "and commits the state file. A node moved to `done` gains today's date. " +
-        "Refused, with nothing committed, when the result would violate an invariant.",
+        "Changes one node's stage, hold, start, outcome, title, note, dependencies " +
+        "or document paths and commits the state file. A node moved to `done` gains " +
+        "today's date. Refused, with nothing committed, when the result would violate " +
+        "an invariant. To move a linked document: name its new path in `docsOnMerge` " +
+        "under your open execute task, then move the file in that task's pull request.",
       inputSchema: {
         nodeId,
         reason: z
@@ -410,6 +414,24 @@ export function registerStateTools(
           .array(nodeId)
           .optional()
           .describe("The full list of nodes this one waits for."),
+        docs: z
+          .object({
+            plan: z.string().min(1).nullable().optional(),
+            spec: z.string().min(1).nullable().optional(),
+          })
+          .optional()
+          .describe(
+            "The node's plan and specification documents, changed now: each a path or null. A path must already be a file on the default branch. To move a file, use docsOnMerge.",
+          ),
+        docsOnMerge: z
+          .object({
+            plan: z.string().min(1).optional(),
+            spec: z.string().min(1).optional(),
+          })
+          .optional()
+          .describe(
+            "The path a document will have once your task's pull request merges. The node's path is cleared now, so the pull request may move the file, and the new path is set when your task's node is done. Needs `task`, your open execute task. Not for your task's own node: that changes its scope.",
+          ),
         ...authorityFields,
         session: sessionField,
       },
@@ -418,11 +440,32 @@ export function registerStateTools(
       run(async () => {
         let changes: string[] = [];
         let merged: string[] = [];
+        const paths = [input.docs?.plan, input.docs?.spec].filter(
+          (p): p is string => typeof p === "string",
+        );
+        if (paths.length > 0) {
+          // A path set now must be a file now, or the default branch
+          // would fail its check on the next commit.
+          const sha = await store().headSha();
+          for (const path of paths) {
+            if (!(await store().fileExistsAt(sha, path))) {
+              return toolError(
+                `refused: ${path} is not a file on the default branch at ${sha}. Nothing was committed. To move a document, name its new path in docsOnMerge and move the file in your task's pull request.`,
+              );
+            }
+          }
+        }
         if (input.stage === "done") {
           // Done needs the node's pull requests merged.
           const head = await store().read();
           if (head.state !== null) {
             authorize(head.state, input);
+            await requirePendingDocs(
+              store(),
+              pullRequests,
+              head.state,
+              input.nodeId,
+            );
             merged = (
               await ensureMerged(
                 pullRequests,
@@ -768,6 +811,14 @@ export function registerStateTools(
           const toMerge = mergesAtClose(head.state!, task, pr ?? task.pr);
           const verified =
             task.step === "verify" ? (headNode.parent ?? null) : null;
+          if (verified !== null) {
+            await requirePendingDocs(
+              store(),
+              pullRequests,
+              head.state!,
+              verified,
+            );
+          }
           merged = (
             await ensureMerged(
               pullRequests,

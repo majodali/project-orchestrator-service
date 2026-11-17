@@ -7,7 +7,7 @@
  * event's fields; a mutation that names nothing throws `NotFoundError`.
  */
 
-import { enterVerifying, removeNode } from "./loop.js";
+import { applyDocsOnMerge, enterVerifying, removeNode } from "./loop.js";
 import { NotFoundError, type WriteEvent } from "./store.js";
 import type { Decision, Hold, Node, Stage, State } from "./schema.js";
 
@@ -24,6 +24,16 @@ export interface NodeUpdateInput {
   note?: string | null;
   /** The full list of nodes this one waits for. */
   after?: string[];
+  /** The node's documents, changed now: each a path or null. The file
+   * must already be at the path on the default branch. */
+  docs?: { plan?: string | null; spec?: string | null };
+  /** The path a document will have once the pull request of `task`
+   * merges. The node's path is cleared now, so that the pull request
+   * may move the file; the new path is set when the task's node is
+   * done. Needs `task`, an open execute task. */
+  docsOnMerge?: { plan?: string; spec?: string };
+  /** The open task the write is part of, when there is one. */
+  task?: string;
   session?: string;
 }
 
@@ -83,6 +93,11 @@ export function updateNode(
       changes.push("hold lifted");
     }
     if (input.stage === "done") {
+      // Its pull requests are merged: documents they moved take
+      // their new paths.
+      for (const moved of applyDocsOnMerge(state, n.id)) changes.push(moved);
+    }
+    if (input.stage === "done") {
       // The owner's acceptance closes the verification with the node.
       for (const c of state.nodes) {
         if (c.parent === n.id && c.kind === "check" && c.stage !== "done") {
@@ -124,6 +139,34 @@ export function updateNode(
   if (input.after !== undefined) {
     changes.push(`after ${input.after.join(", ") || "nothing"}`);
     n.after = input.after;
+  }
+  for (const kind of ["plan", "spec"] as const) {
+    const path = input.docs?.[kind];
+    if (path !== undefined && path !== n.docs[kind]) {
+      changes.push(`${kind} ${path ?? "none"}`);
+      n.docs[kind] = path;
+    }
+  }
+  if (input.docsOnMerge !== undefined) {
+    const task = state.tasks.find((t) => t.id === input.task);
+    if (!task || task.status !== "open" || task.step !== "execute") {
+      throw new NotFoundError(
+        "docsOnMerge needs `task`, an open execute task: its pull request is the one that moves the file",
+      );
+    }
+    const entry: { node: string; plan?: string; spec?: string } = {
+      node: n.id,
+    };
+    for (const kind of ["plan", "spec"] as const) {
+      const path = input.docsOnMerge[kind];
+      if (path === undefined) continue;
+      entry[kind] = path;
+      n.docs[kind] = null;
+      changes.push(`${kind} cleared, ${path} when ${task.id}'s node is done`);
+    }
+    if (entry.plan !== undefined || entry.spec !== undefined) {
+      task.docsOnMerge = [...(task.docsOnMerge ?? []), entry];
+    }
   }
   if (changes.length === 0)
     throw new NotFoundError("nothing to change: no field given differs");
