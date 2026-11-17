@@ -163,6 +163,19 @@ export const taskSchema = z.object({
   /** Imported narrative (the Cost log's note). Null for tasks the tools
    * write. */
   notes: z.string().min(1).nullable(),
+  /** Document paths to set when the pull requests of this task's node
+   * merge (P4-N031, 2026-11-17): a task that moves a linked document
+   * clears the node's path first, so that its pull request may move
+   * the file, and names the new path here. Absent on other tasks. */
+  docsOnMerge: z
+    .array(
+      z.object({
+        node: nodeId,
+        plan: z.string().min(1).optional(),
+        spec: z.string().min(1).optional(),
+      }),
+    )
+    .optional(),
 });
 export type Task = z.infer<typeof taskSchema>;
 

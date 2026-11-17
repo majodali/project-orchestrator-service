@@ -75,6 +75,7 @@ import {
   type PullRequests,
 } from "../planRegister/pullRequests.js";
 import { expectedHeads, pullRequestsOf } from "../model/loop.js";
+import { requirePendingDocs } from "../pendingDocs.js";
 import { OTHER_ANSWER } from "./actions.js";
 import { PageReadError, ShaPathCache, readPageFiles } from "./commitRead.js";
 import type { PageFiles } from "./commitRead.js";
@@ -707,6 +708,7 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
         // Done needs the node's pull requests merged: the service
         // merges them here, before the commit (owner, 2026-11-11).
         if (head.state !== null) {
+          await requirePendingDocs(store(), pullRequests, head.state, id);
           await ensureMerged(
             pullRequests,
             pullRequestsOf(head.state, id),
