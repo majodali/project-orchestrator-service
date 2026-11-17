@@ -244,7 +244,12 @@ export function nodeActions(node: Node): NodeAction[] {
   const out: NodeAction[] = [];
   if (node.stage === "done" || node.stage === "parked") return out;
   if (node.start === "approve") out.push("approve-start");
-  if (node.hold !== null) out.push("lift-hold");
+  // A failed verification is not the owner's to lift: the hold on
+  // the check node is what offers the rework, and lifting it withdrew
+  // that offer (2026-11-16, P4-N033). The owner who wants to overrule
+  // it accepts the review on the node itself.
+  const failedCheck = node.kind === "check" && node.hold?.kind === "blocked";
+  if (node.hold !== null && !failedCheck) out.push("lift-hold");
   if (node.stage === "verifying") out.push("accept-review");
   return out;
 }

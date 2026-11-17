@@ -258,6 +258,7 @@ describe("task_next", () => {
         title: "The part to build",
         step: "execute",
         role: "implementer",
+        rework: false,
       },
     ]);
     expect(repo.commits).toHaveLength(0);
@@ -456,8 +457,13 @@ describe("the claim and the close-out", () => {
       status: "blocked",
       summary: "The outcome is not met: no tests.",
     });
-    expect(failed.structuredContent!.moved).toEqual(["P1-N005 held blocked"]);
-    expect(failed.structuredContent!.stop).toContain("blocked");
+    // A failed verification is not a stop for the owner: the loop
+    // hands the node back by itself.
+    expect(failed.structuredContent!.moved).toEqual([
+      "P1-N005 failed",
+      "P1-N003 offers execute again, for the rework",
+    ]);
+    expect(failed.structuredContent!.stop).toBeNull();
     let s = stateAtHead(repo);
     expect(s.nodes.find((n) => n.id === "P1-N005")!.hold).toEqual({
       kind: "blocked",
@@ -468,7 +474,16 @@ describe("the claim and the close-out", () => {
     expect(next.structuredContent!.next).toMatchObject({
       node: { id: "P1-N003", stage: "verifying", class: "actionable" },
       step: "execute",
+      // The rework is told what failed, without looking for it.
+      rework: {
+        checkNode: "P1-N005",
+        failed: "T002: The outcome is not met: no tests.",
+      },
     });
+    expect(
+      (next.structuredContent!.candidates as Array<{ rework: boolean }>)[0]!
+        .rework,
+    ).toBe(true);
     await call(app, "task_open", { nodeId: "P1-N003", step: "execute" });
     const reworked = await call(app, "task_close", {
       taskId: "T003",

@@ -83,6 +83,13 @@ const WHY_NOT: Readonly<Record<string, string>> = {
     "GitHub has not computed whether it can merge; call again in a moment",
 };
 
+/** The head a pull request must still have to be merged: the head it
+ * had when `task`, the last task that worked on it, closed. */
+export interface ExpectedHead {
+  sha: string;
+  task: string;
+}
+
 export interface EnsureMergedResult {
   /** Merged by this call. */
   merged: string[];
@@ -94,12 +101,19 @@ export interface EnsureMergedResult {
  * Merges each pull request that is not merged yet. Throws
  * `NotMergeableError` at the first that cannot be merged; those before
  * it stay merged, and calling again continues from there.
+ *
+ * `expected` names, for a pull request, the head it had when the last
+ * task that worked on it closed. A pull request whose head has moved
+ * since is refused (owner, 2026-11-16): the commits after that close
+ * belong to no task, so no task's cost covers them and no verification
+ * was asked to read them.
  */
 export async function ensureMerged(
   client: () => PullRequests,
   refs: readonly string[],
   wait: (ms: number) => Promise<void> = (ms) =>
     new Promise((resolve) => setTimeout(resolve, ms)),
+  expected: ReadonlyMap<string, ExpectedHead> = new Map(),
 ): Promise<EnsureMergedResult> {
   const result: EnsureMergedResult = { merged: [], already: [] };
   if (refs.length === 0) return result;
@@ -113,6 +127,13 @@ export async function ensureMerged(
     if (!pr.open)
       throw new NotMergeableError(ref, "it was closed without merging");
     if (pr.draft) throw new NotMergeableError(ref, WHY_NOT.draft!);
+    const want = expected.get(ref);
+    if (want !== undefined && want.sha !== pr.headSha) {
+      throw new NotMergeableError(
+        ref,
+        `it has commits made after ${want.task} closed (its head is ${pr.headSha.slice(0, 7)}; it was ${want.sha.slice(0, 7)} at that close), and work on a node needs an open task. A reviewer closes the verification as blocked, naming this, and the node offers the rework; the rework's close covers the commits`,
+      );
+    }
     // GitHub computes mergeability lazily: ask again, briefly.
     for (let i = 0; i < 3 && pr.mergeableState === "unknown"; i += 1) {
       await wait(1000);

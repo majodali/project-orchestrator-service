@@ -90,10 +90,17 @@ export function classifyNode(
 ): NodeClass {
   if (node.stage === "done") return "done";
   if (node.stage === "parked") return "parked";
+  // A hold or a park above comes first (owner, 2026-11-16): a node
+  // gated or blocked under a paused line asks nothing of anyone until
+  // the line resumes, and showing it as waiting on the owner sent the
+  // owner to a question that was not being asked. A task already open
+  // on the node is still shown as what it is.
+  const inFlight = (openTasks.get(node.id) ?? []).length > 0;
+  const paused = pausedBy(node, byId) !== undefined;
+  if (paused && !inFlight) return "paused";
   if (node.hold?.kind === "gated") return "gated";
   if (node.hold?.kind === "blocked") return "blocked";
-  if ((openTasks.get(node.id) ?? []).length > 0) return "in-flight";
-  if (pausedBy(node, byId) !== undefined) return "paused";
+  if (inFlight) return "in-flight";
   if (node.stage === "broken-down") return "in-progress";
   if (node.stage === "verifying") {
     // The check node carries the work; a failed check node hands the
@@ -103,7 +110,7 @@ export function classifyNode(
         c.parent === node.id &&
         c.kind === "check" &&
         c.stage !== "done" &&
-        c.hold !== null,
+        c.hold?.kind === "blocked",
     );
     if (!failed) return "in-progress";
   }

@@ -160,7 +160,7 @@ export class FakePullRequests implements PullRequests {
       merged: false,
       draft: false,
       mergeableState: "clean",
-      headSha: "h".repeat(40),
+      headSha: "e".repeat(40),
       ...this.states.get(ref),
     };
   }
