@@ -151,7 +151,11 @@ export const taskSchema = z.object({
    * there to tell a changed scope (milestone 5). Null for tasks
    * written before the loop. */
   base: z.string().min(1).nullable().default(null),
-  /** The commit the result landed at, when known. */
+  /** The commit the result landed at, when known. For an `execute`
+   * task closed `closed` with a pull request, the service sets it to
+   * that pull request's head at the close (owner, 2026-11-16): a
+   * merge refuses a head that has moved since, because the later
+   * commits belong to no task. */
   ref: z.string().min(1).nullable(),
   pr: z.string().regex(PULL_REQUEST, "owner/repo#number").nullable(),
   /** What the task delivered, in at most SUMMARY_MAX_WORDS words. */
