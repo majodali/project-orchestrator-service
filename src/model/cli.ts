@@ -96,8 +96,11 @@ function main(argv: string[]): number {
 
   if (command === "import") {
     const register = readOptional(root, REGISTER_PATH);
-    if (register === null) {
-      console.error(`plan-state: ${REGISTER_PATH} not found under ${root}`);
+    const backlog = register === null ? readOptional(root, BACKLOG_PATH) : null;
+    if (register === null && backlog === null) {
+      console.error(
+        `plan-state: neither ${REGISTER_PATH} nor ${BACKLOG_PATH} found under ${root}`,
+      );
       return 1;
     }
     const project = values.project ?? projectFromRemote(root);
@@ -130,6 +133,7 @@ function main(argv: string[]): number {
     const { state: imported, record } = importState({
       project,
       register,
+      backlog,
       costLog: readOptional(root, "docs/cost-log.md"),
       journal: readOptional(root, "orchestration/journal.jsonl"),
       rulings: readOptional(root, "docs/rulings.md"),

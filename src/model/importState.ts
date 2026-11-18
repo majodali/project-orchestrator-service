@@ -30,8 +30,12 @@ import {
 
 export interface ImportInput {
   project: string;
-  /** `docs/plan-register.md`. */
-  register: string;
+  /** `docs/plan-register.md`, or null when absent: the register takes
+   * the project's plan when it exists; `backlog` is read only then. */
+  register: string | null;
+  /** `docs/backlog.md`, read in the K-004 shape when `register` is
+   * null. Null when absent. */
+  backlog: string | null;
   /** `docs/cost-log.md`, or null when absent. */
   costLog: string | null;
   /** `orchestration/journal.jsonl`, or null when absent. */
@@ -64,8 +68,20 @@ export interface Overrides {
   >;
 }
 
+/** A K-004 Backlog row the reader could not turn into a node. */
+export interface BacklogNotMapped {
+  heading: string | null;
+  excerpt: string;
+  reason: string;
+}
+
 export interface ImportRecord {
   counts: { nodes: number; tasks: number; decisions: number };
+  /** Which file the nodes came from. */
+  source: "register" | "backlog";
+  /** Backlog rows read but not mapped to a node, with the reason. Empty
+   * when the source is the register. */
+  backlogNotMapped: BacklogNotMapped[];
   /** Nodes whose outcome no record gave. */
   noOutcome: string[];
   /** Nodes whose outcome exceeds the bound, from a plan's first sentence. */
@@ -459,14 +475,131 @@ export function parseRulings(text: string): RulingParse {
   return { decisions, unparsed };
 }
 
+// ---- The Backlog (K-004) --------------------------------------------------
+
+/** One `- [x]`/`- [ ]` list item of a K-004 Backlog, under the `##`
+ * heading it stands under; continuation lines joined by a space. */
+export interface BacklogRow {
+  heading: string | null;
+  checked: boolean;
+  text: string;
+}
+
+/** Reads every list item of a K-004 Backlog: `- [x]` or `- [ ]`, its
+ * continuation lines up to the next blank line, and the `##` heading
+ * it stands under. Prose outside a list item is ignored. */
+export function parseBacklogRows(markdown: string): BacklogRow[] {
+  const rows: BacklogRow[] = [];
+  let heading: string | null = null;
+  let current: BacklogRow | null = null;
+  for (const line of markdown.split(/\r\n|\n/)) {
+    const h = /^##\s+(.+?)\s*$/.exec(line);
+    if (h) {
+      heading = h[1]!;
+      current = null;
+      continue;
+    }
+    const m = /^- \[([ xX])\]\s*(.*)$/.exec(line);
+    if (m) {
+      current = { heading, checked: m[1]!.toLowerCase() === "x", text: m[2]! };
+      rows.push(current);
+      continue;
+    }
+    if (line.trim() === "") current = null;
+    else if (current) current.text += ` ${line.trim()}`;
+  }
+  return rows;
+}
+
+const BACKLOG_LEAD = /^\*\*(.+?)\*\*/;
+const BACKLOG_BODY_AFTER_LEAD = /^\*\*.+?\*\*\s*—\s*([\s\S]+)$/;
+const BACKLOG_PLAN_LINK = /\[[^\]]*\]\((plans\/[^)\s]+)\)/;
+
+type BacklogShapeResult =
+  { ok: true; title: string; outcome: string } | { ok: false; reason: string };
+
+/** A row's title and outcome under the K-004 shape (a bolded lead, an
+ * em-dash body immediately after it), or the reason it has neither. */
+function backlogShape(text: string): BacklogShapeResult {
+  const lead = BACKLOG_LEAD.exec(text);
+  if (!lead) return { ok: false, reason: "no bolded lead" };
+  const body = BACKLOG_BODY_AFTER_LEAD.exec(text);
+  if (!body) {
+    return {
+      ok: false,
+      reason: "the bolded lead is not followed directly by an em dash",
+    };
+  }
+  const outcome = firstSentence(body[1]!);
+  if (!outcome) {
+    return {
+      ok: false,
+      reason: "the body after the em dash has no sentence to read",
+    };
+  }
+  return { ok: true, title: lead[1]!.trim(), outcome };
+}
+
+/** Builds nodes from a K-004 Backlog: each mapped row becomes one node
+ * in Backlog order, minted in `planLine`; `- [x]` is `done`, `- [ ]`
+ * is `identified`; the row's heading is kept in the note; a plan
+ * document is linked only when the row names one that exists. */
+function backlogToNodes(
+  text: string,
+  planLine: string,
+  exists: (relativePath: string) => boolean,
+): { nodes: Node[]; notMapped: BacklogNotMapped[] } {
+  const nodes: Node[] = [];
+  const notMapped: BacklogNotMapped[] = [];
+  let seq = 0;
+  for (const row of parseBacklogRows(text)) {
+    const shape = backlogShape(row.text);
+    if (!shape.ok) {
+      const lead = BACKLOG_LEAD.exec(row.text);
+      notMapped.push({
+        heading: row.heading,
+        excerpt: lead ? lead[1]!.trim() : row.text.slice(0, 60),
+        reason: shape.reason,
+      });
+      continue;
+    }
+    seq += 1;
+    const link = BACKLOG_PLAN_LINK.exec(row.text);
+    const planPath = link ? `docs/${link[1]!}` : null;
+    nodes.push({
+      id: `${planLine}-N${String(seq).padStart(3, "0")}`,
+      kind: "work",
+      title: shape.title,
+      outcome: shape.outcome,
+      stage: row.checked ? "done" : "identified",
+      parent: null,
+      after: [],
+      hold: null,
+      start: "auto",
+      docs: {
+        plan: planPath !== null && exists(planPath) ? planPath : null,
+        spec: null,
+      },
+      done: null,
+      note: row.heading,
+    });
+  }
+  return { nodes, notMapped };
+}
+
 // ---- The import ---------------------------------------------------------
 
 export function importState(input: ImportInput): {
   state: State;
   record: ImportRecord;
 } {
+  if (input.register === null && input.backlog === null) {
+    throw new Error("neither the register nor a Backlog was given");
+  }
   const record: ImportRecord = {
     counts: { nodes: 0, tasks: 0, decisions: 0 },
+    source: input.register !== null ? "register" : "backlog",
+    backlogNotMapped: [],
     noOutcome: [],
     longOutcome: [],
     reviewTitle: [],
@@ -481,74 +614,87 @@ export function importState(input: ImportInput): {
     overridesApplied: [],
   };
 
-  // Nodes.
-  const parsed = parseRegister(input.register);
-  if (parsed.errors.length > 0) {
-    throw new Error(
-      `the register does not parse: ${parsed.errors.map((e) => `line ${e.line}: ${e.reason}`).join("; ")}`,
-    );
-  }
-  const planByNode = new Map<string, string>();
-  for (const p of input.plans.keys()) {
-    const m = PLAN_FILENAME.exec(p);
-    if (m) planByNode.set(`${m[1]!.toUpperCase()}-${m[2]!.toUpperCase()}`, p);
-  }
+  // Nodes: the register when there is one, else the Backlog.
   const jt = journalTasks(input.journal);
-  const doneDates = new Map<string, string>();
-  for (const t of jt.values()) {
-    if (t.node && t.accepted) {
-      const d = t.accepted.slice(0, 10);
-      if (!doneDates.has(t.node) || doneDates.get(t.node)! < d)
-        doneDates.set(t.node, d);
+  let nodes: Node[];
+  if (input.register !== null) {
+    const parsed = parseRegister(input.register);
+    if (parsed.errors.length > 0) {
+      throw new Error(
+        `the register does not parse: ${parsed.errors.map((e) => `line ${e.line}: ${e.reason}`).join("; ")}`,
+      );
     }
-  }
+    const planByNode = new Map<string, string>();
+    for (const p of input.plans.keys()) {
+      const m = PLAN_FILENAME.exec(p);
+      if (m) planByNode.set(`${m[1]!.toUpperCase()}-${m[2]!.toUpperCase()}`, p);
+    }
+    const doneDates = new Map<string, string>();
+    for (const t of jt.values()) {
+      if (t.node && t.accepted) {
+        const d = t.accepted.slice(0, 10);
+        if (!doneDates.has(t.node) || doneDates.get(t.node)! < d)
+          doneDates.set(t.node, d);
+      }
+    }
 
-  const nodes: Node[] = [];
-  for (const id of parsed.order) {
-    const r = parsed.nodes.get(id)!;
-    const ann = splitAnnotation(r.annotation);
-    // A chunk number is a reference, not a title: it moves to the note.
-    let title = r.title;
-    const chunk = /^(.*?)\s*\((chunk \d+)\)$/.exec(title);
-    if (chunk) {
-      title = chunk[1]!.trim();
-      ann.note = [
-        `${chunk[2]![0]!.toUpperCase()}${chunk[2]!.slice(1)} of the parent plan`,
-        ann.note,
-      ]
-        .filter((x) => x !== null)
-        .join("; ");
+    nodes = [];
+    for (const id of parsed.order) {
+      const r = parsed.nodes.get(id)!;
+      const ann = splitAnnotation(r.annotation);
+      // A chunk number is a reference, not a title: it moves to the note.
+      let title = r.title;
+      const chunk = /^(.*?)\s*\((chunk \d+)\)$/.exec(title);
+      if (chunk) {
+        title = chunk[1]!.trim();
+        ann.note = [
+          `${chunk[2]![0]!.toUpperCase()}${chunk[2]!.slice(1)} of the parent plan`,
+          ann.note,
+        ]
+          .filter((x) => x !== null)
+          .join("; ");
+      }
+      let plan = ann.plan;
+      if (plan === null && planByNode.has(id)) {
+        plan = planByNode.get(id)!;
+        record.linkedByFilename.push({ id, plan });
+      }
+      let outcome: string | null = null;
+      if (plan !== null && input.plans.has(plan))
+        outcome = outcomeFromPlan(input.plans.get(plan)!);
+      if (outcome !== null && wordCount(outcome) > OUTCOME_MAX_WORDS)
+        record.longOutcome.push(id);
+      if (outcome === null && r.stage !== "identified")
+        record.noOutcome.push(id);
+      const after = dependenciesFromAnnotation(r.annotation ?? "").filter(
+        (d) => d !== id && parsed.nodes.has(d),
+      );
+      const done = r.stage === "done" ? (doneDates.get(id) ?? null) : null;
+      if (r.stage === "done" && done === null) record.noDoneDate.push(id);
+      nodes.push({
+        id,
+        kind: "work",
+        title,
+        outcome,
+        stage: r.stage as Node["stage"],
+        parent: r.parentId,
+        after,
+        hold: r.hold,
+        start: "auto",
+        docs: { plan, spec: ann.spec },
+        done,
+        note: ann.note,
+      });
     }
-    let plan = ann.plan;
-    if (plan === null && planByNode.has(id)) {
-      plan = planByNode.get(id)!;
-      record.linkedByFilename.push({ id, plan });
+  } else {
+    const built = backlogToNodes(input.backlog!, "P1", input.exists);
+    nodes = built.nodes;
+    record.backlogNotMapped = built.notMapped;
+    for (const n of nodes) {
+      if (n.outcome !== null && wordCount(n.outcome) > OUTCOME_MAX_WORDS) {
+        record.longOutcome.push(n.id);
+      }
     }
-    let outcome: string | null = null;
-    if (plan !== null && input.plans.has(plan))
-      outcome = outcomeFromPlan(input.plans.get(plan)!);
-    if (outcome !== null && wordCount(outcome) > OUTCOME_MAX_WORDS)
-      record.longOutcome.push(id);
-    if (outcome === null && r.stage !== "identified") record.noOutcome.push(id);
-    const after = dependenciesFromAnnotation(r.annotation ?? "").filter(
-      (d) => d !== id && parsed.nodes.has(d),
-    );
-    const done = r.stage === "done" ? (doneDates.get(id) ?? null) : null;
-    if (r.stage === "done" && done === null) record.noDoneDate.push(id);
-    nodes.push({
-      id,
-      kind: "work",
-      title,
-      outcome,
-      stage: r.stage as Node["stage"],
-      parent: r.parentId,
-      after,
-      hold: r.hold,
-      start: "auto",
-      docs: { plan, spec: ann.spec },
-      done,
-      note: ann.note,
-    });
   }
   for (const n of nodes) {
     if (n.stage === "done" || n.after.length > 0) continue;
@@ -744,7 +890,19 @@ export function renderImportRecord(record: ImportRecord, date: string): string {
     "",
     `Written by \`plan-state import\` on ${date}. Reader: the owner reviewing the first state file, and any session. Each list below names what the import could not take from a record, or took with a proposal to review.`,
     "",
+    `Source: ${record.source === "register" ? "docs/plan-register.md" : "docs/backlog.md"}.`,
+    "",
     `Counts: ${record.counts.nodes} nodes, ${record.counts.tasks} tasks, ${record.counts.decisions} decisions.`,
+    "",
+    "## Backlog rows not mapped to a node",
+    "",
+    "Each lacked a title, an outcome, or both, under the K-004 shape.",
+    "",
+    list(
+      record.backlogNotMapped.map(
+        (r) => `"${r.excerpt}" (${r.heading ?? "no heading"}): ${r.reason}`,
+      ),
+    ),
     "",
     "## Nodes without an outcome from any record",
     "",
