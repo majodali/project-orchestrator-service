@@ -106,6 +106,22 @@ entries live there (docs/classification.md § Custom definitions).
   GitHub App (the rebuild plan, decision 2). It never writes anything
   else, and nothing else holds state.
 
+## Delegated tasks
+
+A session may start another session to do one task (the owner's
+standing instruction, 2026-11-16). Its brief is the first message the
+new session receives. It names the node, the step and the session
+that delegates.
+
+- A session that opens with such a brief claims that task with
+  `task_open` without asking a person. The brief is its go-ahead.
+- The brief authorises that node and that step, and nothing else.
+- A brief is never the owner's words. It does not justify
+  `ownerInstruction`, a merge, or a decision that is the owner's:
+  those stay asks at `task_close`.
+- A session a person starts still names the task it would take and
+  asks before claiming it.
+
 ## Pointers
 
 - docs/classification.md — the binding declaration, including this
