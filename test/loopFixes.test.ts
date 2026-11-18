@@ -5,7 +5,7 @@ import { checkState, classifyAll } from "../src/model/check.js";
 import { candidates, offerOn } from "../src/model/loop.js";
 import { renderPlan } from "../src/model/render.js";
 import { StateStore } from "../src/model/store.js";
-import type { State } from "../src/model/schema.js";
+import { formatState, type State } from "../src/model/schema.js";
 import { summarizeCheckRuns } from "../src/planRegister/commitChecks.js";
 import {
   GithubAppPullRequests,
@@ -144,6 +144,17 @@ function stateAtHead(repo: FakeRepository): State {
   return JSON.parse(
     repo.files.get(repo.heads.get("main")!)!.get("orchestration/state.json")!,
   ) as State;
+}
+
+/** What `plan-state check` means by canonical: the committed bytes
+ * equal `formatState` of the same text read back through the schema
+ * (src/model/cli.ts, the `check` command, invariant 1; P4-N054). */
+function isCanonical(repo: FakeRepository): boolean {
+  const raw = repo.files
+    .get(repo.heads.get("main")!)!
+    .get("orchestration/state.json")!;
+  const { state } = checkState(JSON.parse(raw));
+  return state !== null && formatState(state) === raw;
 }
 
 beforeEach(() => viewEnv());
@@ -679,6 +690,10 @@ describe("task_cost", () => {
       session: "the hook",
     });
     expect(first.isError).toBeUndefined();
+    // The first cost record on a task appends `costSource`, which
+    // plain assignment would put after every later field instead of
+    // where the schema puts it, right after `tokens` (P4-N054).
+    expect(isCanonical(repo)).toBe(true);
     let t = stateAtHead(repo).tasks[0]!;
     expect(t.tokens).toEqual({
       in: 1200,
@@ -706,6 +721,9 @@ describe("task_cost", () => {
     expect(t.tokens).toEqual({ in: 2000, out: 500 });
     expect(t.costSource).toBe("headless");
     expect(checkState(stateAtHead(repo)).findings).toEqual([]);
+    // costSource already existed, so this second record only changes
+    // its value, never its position: still canonical.
+    expect(isCanonical(repo)).toBe(true);
     const page = await app.request("/view/task/T001", {
       headers: { Cookie: validCookie() },
     });
@@ -724,6 +742,8 @@ describe("task_cost", () => {
       tokensOut: 5,
     });
     expect(stateAtHead(repo).tasks[0]!.costSource).toBe("reported");
+    // task_close's own fallback hits the same append-order fault.
+    expect(isCanonical(repo)).toBe(true);
     const missing = await call(app, "task_cost", {
       taskId: "T999",
       tokensIn: 1,
