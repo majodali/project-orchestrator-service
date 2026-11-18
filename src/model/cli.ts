@@ -9,7 +9,13 @@
  * Exit 0 when clean, 1 on a violation or a failure, 2 on usage.
  */
 
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 
@@ -58,6 +64,12 @@ function usage(): never {
 function readOptional(root: string, rel: string): string | null {
   const p = path.join(root, rel);
   return existsSync(p) ? readFileSync(p, "utf-8") : null;
+}
+
+function writeOutput(root: string, rel: string, content: string): void {
+  const p = path.join(root, rel);
+  mkdirSync(path.dirname(p), { recursive: true });
+  writeFileSync(p, content);
 }
 
 function projectFromRemote(root: string): string | null {
@@ -146,8 +158,8 @@ function main(argv: string[]): number {
     const today = new Date().toISOString().slice(0, 10);
     const recordText = renderImportRecord(record, today);
     if (values.write) {
-      writeFileSync(path.join(root, STATE_PATH), formatState(state));
-      writeFileSync(path.join(root, RECORD_PATH), recordText);
+      writeOutput(root, STATE_PATH, formatState(state));
+      writeOutput(root, RECORD_PATH, recordText);
       console.log(`plan-state: wrote ${STATE_PATH} and ${RECORD_PATH}`);
     } else {
       console.log(recordText);
@@ -194,10 +206,10 @@ function main(argv: string[]): number {
     const plan = renderPlan(ordered);
     const backlog = renderBacklog(ordered);
     if (values.write) {
-      writeFileSync(path.join(root, STATE_PATH), formatState(ordered));
-      writeFileSync(path.join(root, REGISTER_PATH), register);
-      writeFileSync(path.join(root, PLAN_PATH), plan);
-      writeFileSync(path.join(root, BACKLOG_PATH), backlog);
+      writeOutput(root, STATE_PATH, formatState(ordered));
+      writeOutput(root, REGISTER_PATH, register);
+      writeOutput(root, PLAN_PATH, plan);
+      writeOutput(root, BACKLOG_PATH, backlog);
       console.log(
         `plan-state: wrote ${REGISTER_PATH}, ${PLAN_PATH} and ${BACKLOG_PATH}`,
       );
