@@ -642,6 +642,61 @@ export interface CloseInput {
   session?: string;
 }
 
+/**
+ * Sets `costSource` on a task that has no measured cost yet, keeping
+ * the state file in canonical form (P4-N054). A plain assignment on a
+ * task where the key is absent appends it after every field that
+ * follows it in the schema (`opened` through `docsOnMerge`), since
+ * that is where JavaScript puts a new own property; `plan-state
+ * check` then reports the file non-canonical until the next write
+ * re-reads it through the schema, which restores schema order. Once
+ * the key exists, reassigning its value never moves it, so later
+ * calls need no rebuilding.
+ */
+function setCostSource(task: Task, costSource: CostSource): void {
+  if (task.costSource !== undefined) {
+    task.costSource = costSource;
+    return;
+  }
+  const {
+    id,
+    node,
+    step,
+    status,
+    role,
+    model,
+    tokens,
+    opened,
+    closed,
+    base,
+    ref,
+    pr,
+    summary,
+    notes,
+    docsOnMerge,
+  } = task;
+  for (const key of Object.keys(task))
+    delete (task as Record<string, unknown>)[key];
+  Object.assign(task, {
+    id,
+    node,
+    step,
+    status,
+    role,
+    model,
+    tokens,
+    costSource,
+    opened,
+    closed,
+    base,
+    ref,
+    pr,
+    summary,
+    notes,
+    ...(docsOnMerge !== undefined ? { docsOnMerge } : {}),
+  });
+}
+
 export interface CloseResult {
   task: Task;
   node: Node;
@@ -703,7 +758,7 @@ export function closeTask(
     (input.tokensIn !== undefined || input.tokensOut !== undefined) &&
     task.costSource === undefined
   ) {
-    task.costSource = "reported";
+    setCostSource(task, "reported");
   }
 
   // Every ask becomes an open decision, whatever the status (owner,
@@ -1010,8 +1065,8 @@ export function recordCost(
     ...(input.cacheRead === undefined ? {} : { cacheRead: input.cacheRead }),
     ...(input.cacheWrite === undefined ? {} : { cacheWrite: input.cacheWrite }),
   };
-  task.costSource = input.source;
   if (input.model !== undefined) task.model = input.model;
+  setCostSource(task, input.source);
   return {
     task,
     event: {
