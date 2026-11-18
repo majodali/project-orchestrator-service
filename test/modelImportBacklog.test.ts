@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { checkState } from "../src/model/check.js";
 import {
+  backlogShape,
   importState,
   parseBacklogRows,
   type ImportInput,
@@ -44,6 +45,43 @@ function input(partial: Partial<ImportInput> = {}): ImportInput {
     ...partial,
   };
 }
+
+describe("backlogShape", () => {
+  it("reads a title and an outcome when the em dash sits directly against the lead", () => {
+    expect(backlogShape("**A** — one two three.")).toEqual({
+      ok: true,
+      title: "A",
+      outcome: "one two three.",
+    });
+  });
+
+  it("reads through an annotation between the lead and the em dash, as this service's own renderBacklog writes (render.ts: `**Title** (P1-N001) — When: ...`)", () => {
+    expect(backlogShape("**A** (P1-N001) — When: x. Status: done.")).toEqual({
+      ok: true,
+      title: "A",
+      outcome: "When: x.",
+    });
+    expect(
+      backlogShape(
+        "**Custom-type checker extension point** (inbound proposal, awaiting adjudication) — nothing written pending the maintainer's answer.",
+      ),
+    ).toMatchObject({ ok: true, title: "Custom-type checker extension point" });
+  });
+
+  it("is not mapped when there is no bolded lead", () => {
+    expect(backlogShape("no bold at all — body.")).toEqual({
+      ok: false,
+      reason: "no bolded lead",
+    });
+  });
+
+  it("is not mapped when there is no em dash anywhere after the lead", () => {
+    expect(backlogShape("**A** nothing here to split a body from.")).toEqual({
+      ok: false,
+      reason: "the bolded lead has no em dash introducing a body",
+    });
+  });
+});
 
 describe("parseBacklogRows", () => {
   it("reads the checkbox, the heading and continuation lines, one row per item", () => {
@@ -126,6 +164,41 @@ describe("importState over a Backlog", () => {
     expect(() => importState(input())).toThrow(/neither/);
   });
 
+  it("excludes a row that truly has no em-dash body, naming the reason, the heading and the counts", () => {
+    const backlog = [
+      "## Completed",
+      "",
+      "- [x] **Fine row** — this one is well-formed.",
+      "- [ ] **Stray note** with nothing to separate a body from it.",
+      "",
+    ].join("\n");
+    const { state, record } = importState(input({ backlog }));
+    expect(state.nodes.map((n) => n.title)).toEqual(["Fine row"]);
+    expect(record.backlogRows).toEqual({ read: 2, mapped: 1 });
+    expect(record.backlogNotMapped).toEqual([
+      {
+        heading: "Completed",
+        excerpt: "Stray note",
+        reason: "the bolded lead has no em dash introducing a body",
+      },
+    ]);
+  });
+
+  it("maps every row to the identifier it received, in the record", () => {
+    const backlog = [
+      "## Completed",
+      "",
+      "- [x] **First** — one.",
+      "- [x] **Second** — two.",
+      "",
+    ].join("\n");
+    const { record } = importState(input({ backlog }));
+    expect(record.backlogMapped).toEqual([
+      { id: "P1-N001", title: "First" },
+      { id: "P1-N002", title: "Second" },
+    ]);
+  });
+
   describe("over methodology-tools' real Backlog (fixture)", () => {
     const rows = parseBacklogRows(REAL_BACKLOG);
     const { state, record } = importState(
@@ -141,17 +214,24 @@ describe("importState over a Backlog", () => {
       expect(rows.filter((r) => !r.checked).length).toBe(4);
     });
 
-    it("maps a row only under the K-004 shape, excluding one whose lead is not followed directly by an em dash", () => {
+    it("maps every row, including the two whose lead is followed by an annotation before the em dash", () => {
+      expect(state.nodes).toHaveLength(21);
+      expect(record.backlogRows).toEqual({ read: 21, mapped: 21 });
+      expect(record.backlogNotMapped).toEqual([]);
       expect(
-        state.nodes.some(
+        state.nodes.find(
           (n) => n.title === "Custom-type checker extension point",
         ),
-      ).toBe(false);
-      expect(record.backlogNotMapped).toContainEqual({
-        heading: "Completed",
-        excerpt: "Custom-type checker extension point",
-        reason: "the bolded lead is not followed directly by an em dash",
+      ).toMatchObject({
+        stage: "identified",
+        outcome:
+          "proposals/custom-type-checker-extension.md: project-orchestrator asks that mtool audit form discover, run, and fold in a checker a defining project declares alongside its Article-7 custom type, so citation-defined types get the same mechanical checking as standard ones.",
       });
+      expect(
+        state.nodes.find(
+          (n) => n.title === "W-008 bootstrap-cache drift check",
+        ),
+      ).toMatchObject({ stage: "done" });
     });
 
     it("keeps the heading a row stood under in the node's note", () => {
@@ -171,8 +251,7 @@ describe("importState over a Backlog", () => {
       expect(state.nodes.filter((n) => n.docs.plan !== null)).toHaveLength(1);
     });
 
-    it("mints identifiers in one plan line in Backlog order, one per mapped row", () => {
-      expect(state.nodes).toHaveLength(19);
+    it("mints identifiers in one plan line in Backlog order, one per row, and records the mapping", () => {
       expect(state.nodes[0]).toMatchObject({
         id: "P1-N001",
         title: "Bootstrap",
@@ -187,6 +266,9 @@ describe("importState over a Backlog", () => {
               Number(a.slice(a.indexOf("N") + 1)) -
               Number(b.slice(b.indexOf("N") + 1)),
           ),
+      );
+      expect(record.backlogMapped).toEqual(
+        state.nodes.map((n) => ({ id: n.id, title: n.title })),
       );
     });
   });
