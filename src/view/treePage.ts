@@ -322,13 +322,20 @@ export function renderTreePage(
   }
   // Hidden check nodes stay out of the tree; shown ones (failed or in
   // flight) sit under the node they verify.
-  const state: State = { ...read.state, nodes: shownNodes(read.state) };
+  const shown = shownNodes(read.state);
+  const state: State = { ...read.state, nodes: shown };
   const classes = classifyAll(state);
-  nodesById(state); // the ids are valid: checkState passed the schema
+  const shownIds = new Set(shown.map((n) => n.id));
+  const fullById = nodesById(read.state);
   const openDecisions = new Map<string, Decision[]>();
   for (const d of state.decisions) {
     if (d.chosen !== null) continue;
-    const key = d.node ?? "";
+    let key = d.node ?? "";
+    // A decision on a hidden check node has no row of its own: it is
+    // keyed to the node the check verifies, whose row is shown.
+    if (key !== "" && !shownIds.has(key)) {
+      key = fullById.get(key)?.parent ?? key;
+    }
     if (!openDecisions.has(key)) openDecisions.set(key, []);
     openDecisions.get(key)!.push(d);
   }
