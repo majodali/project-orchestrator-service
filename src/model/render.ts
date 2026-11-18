@@ -90,8 +90,12 @@ function docLinks(n: Node): string {
   return parts.join(", ");
 }
 
-function decisionLine(d: Decision, byId: Map<string, Node>): string {
-  const where = d.node ? ` on ${nodeLabel(byId.get(d.node)!)}` : "";
+function decisionLine(d: Decision, fullById: Map<string, Node>): string {
+  // A decision's node can be a hidden check node, out of the shown
+  // subset other lookups use: looked up in the full state, naming the
+  // identifier where even that does not resolve, rather than failing.
+  const node = d.node ? fullById.get(d.node) : undefined;
+  const where = d.node ? ` on ${node ? nodeLabel(node) : d.node}` : "";
   const dflt = d.default ? ` Default: ${md(d.default)}` : "";
   return `- ${d.id}${where}: ${md(d.question)}${dflt}`;
 }
@@ -101,6 +105,7 @@ export function renderPlan(full: State): string {
   // children of the node they verify.
   const state: State = { ...full, nodes: shownNodes(full) };
   const byId = nodesById(state);
+  const fullById = nodesById(full);
   const classes = classifyAll(state);
   const open = state.decisions.filter((d) => d.chosen === null);
   const lines: string[] = [
@@ -121,7 +126,7 @@ export function renderPlan(full: State): string {
   } else {
     if (open.length > 0) {
       lines.push("Open decisions:", "");
-      for (const d of open) lines.push(decisionLine(d, byId));
+      for (const d of open) lines.push(decisionLine(d, fullById));
       lines.push("");
     }
     if (gated.length > 0) {

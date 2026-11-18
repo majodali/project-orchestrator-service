@@ -163,6 +163,72 @@ describe("renderPlan", () => {
     );
     expect(text).toContain("## Decisions taken\n\nNone.");
   });
+
+  it("names a decision on a hidden check node, instead of throwing (P4-N050)", () => {
+    const state: State = {
+      ...sample,
+      nodes: [
+        ...sample.nodes,
+        {
+          id: "P1-N900",
+          title: "Verification of the second part gated",
+          outcome: null,
+          stage: "specified",
+          kind: "check",
+          parent: "P1-N003",
+          after: [],
+          hold: null,
+          docs: { plan: null, spec: null },
+          done: null,
+          note: null,
+        },
+      ],
+      decisions: [
+        ...sample.decisions,
+        {
+          id: "D900",
+          node: "P1-N900",
+          question: "Does the fix meet the criteria?",
+          options: [],
+          default: "yes",
+          chosen: null,
+          decided: null,
+          rationale: null,
+          standing: false,
+          source: null,
+        },
+      ],
+    };
+    expect(() => renderPlan(state)).not.toThrow();
+    expect(renderPlan(state)).toContain(
+      "- D900 on Verification of the second part gated (P1-N900): Does the fix meet the criteria? Default: yes",
+    );
+  });
+
+  it("names the identifier when a decision's node is not found at all, instead of throwing", () => {
+    const state: State = {
+      ...sample,
+      decisions: [
+        ...sample.decisions,
+        {
+          id: "D901",
+          node: "P9-N999",
+          question: "Orphaned?",
+          options: [],
+          default: "yes",
+          chosen: null,
+          decided: null,
+          rationale: null,
+          standing: false,
+          source: null,
+        },
+      ],
+    };
+    expect(() => renderPlan(state)).not.toThrow();
+    expect(renderPlan(state)).toContain(
+      "- D901 on P9-N999: Orphaned? Default: yes",
+    );
+  });
 });
 
 describe("renderBacklog", () => {

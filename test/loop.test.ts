@@ -505,6 +505,50 @@ describe("the claim and the close-out", () => {
     ).toBe("P1-N005");
   });
 
+  it("commits a needs-judgment close with asks on the check node itself, though the decision then sits on a hidden node (P4-N050)", async () => {
+    // Closing the check node's own verify task with asks (ambiguous
+    // criteria, not a failed verification) opens the decision on the
+    // check node directly. The node then has no hold and no open
+    // task, so it is hidden (src/model/check.ts, isHiddenCheck) — and
+    // the write must still commit: renderPlan must not throw building
+    // docs/plan.md.
+    const repo = repoWith(plan());
+    const app = appOver(repo);
+    await call(app, "task_open", { nodeId: "P1-N003", step: "execute" });
+    await call(app, "task_close", {
+      taskId: "T001",
+      status: "closed",
+      summary: "Built.",
+    });
+    await call(app, "task_open", { nodeId: "P1-N005", step: "verify" });
+    const result = await call(app, "task_close", {
+      taskId: "T002",
+      status: "needs-judgment",
+      summary: "Ambiguous: does the fixture cover the edge case?",
+      asks: [
+        { question: "Does the fixture cover the edge case?", default: "yes" },
+      ],
+    });
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent!.moved).toEqual(["P1-N005 waits for D002"]);
+    expect(result.structuredContent!.stop).toBe(
+      "D002 opened on P1-N005; the owner answers in the view, and the node offers its step again once they are answered",
+    );
+    const s = stateAtHead(repo);
+    const check = s.nodes.find((n) => n.id === "P1-N005")!;
+    expect(check.hold).toBeNull();
+    expect(
+      s.tasks.filter((t) => t.node === "P1-N005" && t.status === "open"),
+    ).toHaveLength(0);
+    expect(checkState(s).findings).toEqual([]);
+    const planDoc = repo.files
+      .get(repo.heads.get("main")!)!
+      .get("docs/plan.md")!;
+    expect(planDoc).toContain(
+      "- D002 on Verification of The part to build (P1-N005): Does the fixture cover the edge case? Default: yes",
+    );
+  });
+
   it("moves plan, specify and break down steps, and refuses a step the node does not offer", async () => {
     const state = plan();
     state.nodes.find((n) => n.id === "P1-N004")!.after = [];

@@ -5,7 +5,14 @@ import {
   COMMIT_D4CBB7E,
   repositoryd4cbb7e,
 } from "./support/fixturesd4cbb7e.js";
-import { node, sampleState, stateJson, task } from "./support/states.js";
+import type { State } from "../src/model/schema.js";
+import {
+  decision,
+  node,
+  sampleState,
+  stateJson,
+  task,
+} from "./support/states.js";
 import {
   FakeRepository,
   NOW,
@@ -500,5 +507,36 @@ describe("check nodes in the view", () => {
     expect(attributeText(check.html, "data-crumbs")).toBe(
       "Plan › The first line of work › The part in flight",
     );
+  });
+
+  it("shows a decision on a hidden check node under the node it verifies, counted where it is shown (P4-N050)", async () => {
+    const repo = withChecks();
+    const sha = repo.heads.get("main")!;
+    const state = JSON.parse(
+      repo.files.get(sha)!.get("orchestration/state.json")!,
+    ) as State;
+    state.decisions.push(
+      decision({
+        id: "D900",
+        node: "P1-N010",
+        question: "Does this meet the bar?",
+        default: "yes",
+      }),
+    );
+    repo.setFile(sha, "orchestration/state.json", stateJson(state));
+
+    const { html } = await get(appOver(repo), "/view?open=all");
+    // The hidden check node still has no row of its own.
+    expect(html).not.toContain('data-node="P1-N010"');
+    // The summary's count (two pre-existing open decisions, plus
+    // this one) and the row it shows under agree.
+    expect(html).toContain('data-count-decisions="3"');
+    const row = html.slice(
+      html.indexOf('data-node="P1-N004"'),
+      html.indexOf("</li>", html.indexOf('data-node="P1-N004"')),
+    );
+    expect(row).toContain('data-decisions-of="P1-N004"');
+    expect(row).toContain('data-open-decision="D900"');
+    expect(row).toContain("Does this meet the bar?");
   });
 });
