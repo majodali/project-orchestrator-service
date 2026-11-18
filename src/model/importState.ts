@@ -79,6 +79,12 @@ export interface ImportRecord {
   counts: { nodes: number; tasks: number; decisions: number };
   /** Which file the nodes came from. */
   source: "register" | "backlog";
+  /** Rows read from the Backlog, and how many were mapped. Both zero
+   * when the source is the register. */
+  backlogRows: { read: number; mapped: number };
+  /** Every mapped Backlog row, in the order minted, with the
+   * identifier it received. Empty when the source is the register. */
+  backlogMapped: Array<{ id: string; title: string }>;
   /** Backlog rows read but not mapped to a node, with the reason. Empty
    * when the source is the register. */
   backlogNotMapped: BacklogNotMapped[];
@@ -512,22 +518,30 @@ export function parseBacklogRows(markdown: string): BacklogRow[] {
 }
 
 const BACKLOG_LEAD = /^\*\*(.+?)\*\*/;
-const BACKLOG_BODY_AFTER_LEAD = /^\*\*.+?\*\*\s*—\s*([\s\S]+)$/;
+// The em dash introducing the body need not sit directly against the
+// lead: this service's own renderBacklog (render.ts) writes
+// `**Title** (P1-N001) — When: ...`, and the real Backlogs this
+// reader was built against carry the same "lead, an annotation, then
+// the body" shape (e.g. "(inbound proposal, awaiting adjudication)",
+// "(owner review of ...)"). The first em dash after the lead is the
+// body's start; what comes before it, if anything, is not read.
+const BACKLOG_BODY_AFTER_LEAD = /^\*\*.+?\*\*.*?—\s*([\s\S]+)$/;
 const BACKLOG_PLAN_LINK = /\[[^\]]*\]\((plans\/[^)\s]+)\)/;
 
 type BacklogShapeResult =
   { ok: true; title: string; outcome: string } | { ok: false; reason: string };
 
 /** A row's title and outcome under the K-004 shape (a bolded lead, an
- * em-dash body immediately after it), or the reason it has neither. */
-function backlogShape(text: string): BacklogShapeResult {
+ * em-dash body, with the row's annotation, if any, between them), or
+ * the reason it has neither. */
+export function backlogShape(text: string): BacklogShapeResult {
   const lead = BACKLOG_LEAD.exec(text);
   if (!lead) return { ok: false, reason: "no bolded lead" };
   const body = BACKLOG_BODY_AFTER_LEAD.exec(text);
   if (!body) {
     return {
       ok: false,
-      reason: "the bolded lead is not followed directly by an em dash",
+      reason: "the bolded lead has no em dash introducing a body",
     };
   }
   const outcome = firstSentence(body[1]!);
@@ -548,11 +562,18 @@ function backlogToNodes(
   text: string,
   planLine: string,
   exists: (relativePath: string) => boolean,
-): { nodes: Node[]; notMapped: BacklogNotMapped[] } {
+): {
+  nodes: Node[];
+  notMapped: BacklogNotMapped[];
+  mapped: Array<{ id: string; title: string }>;
+  rowsRead: number;
+} {
   const nodes: Node[] = [];
   const notMapped: BacklogNotMapped[] = [];
+  const mapped: Array<{ id: string; title: string }> = [];
+  const rows = parseBacklogRows(text);
   let seq = 0;
-  for (const row of parseBacklogRows(text)) {
+  for (const row of rows) {
     const shape = backlogShape(row.text);
     if (!shape.ok) {
       const lead = BACKLOG_LEAD.exec(row.text);
@@ -564,10 +585,11 @@ function backlogToNodes(
       continue;
     }
     seq += 1;
+    const id = `${planLine}-N${String(seq).padStart(3, "0")}`;
     const link = BACKLOG_PLAN_LINK.exec(row.text);
     const planPath = link ? `docs/${link[1]!}` : null;
     nodes.push({
-      id: `${planLine}-N${String(seq).padStart(3, "0")}`,
+      id,
       kind: "work",
       title: shape.title,
       outcome: shape.outcome,
@@ -583,8 +605,9 @@ function backlogToNodes(
       done: null,
       note: row.heading,
     });
+    mapped.push({ id, title: shape.title });
   }
-  return { nodes, notMapped };
+  return { nodes, notMapped, mapped, rowsRead: rows.length };
 }
 
 // ---- The import ---------------------------------------------------------
@@ -599,6 +622,8 @@ export function importState(input: ImportInput): {
   const record: ImportRecord = {
     counts: { nodes: 0, tasks: 0, decisions: 0 },
     source: input.register !== null ? "register" : "backlog",
+    backlogRows: { read: 0, mapped: 0 },
+    backlogMapped: [],
     backlogNotMapped: [],
     noOutcome: [],
     longOutcome: [],
@@ -690,6 +715,8 @@ export function importState(input: ImportInput): {
     const built = backlogToNodes(input.backlog!, "P1", input.exists);
     nodes = built.nodes;
     record.backlogNotMapped = built.notMapped;
+    record.backlogMapped = built.mapped;
+    record.backlogRows = { read: built.rowsRead, mapped: built.mapped.length };
     for (const n of nodes) {
       if (n.outcome !== null && wordCount(n.outcome) > OUTCOME_MAX_WORDS) {
         record.longOutcome.push(n.id);
@@ -893,6 +920,16 @@ export function renderImportRecord(record: ImportRecord, date: string): string {
     `Source: ${record.source === "register" ? "docs/plan-register.md" : "docs/backlog.md"}.`,
     "",
     `Counts: ${record.counts.nodes} nodes, ${record.counts.tasks} tasks, ${record.counts.decisions} decisions.`,
+    "",
+    ...(record.source === "backlog"
+      ? [
+          `Backlog rows: ${record.backlogRows.read} read, ${record.backlogRows.mapped} mapped, ${record.backlogRows.read - record.backlogRows.mapped} not mapped.`,
+          "",
+        ]
+      : []),
+    "## Backlog rows mapped to an identifier",
+    "",
+    list(record.backlogMapped.map((m) => `${m.id}: ${m.title}`)),
     "",
     "## Backlog rows not mapped to a node",
     "",
