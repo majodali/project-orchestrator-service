@@ -1,0 +1,17 @@
+{
+  "enableAllProjectMcpServers": true,
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "mcp__project-orchestrator__task_close",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/plugin/scripts/task_cost_hook.ts\"",
+            "timeout": 40
+          }
+        ]
+      }
+    ]
+  }
+}
