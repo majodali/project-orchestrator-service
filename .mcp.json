@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "project-orchestrator": {
+      "type": "http",
+      "url": "https://025si0pve6.execute-api.us-west-2.amazonaws.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${MCP_AUTH_TOKEN}"
+      },
+      "timeout": 30000
+    }
+  }
+}
