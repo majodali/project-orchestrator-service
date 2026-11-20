@@ -52,7 +52,9 @@ import {
   StateStore,
   StateUnreadableError,
   WriteRefusedError,
+  type WriteResult,
 } from "../model/store.js";
+import type { State } from "../model/schema.js";
 import { GithubAppAuthError } from "../planRegister/githubAppAuth.js";
 import {
   GithubAppNotConfiguredError,
@@ -548,10 +550,14 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
   /** The page a write failed from: the error named, nothing committed. */
   function writeFailed(c: Context, err: unknown, back: string): Response {
     if (err instanceof WriteRefusedError) {
+      const committed =
+        err.merged.length > 0
+          ? `Nothing from this write was committed, though ${err.merged.join(", ")} ${err.merged.length === 1 ? "was" : "were"} merged before the refusal.`
+          : "Nothing was committed.";
       return simplePage(
         c,
         "Refused: the change would violate the state's invariants",
-        `Nothing was committed.\n${err.findings.map((f) => `violation ${f.invariant}${f.subject ? ` ${f.subject}` : ""}: ${f.message}`).join("\n")}`,
+        `${committed}\n${err.findings.map((f) => `violation ${f.invariant}${f.subject ? ` ${f.subject}` : ""}: ${f.message}`).join("\n")}`,
         422,
         back,
       );
@@ -704,24 +710,39 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
           back,
         );
       }
-      if (input.stage === "done") {
-        // Done needs the node's pull requests merged: the service
-        // merges them here, before the commit (owner, 2026-11-11).
-        if (head.state !== null) {
-          await requirePendingDocs(store(), pullRequests, head.state, id);
-          await ensureMerged(
-            pullRequests,
-            pullRequestsOf(head.state, id),
-            undefined,
-            expectedHeads(head.state, id),
-          );
+      // Done needs the node's pull requests merged: the service merges
+      // them as `write`'s step, run only after the close has trialled
+      // clean against the invariants, and only once even if the
+      // branch moves and the write retries (P4-N073).
+      let merged: string[] = [];
+      const step =
+        input.stage === "done"
+          ? async (state: State): Promise<void> => {
+              await requirePendingDocs(store(), pullRequests, state, id);
+              merged = (
+                await ensureMerged(
+                  pullRequests,
+                  pullRequestsOf(state, id),
+                  undefined,
+                  expectedHeads(state, id),
+                )
+              ).merged;
+            }
+          : undefined;
+      let result: WriteResult;
+      try {
+        result = await store().write(
+          `${id}: ${input.reason}`,
+          (state) =>
+            updateNode(state, input, now().toISOString().slice(0, 10)).event,
+          step,
+        );
+      } catch (err) {
+        if (err instanceof WriteRefusedError && merged.length > 0) {
+          throw new WriteRefusedError(err.findings, merged);
         }
+        throw err;
       }
-      const result = await store().write(
-        `${id}: ${input.reason}`,
-        (state) =>
-          updateNode(state, input, now().toISOString().slice(0, 10)).event,
-      );
       return c.redirect(`${back}?committed=${result.sha}`, 303);
     } catch (err) {
       return writeFailed(c, err, back);
