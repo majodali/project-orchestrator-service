@@ -219,7 +219,84 @@ export function wordCount(text: string): number {
     .filter((w) => w.length > 0).length;
 }
 
-/** Serialises a state the one way `check` and `render` expect. */
+/** What a zod type says about itself (zod 4's `def`), to the extent
+ * field order needs: the kind, and the types it holds. */
+interface SchemaDef {
+  type: string;
+  shape?: Record<string, z.ZodType>;
+  element?: z.ZodType;
+  valueType?: z.ZodType;
+  innerType?: z.ZodType;
+  options?: z.ZodType[];
+}
+
+function defOf(schema: z.ZodType): SchemaDef {
+  return schema.def as SchemaDef;
+}
+
+/** The definition under the wrappers that hold their subject in
+ * `innerType` — `optional`, `nullable`, `default` and the rest — so
+ * that ordering reaches the object, array or record beneath. */
+function innermost(schema: z.ZodType): SchemaDef {
+  let def = defOf(schema);
+  while (def.innerType !== undefined) def = defOf(def.innerType);
+  return def;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * A copy of `value` whose every object holds its fields in the order
+ * `schema` declares them, at every level (P4-N057). This is the one
+ * place field order is decided, so no part of the service keeps a list
+ * of the schema's field names by hand: a field added to a schema here
+ * takes its place in the file by that alone.
+ *
+ * The schema is read, never applied. A value that does not satisfy it
+ * is ordered as far as the shapes reach and copied through otherwise,
+ * so serialising never throws on what the importer builds or a broken
+ * file carries; a field the schema does not declare keeps its own
+ * place after the declared ones, so nothing is dropped. Validation is
+ * `checkState`'s job, and the store refuses a write that fails it.
+ */
+function orderBySchema(schema: z.ZodType, value: unknown): unknown {
+  const def = innermost(schema);
+  if (def.type === "union") {
+    const option = def.options?.find((o) => o.safeParse(value).success);
+    return option === undefined ? value : orderBySchema(option, value);
+  }
+  if (def.type === "array" && Array.isArray(value)) {
+    const element = def.element;
+    return element === undefined
+      ? value
+      : value.map((item) => orderBySchema(element, item));
+  }
+  if (!isObject(value)) return value;
+  if (def.type === "record") {
+    const valueType = def.valueType;
+    if (valueType === undefined) return value;
+    // A record's own keys are data, not fields: they keep their order.
+    return Object.fromEntries(
+      Object.entries(value).map(([key, v]) => [
+        key,
+        orderBySchema(valueType, v),
+      ]),
+    );
+  }
+  const shape = def.type === "object" ? def.shape : undefined;
+  if (shape === undefined) return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, field] of Object.entries(shape))
+    if (Object.hasOwn(value, key)) out[key] = orderBySchema(field, value[key]);
+  for (const [key, v] of Object.entries(value))
+    if (!Object.hasOwn(shape, key)) out[key] = v;
+  return out;
+}
+
+/** Serialises a state the one way `check` and `render` expect: every
+ * object's fields in the order its schema declares them. */
 export function formatState(state: State): string {
-  return JSON.stringify(state, null, 2) + "\n";
+  return JSON.stringify(orderBySchema(stateSchema, state), null, 2) + "\n";
 }
