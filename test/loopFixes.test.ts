@@ -690,9 +690,10 @@ describe("task_cost", () => {
       session: "the hook",
     });
     expect(first.isError).toBeUndefined();
-    // The first cost record on a task appends `costSource`, which
-    // plain assignment would put after every later field instead of
-    // where the schema puts it, right after `tokens` (P4-N054).
+    // The first cost record on a task appends `costSource`, and
+    // `formatState` writes it where the schema declares it, right
+    // after `tokens`, whatever order the keys were assigned in
+    // (P4-N054, and P4-N057, which moved the ordering there).
     expect(isCanonical(repo)).toBe(true);
     let t = stateAtHead(repo).tasks[0]!;
     expect(t.tokens).toEqual({
@@ -742,7 +743,7 @@ describe("task_cost", () => {
       tokensOut: 5,
     });
     expect(stateAtHead(repo).tasks[0]!.costSource).toBe("reported");
-    // task_close's own fallback hits the same append-order fault.
+    // task_close's own fallback appends the same field.
     expect(isCanonical(repo)).toBe(true);
     const missing = await call(app, "task_cost", {
       taskId: "T999",
