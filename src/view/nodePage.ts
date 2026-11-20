@@ -270,5 +270,5 @@ export function renderNodePage(
     tasksSection(node, state, commit),
     "</main>",
   ].join("\n");
-  return pageShell(`${node.title} (${node.id})`, body);
+  return pageShell(`${node.title} (${node.id})`, body, { script: true });
 }

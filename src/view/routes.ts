@@ -13,6 +13,11 @@
  *   POST /view/node/<node ID>/action  one lifecycle action on a node
  *        (approve its start, lift its hold, accept its review),
  *        committed through the store (milestone 4)
+ *   GET  /view/app.js  the view's one first-party script
+ *        (src/view/appScript.ts), served with a script content type
+ *   GET  /view/version  the default branch's SHA, for the script to
+ *        poll; answered from a 10-second memory so several tabs cost
+ *        one read of GitHub (the specification of P2-N028, section 3)
  *
  * Since the rebuild's milestone 2 every page reads one file,
  * `orchestration/state.json`, at the page's commit (./stateRead.ts).
@@ -40,6 +45,7 @@
 import type { Context, Hono, MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 
+import { VIEW_APP_SCRIPT } from "./appScript.js";
 import {
   NODE_ACTIONS,
   closeDecision,
@@ -83,6 +89,7 @@ import { PageReadError, ShaPathCache, readPageFiles } from "./commitRead.js";
 import type { PageFiles } from "./commitRead.js";
 import type { ErrorPageCommit, PageCommit } from "./html.js";
 import {
+  VIEW_APP_SCRIPT_PATH,
   VIEW_SECURITY_HEADERS,
   escapeHtml,
   pageHeader,
@@ -288,9 +295,14 @@ function notFoundPage(
   return htmlResponse(c, pageShell("Not found", body), 404);
 }
 
+/** How long `/view/version` answers from memory before it reads the
+ * repository again (section 3: several tabs cost one read). */
+const VERSION_CACHE_MS = 10_000;
+
 export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
   const now = options.now ?? (() => new Date());
   const cache = new ShaPathCache();
+  let versionCache: { sha: string; at: number } | null = null;
   const reader = (): CommitReader => options.reader ?? getDefaultCommitReader();
   const store = (): StateStore =>
     options.store ??
@@ -439,6 +451,37 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
     }
     c.header("Set-Cookie", viewCookieHeader(config.viewToken, nowSeconds(now)));
     return c.redirect("/view", 303);
+  });
+
+  app.get(VIEW_APP_SCRIPT_PATH, (c) => {
+    c.header("Content-Type", "text/javascript; charset=utf-8");
+    return c.body(VIEW_APP_SCRIPT);
+  });
+
+  app.get("/view/version", async (c) => {
+    const cached = versionCache;
+    if (cached !== null && now().getTime() - cached.at < VERSION_CACHE_MS) {
+      return c.json({ sha: cached.sha });
+    }
+    let source: CommitReader;
+    try {
+      source = reader();
+    } catch (err) {
+      return c.json(
+        { error: err instanceof Error ? err.message : String(err) },
+        500,
+      );
+    }
+    try {
+      const resolved = await source.resolveRef(undefined);
+      versionCache = { sha: resolved.sha, at: now().getTime() };
+      return c.json({ sha: resolved.sha });
+    } catch (err) {
+      return c.json(
+        { error: err instanceof Error ? err.message : String(err) },
+        502,
+      );
+    }
   });
 
   /** Reads the state file at the requested ref, or answers the error

@@ -145,9 +145,10 @@ const CSS_HASH = createHash("sha256").update(PAGE_CSS).digest("base64");
 export const VIEW_SECURITY_HEADERS: Readonly<Record<string, string>> = {
   "Content-Security-Policy": [
     "default-src 'none'",
-    "script-src 'none'",
+    "script-src 'self'",
     `style-src 'sha256-${CSS_HASH}'`,
     "img-src 'none'",
+    "connect-src 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
     "base-uri 'none'",
@@ -227,6 +228,10 @@ function refLine(
  * The header (V2): the ref as requested, the full SHA linked to
  * GitHub's commit view, the fetch time, and a link to the same page at
  * the requested ref, which a reload follows to a new SHA.
+ *
+ * `data-live` says whether the view's script may poll for a newer
+ * commit here: a page read at a named ref shows that commit only
+ * (section 3, "A page read at a named ref does not update").
  */
 export function pageHeader(
   commit: PageCommit | ErrorPageCommit,
@@ -245,7 +250,7 @@ export function pageHeader(
         ? `<p>Checks: <span data-checks="unavailable">unavailable</span></p>`
         : `<p>Checks: <span class="checks-${escapeHtml(checks.state)}" data-checks="${escapeHtml(checks.state)}">${escapeHtml(checks.state === "none" ? "none ran" : checks.state)}${checks.failing.length > 0 ? `: ${escapeHtml(checks.failing.join(", "))}` : ""}</span></p>`;
   return [
-    "<header>",
+    `<header data-live="${commit.requestedRef === undefined}">`,
     `<p>Repository: <code>${escapeHtml(commit.owner)}/${escapeHtml(commit.repo)}</code></p>`,
     refLine(commit.requestedRef, commit.resolvedRef),
     shaLine,
@@ -256,9 +261,20 @@ export function pageHeader(
   ].join("\n");
 }
 
+/** The one first-party script the view runs (section 3), served at
+ * this path by its own route. */
+export const VIEW_APP_SCRIPT_PATH = "/view/app.js";
+
 /** The page shell: a viewport meta tag (V12), the one style element,
- * and no script element of any kind. */
-export function pageShell(title: string, body: string): string {
+ * and, on a page that updates itself, the one script element (D085),
+ * loaded in `<head>` with `defer` so replacing `<body>`'s content never
+ * removes the running script. No inline script, and no third-party
+ * one: `script-src 'self'` is all the policy allows (V11). */
+export function pageShell(
+  title: string,
+  body: string,
+  options: { script?: boolean } = {},
+): string {
   return [
     "<!doctype html>",
     '<html lang="en">',
@@ -267,6 +283,9 @@ export function pageShell(title: string, body: string): string {
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     `<title>${escapeHtml(title)}</title>`,
     `<style>${PAGE_CSS}</style>`,
+    options.script
+      ? `<script src="${VIEW_APP_SCRIPT_PATH}" defer></script>`
+      : "",
     "</head>",
     "<body>",
     body,

@@ -19,6 +19,9 @@
  *                 — the web view: server-rendered pages of the state
  *                   file at one commit, behind the view cookie, never
  *                   the MCP bearer token. See src/view/routes.ts.
+ *   GET  /view/app.js, GET /view/version
+ *                 — the view's one first-party script, and the route
+ *                   it polls for a newer commit (src/view/appScript.ts).
  */
 
 import { Hono } from "hono";
