@@ -140,7 +140,11 @@ function findingsText(findings: Finding[]): string {
 
 export function describeError(err: unknown): string {
   if (err instanceof WriteRefusedError) {
-    return `refused: the change would violate the state's invariants; nothing was committed.\n${findingsText(err.findings)}`;
+    const committed =
+      err.merged.length > 0
+        ? `nothing from this write was committed, though ${err.merged.join(", ")} ${err.merged.length === 1 ? "was" : "were"} merged before the refusal`
+        : "nothing was committed";
+    return `refused: the change would violate the state's invariants; ${committed}.\n${findingsText(err.findings)}`;
   }
   if (err instanceof StateUnreadableError) {
     return `${err.message}; fix the file by hand before any tool can write.\n${findingsText(err.findings)}`;
@@ -289,6 +293,7 @@ export function registerStateTools(
     input: Authority,
     message: string,
     mutate: (state: State, context: { baseSha: string }) => WriteEvent,
+    step?: (state: State, context: { baseSha: string }) => Promise<void> | void,
   ): Promise<WriteResult> =>
     store().write(
       `${message}${input.task ? ` (${input.task})` : input.ownerInstruction ? " (no task: the owner's instruction)" : ""}`,
@@ -301,6 +306,7 @@ export function registerStateTools(
           note: event.note + authority.note,
         };
       },
+      step,
     );
 
   const run = async (fn: () => Promise<ToolResult>): Promise<ToolResult> => {
@@ -455,36 +461,47 @@ export function registerStateTools(
             }
           }
         }
-        if (input.stage === "done") {
-          // Done needs the node's pull requests merged.
-          const head = await store().read();
-          if (head.state !== null) {
-            authorize(head.state, input);
-            await requirePendingDocs(
-              store(),
-              pullRequests,
-              head.state,
-              input.nodeId,
-            );
-            merged = (
-              await ensureMerged(
-                pullRequests,
-                pullRequestsOf(head.state, input.nodeId),
-                undefined,
-                expectedHeads(head.state, input.nodeId),
-              )
-            ).merged;
+        // Done needs the node's pull requests merged. The merge runs as
+        // `write`'s step: only after the close has trialled clean
+        // against the invariants, and only once even if the branch
+        // moves and the write retries (P4-N073).
+        const step =
+          input.stage === "done"
+            ? async (state: State): Promise<void> => {
+                await requirePendingDocs(
+                  store(),
+                  pullRequests,
+                  state,
+                  input.nodeId,
+                );
+                merged = (
+                  await ensureMerged(
+                    pullRequests,
+                    pullRequestsOf(state, input.nodeId),
+                    undefined,
+                    expectedHeads(state, input.nodeId),
+                  )
+                ).merged;
+              }
+            : undefined;
+        let result: WriteResult;
+        try {
+          result = await guardedWrite(
+            input,
+            `${input.nodeId}: ${input.reason}`,
+            (state) => {
+              const applied = updateNode(state, input, today(now));
+              changes = applied.changes;
+              return applied.event;
+            },
+            step,
+          );
+        } catch (err) {
+          if (err instanceof WriteRefusedError && merged.length > 0) {
+            throw new WriteRefusedError(err.findings, merged);
           }
+          throw err;
         }
-        const result = await guardedWrite(
-          input,
-          `${input.nodeId}: ${input.reason}`,
-          (state) => {
-            const applied = updateNode(state, input, today(now));
-            changes = applied.changes;
-            return applied.event;
-          },
-        );
         return writeResult(result, {
           nodeId: input.nodeId,
           changes,
@@ -775,58 +792,57 @@ export function registerStateTools(
     async (input) =>
       run(async () => {
         // The node's scope at the task's base commit, for the stop
-        // condition; a task from before the loop has no base.
-        const head = await store().read();
-        const task = head.state?.tasks.find((t) => t.id === input.taskId);
-        const headNode = head.state?.nodes.find((n) => n.id === task?.node);
+        // condition; a task from before the loop has no base. `base`
+        // is set once, at task_open, and never moves, so reading it
+        // ahead of `write` opens no window the way reading the task
+        // or the node for anything else would (P4-N073).
+        const base = await store().read();
+        const openTask = base.state?.tasks.find((t) => t.id === input.taskId);
         let scopeAtBase: string | null = null;
-        if (task?.base) {
-          const base = await store().readStateAt(task.base);
-          const there = base.state?.nodes.find((n) => n.id === task.node);
+        if (openTask?.base) {
+          const atBase = await store().readStateAt(openTask.base);
+          const there = atBase.state?.nodes.find((n) => n.id === openTask.node);
           if (there) scopeAtBase = scopeOf(there);
         }
         // The pull request: opened here for a branch that has none,
         // and merged here when this close is the done decision. Both
-        // happen before the commit, so a pull request that cannot be
-        // merged refuses the close with nothing committed.
+        // run as `write`'s step, against the state the write itself
+        // reads, so they happen only once the close has trialled clean
+        // against the invariants, and never twice if the branch moves
+        // and the write retries (P4-N073).
         let pr: string | undefined = input.pr;
         let merged: string[] = [];
         let headAtClose: string | undefined;
-        const accepted =
-          input.status === "closed" &&
-          head.state !== null &&
-          task !== undefined &&
-          task.status === "open" &&
-          headNode !== undefined &&
-          !(scopeAtBase !== null && scopeAtBase !== scopeOf(headNode));
-        if (accepted) {
+        const step = async (state: State): Promise<void> => {
+          const task = state.tasks.find((t) => t.id === input.taskId);
+          const headNode = state.nodes.find((n) => n.id === task?.node);
+          const accepted =
+            input.status === "closed" &&
+            task !== undefined &&
+            task.status === "open" &&
+            headNode !== undefined &&
+            !(scopeAtBase !== null && scopeAtBase !== scopeOf(headNode));
+          if (!accepted) return;
           if (pr === undefined && task.pr === null && input.branch) {
             pr = await pullRequests().create({
-              repo: input.repo ?? head.state!.project,
+              repo: input.repo ?? state.project,
               branch: input.branch,
               title: `${headNode.id} ${task.step}: ${headNode.title}`,
               body: `${input.summary}\n\nTask ${task.id} on node ${headNode.id}, opened by the orchestration service at task_close.`,
             });
           }
-          const toMerge = mergesAtClose(head.state!, task, pr ?? task.pr);
+          const toMerge = mergesAtClose(state, task, pr ?? task.pr);
           const verified =
             task.step === "verify" ? (headNode.parent ?? null) : null;
           if (verified !== null) {
-            await requirePendingDocs(
-              store(),
-              pullRequests,
-              head.state!,
-              verified,
-            );
+            await requirePendingDocs(store(), pullRequests, state, verified);
           }
           merged = (
             await ensureMerged(
               pullRequests,
               toMerge,
               undefined,
-              verified === null
-                ? new Map()
-                : expectedHeads(head.state!, verified),
+              verified === null ? new Map() : expectedHeads(state, verified),
             )
           ).merged;
           // An execute step's pull request waits for its verification.
@@ -837,27 +853,36 @@ export function registerStateTools(
           if (task.step === "execute" && waiting !== null) {
             headAtClose = (await pullRequests().get(waiting)).headSha;
           }
-        }
+        };
         let closed: CloseResult | null = null;
-        const result = await store().write(
-          `${input.taskId}: ${input.status}`,
-          (state) => {
-            closed = closeTask(
-              state,
-              {
-                ...input,
-                ...(pr === undefined ? {} : { pr }),
-                ...(headAtClose === undefined ? {} : { ref: headAtClose }),
-                status: input.status as CloseInput["status"],
-              },
-              scopeAtBase,
-              today(now),
-              timestamp(now),
-              nextDecisionId,
-            );
-            return closed.event;
-          },
-        );
+        let result: WriteResult;
+        try {
+          result = await store().write(
+            `${input.taskId}: ${input.status}`,
+            (state) => {
+              closed = closeTask(
+                state,
+                {
+                  ...input,
+                  ...(pr === undefined ? {} : { pr }),
+                  ...(headAtClose === undefined ? {} : { ref: headAtClose }),
+                  status: input.status as CloseInput["status"],
+                },
+                scopeAtBase,
+                today(now),
+                timestamp(now),
+                nextDecisionId,
+              );
+              return closed.event;
+            },
+            step,
+          );
+        } catch (err) {
+          if (err instanceof WriteRefusedError && merged.length > 0) {
+            throw new WriteRefusedError(err.findings, merged);
+          }
+          throw err;
+        }
         const done = closed!;
         return writeResult(result, {
           taskId: done.task.id,

@@ -75,10 +75,14 @@ export class StateUnreadableError extends Error {
   }
 }
 
-/** The mutation would leave the state invalid; it is refused. */
+/** The mutation would leave the state invalid; it is refused. `merged`
+ * names a pull request a `step` merged earlier in the same `write`
+ * call, before a later attempt's trial found this violation: nothing
+ * from this call was committed, but those stay merged. */
 export class WriteRefusedError extends Error {
   readonly findings: Finding[];
-  constructor(findings: Finding[]) {
+  readonly merged: readonly string[];
+  constructor(findings: Finding[], merged: readonly string[] = []) {
     super(
       `the change would violate ${findings.length} invariant(s): ${findings
         .map((f) => `${f.subject ?? "-"}: ${f.message}`)
@@ -86,6 +90,7 @@ export class WriteRefusedError extends Error {
     );
     this.name = "WriteRefusedError";
     this.findings = findings;
+    this.merged = merged;
   }
 }
 
@@ -159,12 +164,26 @@ export class StateStore {
    * and returns the journal event's fields; it may throw
    * `NotFoundError` or `WriteRefusedError` of its own. It is also told
    * the commit the state was read at, the new commit's parent.
+   *
+   * `step` is an irreversible action (opening a pull request, merging
+   * one) a caller needs to run as part of the same close, such as
+   * `task_close` or a node's move to `done`. It runs at most once per
+   * `write` call, after `mutate` has been trialled on a throwaway copy
+   * of the state this attempt read and found no invariant violation
+   * (and raised none of `mutate`'s own refusals), and before `mutate`
+   * runs again for real on a fresh copy that is committed. So nothing
+   * irreversible happens for a close the invariants would refuse. A
+   * `GitConflictError` retries both the read and the trial against the
+   * branch's new head, but reuses `step`'s result rather than running
+   * it again.
    */
   async write(
     message: string,
     mutate: (state: State, context: { baseSha: string }) => WriteEvent,
+    step?: (state: State, context: { baseSha: string }) => Promise<void> | void,
   ): Promise<WriteResult> {
     let lastConflict: GitConflictError | null = null;
+    let stepRan = false;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const resolved = await this.reader.resolveRef();
       const branch = resolved.ref;
@@ -175,6 +194,22 @@ export class StateStore {
         throw new StateUnreadableError(baseSha, parsed.findings);
       }
       const journal = await this.readOptional(baseSha, JOURNAL_PATH);
+
+      if (step !== undefined) {
+        const trial = structuredClone(parsed.state);
+        mutate(trial, { baseSha });
+        trial.nodes = orderSiblingsByDependency(trial);
+        const trialViolations = checkState(trial).findings.filter(
+          (f) => f.severity === "violation",
+        );
+        if (trialViolations.length > 0) {
+          throw new WriteRefusedError(trialViolations);
+        }
+        if (!stepRan) {
+          await step(parsed.state, { baseSha });
+          stepRan = true;
+        }
+      }
 
       const next = structuredClone(parsed.state);
       const event = mutate(next, { baseSha });

@@ -525,6 +525,221 @@ describe("done needs the pull request merged", () => {
   });
 });
 
+describe("close validated before its pull request is merged (P4-N073)", () => {
+  async function built(app: ReturnType<typeof createApp>) {
+    await call(app, "task_open", { nodeId: "P1-N002", step: "execute" });
+    return call(app, "task_close", {
+      taskId: "T001",
+      status: "closed",
+      summary: "Built.",
+      pr: PR,
+    });
+  }
+
+  /** A 41-word outcome: one more than `OUTCOME_MAX_WORDS`, invariant 4. */
+  function tooLongOutcome(): string {
+    return Array.from({ length: 41 }, () => "word").join(" ");
+  }
+
+  it("refuses a close whose outcome breaks an invariant before any pull request is created or merged (T208)", async () => {
+    const prs = new FakePullRequests();
+    const state = plan();
+    state.nodes[2]!.after = [];
+    const repo = repoWith(state);
+    const app = appOver(repo, prs);
+    await call(app, "task_open", { nodeId: "P1-N003", step: "plan" });
+    const before = repo.commits.length;
+    const refused = await call(app, "task_close", {
+      taskId: "T001",
+      status: "closed",
+      summary: "Planned.",
+      outcome: tooLongOutcome(),
+      branch: "plan-the-part",
+    });
+    expect(refused.isError).toBe(true);
+    expect(refused.content[0]!.text).toContain("refused");
+    expect(refused.content[0]!.text).toContain("nothing was committed");
+    expect(prs.created).toEqual([]);
+    expect(prs.merges).toEqual([]);
+    expect(repo.commits).toHaveLength(before);
+    expect(stateAtHead(repo).tasks.find((t) => t.id === "T001")!.status).toBe(
+      "open",
+    );
+  });
+
+  it("refuses a close when the task is no longer open in the state the write reads, and merges nothing", async () => {
+    const prs = new FakePullRequests();
+    const repo = repoWith(plan());
+    const app = appOver(repo, prs);
+    await built(app);
+    await call(app, "task_open", { nodeId: "P1-N004", step: "verify" });
+    const before = repo.commits.length;
+    // Between task_close's own read (for the base-scope check) and the
+    // write's fresh read, T002 is closed elsewhere: task_next can
+    // close a task open past the time limit as stale. T002's close
+    // would merge PR (mergesAtClose on a verify step), so a merge
+    // based on this stale read, taken before the race, would be wrong.
+    // `afterResolve` fires after a resolution captures its sha, so its
+    // effect is visible starting the *next* resolution: triggering it
+    // on the handler's own preliminary read (resolveCalls 1) is what
+    // makes the write's own first read (resolveCalls 2) see the race.
+    let resolves = 0;
+    repo.afterResolve = () => {
+      resolves += 1;
+      if (resolves === 1) {
+        const headSha = repo.heads.get("main")!;
+        const raced = JSON.parse(
+          repo.files.get(headSha)!.get("orchestration/state.json")!,
+        ) as State;
+        raced.tasks.find((t) => t.id === "T002")!.status = "stale";
+        raced.tasks.find((t) => t.id === "T002")!.closed =
+          "2026-11-19T00:00:00Z";
+        const racedSha = "f".repeat(39) + "2";
+        repo.setFile(racedSha, "orchestration/state.json", stateJson(raced));
+        repo.heads.set("main", racedSha);
+      }
+    };
+    const refused = await call(app, "task_close", {
+      taskId: "T002",
+      status: "closed",
+      summary: "Meets its outcome.",
+    });
+    expect(refused.isError).toBe(true);
+    expect(refused.content[0]!.text).toContain("T002 is stale, not open");
+    expect(prs.merges).toEqual([]);
+    expect(repo.commits).toHaveLength(before);
+  });
+
+  it("runs the merge step once per close even when the branch moves and the write retries", async () => {
+    const prs = new FakePullRequests();
+    const state = plan();
+    state.nodes[2]!.after = [];
+    const repo = repoWith(state);
+    const app = appOver(repo, prs);
+    await call(app, "task_open", { nodeId: "P1-N003", step: "plan" });
+
+    // Someone else commits (to the journal only, so the state the
+    // write reads on retry still validates) between the write's read
+    // and its first commit attempt, once.
+    const original = repo.commitFiles.bind(repo);
+    let moved = false;
+    repo.commitFiles = async (request) => {
+      if (!moved) {
+        moved = true;
+        await original({
+          branch: "main",
+          expectedHeadSha: request.expectedHeadSha,
+          message: "someone else",
+          files: new Map([["orchestration/journal.jsonl", "{}\n"]]),
+        });
+      }
+      return original(request);
+    };
+
+    const commitsBefore = repo.commits.length;
+    const planned = await call(app, "task_close", {
+      taskId: "T001",
+      status: "closed",
+      summary: "Planned.",
+      outcome: "The part is planned.",
+      branch: "plan-the-part",
+    });
+    expect(planned.isError).toBeUndefined();
+    // One pull request created and merged, not two: the step did not
+    // run again on the retried attempt.
+    expect(prs.created).toHaveLength(1);
+    expect(prs.merges).toHaveLength(1);
+    expect(planned.structuredContent).toMatchObject({
+      pr: "majodali/project-orchestrator#901",
+      merged: ["majodali/project-orchestrator#901"],
+    });
+    // The someone-else commit, then the real one.
+    expect(repo.commits).toHaveLength(commitsBefore + 2);
+  });
+
+  it("names the merged pull request in the refusal when a later attempt's trial finds a violation after the step ran", async () => {
+    const prs = new FakePullRequests();
+    const repo = repoWith(plan());
+    const app = appOver(repo, prs);
+    await built(app);
+    await call(app, "task_open", { nodeId: "P1-N004", step: "verify" });
+
+    // Between the merge (the step, in the write's first attempt) and
+    // that attempt's commit, someone else's commit lands and breaks an
+    // invariant the write's retried trial then catches.
+    const original = repo.commitFiles.bind(repo);
+    let moved = false;
+    repo.commitFiles = async (request) => {
+      if (!moved) {
+        moved = true;
+        const raced = JSON.parse(
+          repo.files
+            .get(request.expectedHeadSha)!
+            .get("orchestration/state.json")!,
+        ) as State;
+        raced.nodes.find((n) => n.id === "P2-N002")!.outcome = tooLongOutcome();
+        const racedSha = "f".repeat(39) + "3";
+        repo.setFile(racedSha, "orchestration/state.json", stateJson(raced));
+        repo.heads.set("main", racedSha);
+      }
+      return original(request);
+    };
+
+    const refused = await call(app, "task_close", {
+      taskId: "T002",
+      status: "closed",
+      summary: "Meets its outcome.",
+    });
+    expect(refused.isError).toBe(true);
+    expect(prs.merges).toEqual([PR]);
+    expect(refused.content[0]!.text).toContain(
+      "nothing from this write was committed",
+    );
+    expect(refused.content[0]!.text).toContain(PR);
+  });
+
+  it("names the merged pull request in the view's refusal page the same way", async () => {
+    const prs = new FakePullRequests();
+    const repo = repoWith(plan());
+    const app = appOver(repo, prs);
+    await built(app);
+
+    const original = repo.commitFiles.bind(repo);
+    let moved = false;
+    repo.commitFiles = async (request) => {
+      if (!moved) {
+        moved = true;
+        const raced = JSON.parse(
+          repo.files
+            .get(request.expectedHeadSha)!
+            .get("orchestration/state.json")!,
+        ) as State;
+        raced.nodes.find((n) => n.id === "P2-N002")!.outcome = tooLongOutcome();
+        const racedSha = "f".repeat(39) + "4";
+        repo.setFile(racedSha, "orchestration/state.json", stateJson(raced));
+        repo.heads.set("main", racedSha);
+      }
+      return original(request);
+    };
+
+    const res = await app.request("/view/node/P1-N002/action", {
+      method: "POST",
+      headers: {
+        Cookie: validCookie(),
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: "action=accept-review",
+    });
+    expect(res.status).toBe(422);
+    const text = await res.text();
+    expect(prs.merges).toEqual([PR]);
+    expect(attributeText(text, "data-error")).toContain(
+      "Nothing from this write was committed",
+    );
+    expect(attributeText(text, "data-error")).toContain(PR);
+  });
+});
+
 describe("GithubAppPullRequests", () => {
   it("reads, merges with the head it read, and opens a pull request into the default branch", async () => {
     const calls: Array<{ method: string; path: string; body?: unknown }> = [];
