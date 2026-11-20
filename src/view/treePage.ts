@@ -318,7 +318,7 @@ export function renderTreePage(
       problemsSection(read.findings),
       "</main>",
     );
-    return pageShell(title, body.join("\n"));
+    return pageShell(title, body.join("\n"), { script: true });
   }
   // Hidden check nodes stay out of the tree; shown ones (failed or in
   // flight) sit under the node they verify.
@@ -351,5 +351,5 @@ export function renderTreePage(
     problemsSection(read.findings),
     "</main>",
   );
-  return pageShell(title, body.join("\n"));
+  return pageShell(title, body.join("\n"), { script: true });
 }

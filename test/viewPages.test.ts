@@ -91,7 +91,7 @@ describe("the tree page", () => {
     expect(textOf(attributeText(html, "data-source") ?? "")).toContain(
       "orchestration/state.json at aaaaaaa",
     );
-    expect(html).not.toMatch(/<script/i);
+    expect(html).toContain('<script src="/view/app.js" defer></script>');
   });
 
   it("opens with the counts and the project decisions, then the tree as the primary view", async () => {

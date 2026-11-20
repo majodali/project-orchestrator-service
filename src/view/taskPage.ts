@@ -82,5 +82,5 @@ export function renderTaskPage(
       : "",
     "</main>",
   ].join("\n");
-  return pageShell(`Task ${task.id}`, body);
+  return pageShell(`Task ${task.id}`, body, { script: true });
 }
