@@ -202,11 +202,14 @@ export function viewEnv(): void {
   process.env.MCP_AUTH_TOKEN = FAKE_MCP_TOKEN;
 }
 
-/** The three headers every `/view` response carries (V11). */
+/** The three headers every `/view` response carries (V11). Since D085
+ * the policy allows one first-party script instead of none: no inline
+ * script, and no third-party one. */
 export function expectViewHeaders(res: Response): void {
   const csp = res.headers.get("Content-Security-Policy") ?? "";
   expect(csp).toContain("default-src 'none'");
-  expect(csp).toContain("script-src 'none'");
+  expect(csp).toContain("script-src 'self'");
+  expect(csp).toContain("connect-src 'self'");
   expect(csp).toContain("frame-ancestors 'none'");
   expect(csp).not.toContain("unsafe-inline");
   expect(res.headers.get("Cache-Control")).toBe("no-store");
@@ -284,13 +287,17 @@ export function expectLinksPinned(
   return { documentLinks, pageLinks };
 }
 
-/** The page carries a viewport meta tag, no script, and no style sets a
- * width above 360 CSS pixels (V12). */
+/** The page carries a viewport meta tag, no inline or third-party
+ * script (D085: at most the view's own `/view/app.js`, with no body of
+ * its own), and no style sets a width above 360 CSS pixels (V12). */
 export function expectPhoneWidth(html: string): void {
   expect(html).toContain(
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
   );
-  expect(html).not.toMatch(/<script/i);
+  for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+    expect(m[2]!.trim()).toBe("");
+    expect(m[1]!).toMatch(/\ssrc="\/view\/app\.js"(\s|$)/);
+  }
   expect(html).not.toMatch(/\son[a-z]+=/i);
   const styles = [...html.matchAll(/<style>([\s\S]*?)<\/style>/g)].map(
     (m) => m[1]!,
