@@ -265,7 +265,7 @@ export function renderNodePage(
     "</dl>",
     "</section>",
     "</div>",
-    nodeActionsSection(node),
+    nodeActionsSection(node, state),
     decisionsSection(node, state),
     tasksSection(node, state, commit),
     "</main>",

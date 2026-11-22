@@ -106,9 +106,11 @@ describe("the tree page", () => {
       "D002 A project decision with no node? Default: yes",
     );
     expect(html.indexOf("data-summary")).toBeLessThan(
+      html.indexOf("data-landing"),
+    );
+    expect(html.indexOf("data-landing")).toBeLessThan(
       html.indexOf("data-tree"),
     );
-    expect(html).not.toContain("data-ready");
   });
 
   it("shows every node in its tree with its class, identifier and outcome", async () => {
@@ -481,12 +483,16 @@ describe("check nodes in the view", () => {
 
   it("hides an idle check node, shows a failed and an in-flight one under their node, and counts work nodes only", async () => {
     const { html } = await get(appOver(withChecks()), "/view?open=all");
-    expect(html).not.toContain('data-node="P1-N010"');
+    // An idle check node is hidden from the tree, though it offers
+    // `verify` and so is ready (section 1): it has no row of its own
+    // there, only in "Ready".
+    const tree = html.slice(html.indexOf("data-tree"));
+    expect(tree).not.toContain('data-node="P1-N010"');
     expect(html).toContain('data-node="P1-N011"');
     expect(html).toContain('data-node="P1-N012"');
     expect(attributeText(html, "data-count-done")).toBe("1 of 9 done");
     expect(attributeText(html, "data-count-flight")).toBe("0 in flight");
-    const failed = html.slice(html.indexOf('data-node="P1-N011"'));
+    const failed = tree.slice(tree.indexOf('data-node="P1-N011"'));
     expect(failed).toContain('data-kind="check"');
     expect(textOf(failed.slice(0, failed.indexOf("</li>")))).toContain(
       "blocked: T009: no tests",
@@ -531,9 +537,10 @@ describe("check nodes in the view", () => {
     // The summary's count (two pre-existing open decisions, plus
     // this one) and the row it shows under agree.
     expect(html).toContain('data-count-decisions="3"');
-    const row = html.slice(
-      html.indexOf('data-node="P1-N004"'),
-      html.indexOf("</li>", html.indexOf('data-node="P1-N004"')),
+    const tree = html.slice(html.indexOf("data-tree"));
+    const row = tree.slice(
+      tree.indexOf('data-node="P1-N004"'),
+      tree.indexOf("</li>", tree.indexOf('data-node="P1-N004"')),
     );
     expect(row).toContain('data-decisions-of="P1-N004"');
     expect(row).toContain('data-open-decision="D900"');
