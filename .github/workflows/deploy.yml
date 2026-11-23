@@ -55,9 +55,12 @@ jobs:
       AWS_REGION: ${{ vars.AWS_REGION }}
       AUTH_TOKEN_SECRET_NAME: ${{ vars.AUTH_TOKEN_SECRET_NAME }}
       GITHUB_APP_ID: ${{ vars.SERVICE_GITHUB_APP_ID }}
-      GITHUB_APP_INSTALLATION_ID: ${{ vars.SERVICE_GITHUB_APP_INSTALLATION_ID }}
       GITHUB_APP_PRIVATE_KEY_SECRET_NAME: ${{ vars.SERVICE_GITHUB_APP_PRIVATE_KEY_SECRET_NAME }}
       VIEW_TOKEN_SECRET_NAME: ${{ vars.VIEW_TOKEN_SECRET_NAME }}
+      # node P2-N054 — the deployment's project list (RU-016's owner
+      # action: set once majodali/methodology-tools' App installation
+      # and project list are ready, per the plan's O1/O2).
+      MCP_PROJECTS: ${{ vars.MCP_PROJECTS }}
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0

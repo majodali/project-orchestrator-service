@@ -69,6 +69,7 @@ import {
   getDefaultGitWriter,
   getDefaultPullRequests,
 } from "../planRegister/defaultFetcher.js";
+import { loadProjectList } from "../projects.js";
 import { GitConflictError, GitWriteError } from "../planRegister/gitWriter.js";
 import type { CommitReader } from "../planRegister/registerFetcher.js";
 import {
@@ -309,16 +310,41 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
   const now = options.now ?? (() => new Date());
   const cache = new ShaPathCache();
   let versionCache: { sha: string; at: number } | null = null;
-  const reader = (): CommitReader => options.reader ?? getDefaultCommitReader();
+
+  /** The project the view serves (P2-N054): the deployment's project
+   * list's first entry, until P2-N057 indexes several. A
+   * misconfigured list surfaces the same way a missing GitHub App
+   * does (readFailedPage's existing GithubAppNotConfiguredError
+   * case). */
+  function defaultProject(): { owner: string; repo: string } {
+    const list = loadProjectList(process.env);
+    if (!list.ok) {
+      throw new GithubAppNotConfiguredError(list.missing);
+    }
+    return list.projects[0]!;
+  }
+
+  const reader = (): CommitReader => {
+    if (options.reader) return options.reader;
+    const { owner, repo } = defaultProject();
+    return getDefaultCommitReader(owner, repo);
+  };
   const store = (): StateStore =>
     options.store ??
-    new StateStore({
-      reader: getDefaultCommitReader(),
-      writer: getDefaultGitWriter(),
-      now,
-    });
+    (() => {
+      const { owner, repo } = defaultProject();
+      return new StateStore({
+        reader: getDefaultCommitReader(owner, repo),
+        writer: getDefaultGitWriter(owner, repo),
+        now,
+      });
+    })();
   const pullRequests = (): PullRequests =>
-    options.pullRequests ?? getDefaultPullRequests();
+    options.pullRequests ??
+    (() => {
+      const { owner, repo } = defaultProject();
+      return getDefaultPullRequests(owner, repo);
+    })();
 
   /** The commit's check status, or null when it cannot be read: the
    * page is shown either way. A test that injects a reader and no
@@ -331,7 +357,8 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
       return undefined;
     }
     try {
-      const checks = options.checks ?? getDefaultCommitChecks();
+      const checks =
+        options.checks ?? getDefaultCommitChecks(source.owner, source.repo);
       return await checks.summary(source.owner, source.repo, sha);
     } catch {
       return null;
@@ -550,7 +577,8 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
     try {
       const pr = await pullRequests().get(ref);
       const m = /^([\w.-]+)\/([\w.-]+)#\d+$/.exec(ref)!;
-      const checksClient = options.checks ?? getDefaultCommitChecks();
+      const checksClient =
+        options.checks ?? getDefaultCommitChecks(m[1]!, m[2]!);
       const summary = await checksClient.summary(m[1]!, m[2]!, pr.headSha);
       return { pr: ref, url, checks: summary };
     } catch {

@@ -84,16 +84,17 @@ decision 2 of the rebuild plan, never a personal access token.
    downloaded again later.
 3. Install the App on `majodali/project-orchestrator` (**Install
    App**, select the repository — not "all repositories"), and on
-   each other repository whose pull requests the plan's tasks carry:
-   today `majodali/project-orchestrator-service`. The service writes
-   files only in the coordinating repository; on the others it only
-   reads and merges pull requests.
-4. Record two values from the App's settings pages, both **not
-   secret**:
-   - the App's numeric **ID** (General settings page), and
-   - the installation's numeric **ID** (visible in the installed
-     App's settings URL, e.g.
-     `https://github.com/settings/installations/12345678` → `12345678`).
+   each other repository whose pull requests the plan's tasks carry,
+   or that joins the deployment's project list (node P2-N054, "Adding
+   a project" under Step 3): today `majodali/project-orchestrator-service`.
+   The service writes files only in a repository on its project list;
+   on the others it only reads and merges pull requests. Which
+   installation backs a given repository is resolved through the App
+   itself at request time — nothing here is recorded against a
+   specific repository.
+4. Record the App's numeric **ID** (General settings page) — **not
+   secret**. There is no installation ID to record: the service
+   resolves it per repository, per call.
 5. Store the private key in Secrets Manager, the same pattern as
    Step 1's token:
 
@@ -104,7 +105,7 @@ aws secretsmanager create-secret \
   --secret-string file:///path/to/the-downloaded-key.pem
 ```
 
-**Verify:** `aws secretsmanager get-secret-value --region "$AWS_REGION" --secret-id project-orchestrator-service/github-app-private-key --query SecretString --output text | head -1` prints `-----BEGIN RSA PRIVATE KEY-----` (or `-----BEGIN PRIVATE KEY-----`). Keep the App ID and installation ID — you need them again in Step 3; the private key does not need to be re-read from Secrets Manager for that. Delete the local `.pem` file once it is stored (it is a real credential; do not leave it in a working tree — `.gitignore` already excludes `*.pem`, but "excluded from git" is not "does not exist on disk").
+**Verify:** `aws secretsmanager get-secret-value --region "$AWS_REGION" --secret-id project-orchestrator-service/github-app-private-key --query SecretString --output text | head -1` prints `-----BEGIN RSA PRIVATE KEY-----` (or `-----BEGIN PRIVATE KEY-----`). Keep the App ID — you need it again in Step 3; the private key does not need to be re-read from Secrets Manager for that. Delete the local `.pem` file once it is stored (it is a real credential; do not leave it in a working tree — `.gitignore` already excludes `*.pem`, but "excluded from git" is not "does not exist on disk").
 
 ## Step 3 — Deploy (O2)
 
@@ -115,8 +116,8 @@ with this chunk's required parameters:
 export AWS_REGION=us-east-1                                       # the region from O1
 export AUTH_TOKEN_SECRET_NAME=project-orchestrator-service/mcp-auth-token   # from Step 1
 export GITHUB_APP_ID=123456                                       # from Step 2
-export GITHUB_APP_INSTALLATION_ID=12345678                        # from Step 2
 export GITHUB_APP_PRIVATE_KEY_SECRET_NAME=project-orchestrator-service/github-app-private-key   # from Step 2
+export MCP_PROJECTS=majodali/project-orchestrator                 # node P2-N054, see "Adding a project" below
 export VIEW_TOKEN_SECRET_NAME=project-orchestrator-service/view-token   # from O-view-1, "The web view" below
 ./scripts/deploy.sh
 ```
@@ -124,6 +125,36 @@ export VIEW_TOKEN_SECRET_NAME=project-orchestrator-service/view-token   # from O
 `VIEW_TOKEN_SECRET_NAME` names the web view's token (node P2-N021).
 Without it the script warns, and `sam deploy` refuses the update for
 the missing `ViewTokenSecretName` parameter, which has no default.
+
+### Adding a project (node P2-N054)
+
+One deployment can serve several repositories, each its own
+`/mcp/<owner>/<repo>` endpoint path. Adding one is three things, in
+this order:
+
+1. **The state file first.** The repository must already carry
+   `orchestration/state.json` (written by `plan-state import` from its
+   Backlog) before anything here points at it — this deployment reads
+   it, never creates it.
+2. **The GitHub App installed on it (O3).** One account-level
+   installation serves every repository in the account; nothing is
+   configured per repository — the installation is resolved through
+   the App itself, at request time, per repository
+   (`GET /repos/{owner}/{repo}/installation`).
+3. **The repository added to `MCP_PROJECTS`.** A comma-separated list
+   of `owner/repo`, one per repository, passed as this step's
+   environment variable and set as the `McpProjects` parameter in CI
+   (`vars.MCP_PROJECTS`, see "O8" below). Order matters: the first
+   entry is what the bare `/mcp` path serves. `MCP_PROJECT` is still
+   accepted as the spelling of a list of one, for a single-project
+   deployment; setting both and disagreeing refuses every call,
+   naming both. A deployment with no list refuses every call, naming
+   what was required.
+
+Each project's own `.mcp.json` names its own path,
+`/mcp/<owner>/<repo>` (see "Enlisting a repository" in
+[how we work](process/how-we-work.md)) — adding a repository to this
+list does not change any other repository's enlistment.
 
 It builds with esbuild (`template.yaml`'s `Metadata.BuildMethod`,
 bundling `src/lambda.ts`), deploys via CloudFormation
@@ -356,14 +387,17 @@ you ran Step 3. The `plan_read` call's `structuredContent.sha` should
 match what GitHub shows as `majodali/project-orchestrator`'s default
 branch HEAD at the moment you ran it — cross-check on GitHub.
 
-**If `plan_read` returns a tool error naming `GITHUB_APP_ID`,
-`GITHUB_APP_INSTALLATION_ID`, or `GITHUB_APP_PRIVATE_KEY`:** Step 3
-was run without Step 2's values (or they do not match what
-`template.yaml`'s parameters resolved) — re-run Step 3 with them set.
+**If `plan_read` returns a tool error naming `GITHUB_APP_ID` or
+`GITHUB_APP_PRIVATE_KEY`:** Step 3 was run without Step 2's values (or
+they do not match what `template.yaml`'s parameters resolved) —
+re-run Step 3 with them set. **If it instead names a repository and
+"the GitHub App is not installed on" it:** the installation is
+resolved per repository at request time (node P2-N054) — install the
+App on that repository (Step 2), or correct `MCP_PROJECTS`.
 **If it returns a tool error citing a GitHub API status (401/403/404):**
-recheck Step 2 — the App's installation, its `Contents: Read and
-write` permission, and the installation ID all matter; the private key in
-Secrets Manager must be the one downloaded for this same App.
+recheck Step 2 — the App's installation and its `Contents: Read and
+write` permission both matter; the private key in Secrets Manager
+must be the one downloaded for this same App.
 
 ## Step 7 — Enlist a session
 
@@ -753,16 +787,17 @@ the second is covered by something else.
 GitHub repository, organization, and environment **configuration
 variables** (the `vars` context) may not start with `GITHUB_`
 (GitHub's own naming rule — see "Where `GITHUB_` may and may not
-appear" below). `scripts/deploy.sh` requires three environment
+appear" below). `scripts/deploy.sh` requires two environment
 variables whose names do start with `GITHUB_`
-(`GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`,
-`GITHUB_APP_PRIVATE_KEY_SECRET_NAME` — see that script's own header
-comment). The fix is a naming layer, not a script change: the owner
-stores the three App-related values under different, unprefixed
-repository-variable names, and the deploy workflow's `env:` block maps
-each one back to the name `scripts/deploy.sh` actually requires. This
-keeps criterion I1 intact — the same script, the same required
-variable names, run by CI exactly as a human runs it.
+(`GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_SECRET_NAME` — see that
+script's own header comment; the installation ID is no longer
+configured at all, node P2-N054 — it is resolved per repository
+through the App itself). The fix is a naming layer, not a script
+change: the owner stores the App-related values under different,
+unprefixed repository-variable names, and the deploy workflow's `env:`
+block maps each one back to the name `scripts/deploy.sh` actually
+requires. This keeps criterion I1 intact — the same script, the same
+required variable names, run by CI exactly as a human runs it.
 
 Create these repository variables (repository **Settings** →
 **Secrets and variables** → **Actions** → **Variables** tab →
@@ -777,8 +812,8 @@ secret category — see the row's own note below), exactly as decision
 | `AWS_REGION`                                 | `AWS_REGION`                                                                                                                                         | the region chosen under O1                                                                            |
 | `AUTH_TOKEN_SECRET_NAME`                     | `AUTH_TOKEN_SECRET_NAME`                                                                                                                             | `project-orchestrator-service/mcp-auth-token` (Step 1)                                                |
 | `SERVICE_GITHUB_APP_ID`                      | `GITHUB_APP_ID`                                                                                                                                      | the App's numeric ID (Step 2)                                                                         |
-| `SERVICE_GITHUB_APP_INSTALLATION_ID`         | `GITHUB_APP_INSTALLATION_ID`                                                                                                                         | the installation's numeric ID (Step 2)                                                                |
 | `SERVICE_GITHUB_APP_PRIVATE_KEY_SECRET_NAME` | `GITHUB_APP_PRIVATE_KEY_SECRET_NAME`                                                                                                                 | `project-orchestrator-service/github-app-private-key` (Step 2)                                        |
+| `MCP_PROJECTS`                               | `MCP_PROJECTS`                                                                                                                                       | the deployment's project list (node P2-N054; see "Adding a project" in Step 3)                        |
 | `VIEW_TOKEN_SECRET_NAME`                     | `VIEW_TOKEN_SECRET_NAME`                                                                                                                             | `project-orchestrator-service/view-token` (O-view-3; see "The web view" below)                        |
 | `AWS_DEPLOY_ROLE_ARN`                        | not fed to `scripts/deploy.sh` — read directly by `.github/workflows/deploy.yml` and `.github/workflows/oidc-preflight.yml`'s `role-to-assume` input | the deploy role's full ARN, `arn:aws:iam::<ACCOUNT_ID>:role/project-orchestrator-service-deploy` (O7) |
 
@@ -796,15 +831,15 @@ secret category — see the row's own note below), exactly as decision
 > is an owner action outside the original O7–O10 list; create it
 > before running either workflow.
 
-Only the three App-related names are renamed — `AWS_REGION` and
-`AUTH_TOKEN_SECRET_NAME` already satisfy GitHub's rule and are stored
-under the same names `scripts/deploy.sh` expects. The three chosen
-names (`SERVICE_GITHUB_APP_ID` and its two siblings) are stated once,
-here, so they are not renegotiated when child D is built: they do not
-start with `GITHUB_`, and the `SERVICE_` prefix keeps them
-identifiable as this repository's own App-integration values rather
-than a generic `APP_ID` that could collide with an unrelated variable
-later.
+Only the two App-related names are renamed — `AWS_REGION`,
+`AUTH_TOKEN_SECRET_NAME` and `MCP_PROJECTS` already satisfy GitHub's
+rule and are stored under the same names `scripts/deploy.sh` expects.
+The two chosen names (`SERVICE_GITHUB_APP_ID` and its sibling) are
+stated once, here, so they are not renegotiated when child D is
+built: they do not start with `GITHUB_`, and the `SERVICE_` prefix
+keeps them identifiable as this repository's own App-integration
+values rather than a generic `APP_ID` that could collide with an
+unrelated variable later.
 
 **The exact `env:` mapping block** — this is the contract child D's
 deploy workflow implements, on whichever step invokes
@@ -815,8 +850,8 @@ env:
   AWS_REGION: ${{ vars.AWS_REGION }}
   AUTH_TOKEN_SECRET_NAME: ${{ vars.AUTH_TOKEN_SECRET_NAME }}
   GITHUB_APP_ID: ${{ vars.SERVICE_GITHUB_APP_ID }}
-  GITHUB_APP_INSTALLATION_ID: ${{ vars.SERVICE_GITHUB_APP_INSTALLATION_ID }}
   GITHUB_APP_PRIVATE_KEY_SECRET_NAME: ${{ vars.SERVICE_GITHUB_APP_PRIVATE_KEY_SECRET_NAME }}
+  MCP_PROJECTS: ${{ vars.MCP_PROJECTS }}
   VIEW_TOKEN_SECRET_NAME: ${{ vars.VIEW_TOKEN_SECRET_NAME }}
 ```
 
@@ -842,16 +877,15 @@ easy to conflate:
   ignored."_ This is narrower: it bans exactly the enumerated list of
   GitHub's own defaults (`GITHUB_ACTION`, `GITHUB_ACTOR`,
   `GITHUB_REF`, `GITHUB_SHA`, and so on, plus `RUNNER_*`), not every
-  name starting with `GITHUB_`. `GITHUB_APP_ID`,
-  `GITHUB_APP_INSTALLATION_ID`, and
+  name starting with `GITHUB_`. `GITHUB_APP_ID` and
   `GITHUB_APP_PRIVATE_KEY_SECRET_NAME` are not on that list (checked
   against the full table on 2026-09-01) — the `env:` mapping above,
-  which sets exactly these three names as environment variables for
+  which sets exactly these two names as environment variables for
   the step that runs `scripts/deploy.sh`, is not itself the naming
   violation; only storing them as _configuration variables_ under
   those names would have been.
 
-**Residual risk.** If GitHub ever adds one of these three names to its
+**Residual risk.** If GitHub ever adds one of these two names to its
 own default-environment-variable list, the `env:` assignment above
 would be _ignored_, not rejected — the step would run with whichever
 value GitHub's own default carries for that name instead of the
@@ -860,7 +894,7 @@ on what that ignored assignment leaves behind: its guards are the bash
 `${VAR:?message}` form —
 
 ```sh
-: "${GITHUB_APP_ID:?Set GITHUB_APP_ID to the GitHub App's numeric ID (owner action O3; see docs/runbook.md).}"
+: "${GITHUB_APP_ID:?Set GITHUB_APP_ID to the numeric ID of the GitHub App (owner action O3; see docs/runbook.md).}"
 ```
 
 — which fails closed (non-zero exit, the stated message) when the

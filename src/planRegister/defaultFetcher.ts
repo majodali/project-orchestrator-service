@@ -1,15 +1,30 @@
 /**
- * Production wiring for the `RegisterFetcher` `plan_read` uses when no
- * override is supplied (chunk 1 child C, node P2-N009). Kept separate
- * from src/planReadTool.ts so tool registration never has to touch
- * environment configuration at all: a server registers and lists
- * `plan_read` fine even before owner action O3 is done, and the
+ * Production wiring for the clients `plan_read` and the state tools
+ * use when no override is supplied (chunk 1 child C, node P2-N009;
+ * reworked for several repositories at P2-N054, design 2). Kept
+ * separate from src/planReadTool.ts so tool registration never has to
+ * touch environment configuration at all: a server registers and
+ * lists `plan_read` fine even before owner action O3 is done, and the
  * `GithubAppNotConfiguredError` below only surfaces when the tool is
  * actually called — never a startup crash.
+ *
+ * Each getter now takes the repository it is for and keys its cache
+ * by `owner/repo`: a call for a repository not seen before builds
+ * that repository's client, resolving which installation backs it
+ * through the App itself (src/planRegister/githubAppAuth.ts) rather
+ * than a configured `GITHUB_APP_INSTALLATION_ID` — so a repository
+ * new to a project needs no deploy. A repository the App is not
+ * installed on fails only its own calls (`GithubAppInstallationNotFoundError`);
+ * every cache here is a plain `Map`, naturally bounded by the small
+ * number of repositories a deployment actually serves.
  */
 
 import { loadGithubAppConfig } from "../githubAppConfig.js";
-import { createInstallationTokenProvider } from "./githubAppAuth.js";
+import {
+  createRepoInstallationTokenProvider,
+  GithubAppInstallationNotFoundError,
+} from "./githubAppAuth.js";
+import type { InstallationTokenProvider } from "./githubAppAuth.js";
 import { GithubAppGitWriter } from "./gitWriter.js";
 import type { GitWriter } from "./gitWriter.js";
 import { GithubAppCommitChecks } from "./commitChecks.js";
@@ -18,6 +33,8 @@ import { GithubAppPullRequests } from "./pullRequests.js";
 import type { PullRequests } from "./pullRequests.js";
 import { GithubAppRegisterFetcher } from "./registerFetcher.js";
 import type { CommitReader, RegisterFetcher } from "./registerFetcher.js";
+
+export { GithubAppInstallationNotFoundError };
 
 export class GithubAppNotConfiguredError extends Error {
   readonly missing: string[];
@@ -33,80 +50,102 @@ export class GithubAppNotConfiguredError extends Error {
   }
 }
 
-// Cached for the lifetime of this module instance (a warm Lambda
-// container, or the local dev process) so a repeated `plan_read` call
-// reuses the same installation-token provider — and therefore its
-// cached token — instead of re-reading configuration and starting a
-// fresh cache on every call.
-let cached: GithubAppRegisterFetcher | null = null;
-let cachedWriter: GithubAppGitWriter | null = null;
-let cachedPullRequests: GithubAppPullRequests | null = null;
-let cachedTokenProvider: (() => Promise<string>) | null = null;
-
-/** One installation-token provider, and so one cached token, for the
- * reader, the writer and the pull request client. */
-function sharedTokenProvider(config: {
-  appId: string;
-  installationId: string;
-  privateKey: string;
-}): () => Promise<string> {
-  cachedTokenProvider ??= createInstallationTokenProvider(config);
-  return cachedTokenProvider;
+function repoKey(owner: string, repo: string): string {
+  return `${owner}/${repo}`;
 }
 
-let cachedChecks: GithubAppCommitChecks | null = null;
+// One token provider per repository, each resolving its own
+// installation lazily on first use (githubAppAuth.ts). Repositories a
+// deployment actually serves number in the single digits, so a plain
+// Map needs no eviction policy.
+const tokenProviders = new Map<string, InstallationTokenProvider>();
 
-/** The commit check reader: the same App and the same token. */
+function sharedTokenProvider(
+  owner: string,
+  repo: string,
+  config: { appId: string; privateKey: string },
+): InstallationTokenProvider {
+  const key = repoKey(owner, repo);
+  let provider = tokenProviders.get(key);
+  if (!provider) {
+    provider = createRepoInstallationTokenProvider(config, owner, repo);
+    tokenProviders.set(key, provider);
+  }
+  return provider;
+}
+
+const checksCache = new Map<string, GithubAppCommitChecks>();
+
+/** The commit check reader for one repository: its own App token. */
 export function getDefaultCommitChecks(
+  owner: string,
+  repo: string,
   env: NodeJS.ProcessEnv = process.env,
 ): CommitChecks {
+  const key = repoKey(owner, repo);
+  const cachedChecks = checksCache.get(key);
   if (cachedChecks) return cachedChecks;
   const result = loadGithubAppConfig(env);
   if (!result.ok) {
     throw new GithubAppNotConfiguredError(result.missing);
   }
-  cachedChecks = new GithubAppCommitChecks(sharedTokenProvider(result.config));
-  return cachedChecks;
+  const checks = new GithubAppCommitChecks(
+    sharedTokenProvider(owner, repo, result.config),
+  );
+  checksCache.set(key, checks);
+  return checks;
 }
 
-/** The pull request client: the same App and the same token. */
+const pullRequestsCache = new Map<string, GithubAppPullRequests>();
+
+/** The pull request client for one repository: its own App token. */
 export function getDefaultPullRequests(
+  owner: string,
+  repo: string,
   env: NodeJS.ProcessEnv = process.env,
 ): PullRequests {
+  const key = repoKey(owner, repo);
+  const cachedPullRequests = pullRequestsCache.get(key);
   if (cachedPullRequests) return cachedPullRequests;
   const result = loadGithubAppConfig(env);
   if (!result.ok) {
     throw new GithubAppNotConfiguredError(result.missing);
   }
-  cachedPullRequests = new GithubAppPullRequests(
-    sharedTokenProvider(result.config),
+  const pullRequests = new GithubAppPullRequests(
+    sharedTokenProvider(owner, repo, result.config),
   );
-  return cachedPullRequests;
+  pullRequestsCache.set(key, pullRequests);
+  return pullRequests;
 }
 
-/** The writer the state store commits through: the same App and the
- * same token as the reads (the rebuild, milestone 3). */
+const writerCache = new Map<string, GithubAppGitWriter>();
+
+/** The writer the state store commits through, for one repository:
+ * the same App and the same per-repository token as the reads. */
 export function getDefaultGitWriter(
+  owner: string,
+  repo: string,
   env: NodeJS.ProcessEnv = process.env,
 ): GitWriter {
+  const key = repoKey(owner, repo);
+  const cachedWriter = writerCache.get(key);
   if (cachedWriter) return cachedWriter;
   const result = loadGithubAppConfig(env);
   if (!result.ok) {
     throw new GithubAppNotConfiguredError(result.missing);
   }
-  const tokenProvider = sharedTokenProvider(result.config);
-  cachedWriter = new GithubAppGitWriter(
-    result.config.owner,
-    result.config.repo,
-    tokenProvider,
-  );
-  return cachedWriter;
+  const tokenProvider = sharedTokenProvider(owner, repo, result.config);
+  const writer = new GithubAppGitWriter(owner, repo, tokenProvider);
+  writerCache.set(key, writer);
+  return writer;
 }
 
 export function getDefaultRegisterFetcher(
+  owner: string,
+  repo: string,
   env: NodeJS.ProcessEnv = process.env,
 ): RegisterFetcher {
-  return getDefaultGithubFetcher(env);
+  return getDefaultGithubFetcher(owner, repo, env);
 }
 
 /** The same cached, GitHub-App-backed instance, through the seam the
@@ -114,14 +153,22 @@ export function getDefaultRegisterFetcher(
  * file at that SHA. Throws `GithubAppNotConfiguredError` when called
  * before owner action O3, as `getDefaultRegisterFetcher` does. */
 export function getDefaultCommitReader(
+  owner: string,
+  repo: string,
   env: NodeJS.ProcessEnv = process.env,
 ): CommitReader {
-  return getDefaultGithubFetcher(env);
+  return getDefaultGithubFetcher(owner, repo, env);
 }
 
+const fetcherCache = new Map<string, GithubAppRegisterFetcher>();
+
 function getDefaultGithubFetcher(
+  owner: string,
+  repo: string,
   env: NodeJS.ProcessEnv,
 ): GithubAppRegisterFetcher {
+  const key = repoKey(owner, repo);
+  const cached = fetcherCache.get(key);
   if (cached) {
     return cached;
   }
@@ -129,23 +176,20 @@ function getDefaultGithubFetcher(
   if (!result.ok) {
     throw new GithubAppNotConfiguredError(result.missing);
   }
-  const tokenProvider = sharedTokenProvider(result.config);
-  cached = new GithubAppRegisterFetcher(
-    result.config.owner,
-    result.config.repo,
-    tokenProvider,
-  );
-  return cached;
+  const tokenProvider = sharedTokenProvider(owner, repo, result.config);
+  const fetcher = new GithubAppRegisterFetcher(owner, repo, tokenProvider);
+  fetcherCache.set(key, fetcher);
+  return fetcher;
 }
 
-/** Test-only escape hatch: clears the module-level cache so a test can
- * re-exercise configuration loading (e.g. "not configured" after a
- * previous test configured it). Not used, and not needed, by any
+/** Test-only escape hatch: clears every module-level cache so a test
+ * can re-exercise configuration loading (e.g. "not configured" after
+ * a previous test configured it). Not used, and not needed, by any
  * production code path. */
 export function resetDefaultRegisterFetcherForTests(): void {
-  cached = null;
-  cachedWriter = null;
-  cachedPullRequests = null;
-  cachedChecks = null;
-  cachedTokenProvider = null;
+  fetcherCache.clear();
+  writerCache.clear();
+  pullRequestsCache.clear();
+  checksCache.clear();
+  tokenProviders.clear();
 }

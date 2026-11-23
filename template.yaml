@@ -48,13 +48,16 @@ Parameters:
       deploy time, so the token is never a literal in this template,
       in a parameter-overrides file, or in git.
 
-  ProjectName:
+  McpProjects:
     Type: String
-    Default: majodali/project-orchestrator
     Description: >
-      The coordinating repository this deployment answers
-      `service_identity` for. Chunk 1 child B does no git reads of its
-      own (that starts at child C) — this is metadata only.
+      Comma-separated list of "<owner>/<repo>", one per repository this
+      deployment serves — each its own endpoint path,
+      /mcp/<owner>/<repo> (node P2-N054, design 1). The first is what
+      the bare /mcp path serves, until P2-N059 retires it. No default:
+      a deployment with no list refuses every call (RU-013), so a
+      stack with this parameter omitted fails to deploy rather than
+      serving a misconfigured instance silently.
 
   ServiceCommit:
     Type: String
@@ -74,14 +77,6 @@ Parameters:
       token). Not secret — visible on the App's own settings page.
       Set by scripts/deploy.sh from the GITHUB_APP_ID environment
       variable; see docs/runbook.md.
-
-  GithubAppInstallationId:
-    Type: String
-    Description: >
-      The App's installation ID for majodali/project-orchestrator
-      (owner action O3) — visible in the installation settings URL.
-      Not secret. Set by scripts/deploy.sh from
-      GITHUB_APP_INSTALLATION_ID; see docs/runbook.md.
 
   GithubAppPrivateKeySecretName:
     Type: String
@@ -240,18 +235,20 @@ Resources:
         slice, node P2-N008).
       Environment:
         Variables:
-          MCP_PROJECT: !Ref ProjectName
+          MCP_PROJECTS: !Ref McpProjects
           SERVICE_COMMIT: !Ref ServiceCommit
           # Resolved by CloudFormation at deploy time from Secrets
           # Manager — never a literal in this template or in any
           # parameter-overrides file committed to git (I7).
           MCP_AUTH_TOKEN: !Sub "{{resolve:secretsmanager:${AuthTokenSecretName}:SecretString}}"
           # plan_read (chunk 1 child C, node P2-N009) — GitHub App
-          # credentials, owner action O3. GithubAppId and
-          # GithubAppInstallationId are not secret; the private key is
-          # resolved the same way MCP_AUTH_TOKEN is above.
+          # credentials, owner action O3. GithubAppId is not secret;
+          # the private key is resolved the same way MCP_AUTH_TOKEN is
+          # above. Which installation backs which repository is
+          # resolved through the App itself, per repository, at
+          # request time (node P2-N054, design 2) — no installation ID
+          # is configured here.
           GITHUB_APP_ID: !Ref GithubAppId
-          GITHUB_APP_INSTALLATION_ID: !Ref GithubAppInstallationId
           GITHUB_APP_PRIVATE_KEY: !Sub "{{resolve:secretsmanager:${GithubAppPrivateKeySecretName}:SecretString}}"
           # The web view's token (node P2-N021, owner action O-view-1),
           # resolved the same way MCP_AUTH_TOKEN is above. The /view

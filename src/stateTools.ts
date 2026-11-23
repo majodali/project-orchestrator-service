@@ -108,6 +108,11 @@ export interface StateToolsOptions {
   /** Test-only: the pull request client. Production uses the App. */
   pullRequests?: PullRequests;
   now?: () => Date;
+  /** The project this server's endpoint path resolved to (P2-N054,
+   * design 1, S2): required in production, where `store` and
+   * `pullRequests` are built from it; a test that supplies both
+   * directly need not pass it. */
+  project?: { owner: string; repo: string };
 }
 
 type ToolResult = {
@@ -275,16 +280,31 @@ export function registerStateTools(
   options: StateToolsOptions = {},
 ): void {
   const now = options.now ?? (() => new Date());
+  const requireProject = (): { owner: string; repo: string } => {
+    if (!options.project) {
+      throw new Error(
+        "registerStateTools: no project resolved (internal error — the route must resolve a project before building the server)",
+      );
+    }
+    return options.project;
+  };
   const store = (): StateStore =>
     options.store ??
-    new StateStore({
-      reader: getDefaultCommitReader(),
-      writer: getDefaultGitWriter(),
-      now,
-    });
+    (() => {
+      const { owner, repo } = requireProject();
+      return new StateStore({
+        reader: getDefaultCommitReader(owner, repo),
+        writer: getDefaultGitWriter(owner, repo),
+        now,
+      });
+    })();
 
   const pullRequests = (): PullRequests =>
-    options.pullRequests ?? getDefaultPullRequests();
+    options.pullRequests ??
+    (() => {
+      const { owner, repo } = requireProject();
+      return getDefaultPullRequests(owner, repo);
+    })();
 
   /** A write to nodes or decisions by a session: under an open task,
    * or on the owner's instruction; the commit and the journal say

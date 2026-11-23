@@ -91,6 +91,7 @@ const ORIGINAL_ENV = { ...process.env };
 describe("Lambda handler against an API Gateway v2 event", () => {
   beforeEach(() => {
     process.env.MCP_AUTH_TOKEN = "test-token-123";
+    process.env.MCP_PROJECT = "majodali/project-orchestrator";
   });
   afterEach(() => {
     process.env = { ...ORIGINAL_ENV };
