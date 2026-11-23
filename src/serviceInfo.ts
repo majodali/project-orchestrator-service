@@ -29,13 +29,12 @@ export interface ServiceIdentity {
    */
   commit: string;
   /**
-   * The coordinating repository this deployment is configured for —
-   * not read from anywhere at request time (chunk 1 child B does no
-   * git reads; that starts at child C). Set by the `MCP_PROJECT`
-   * environment variable so one deployment could, in principle, be
-   * repointed without a code change.
+   * The project the request's endpoint path resolved to (P2-N054,
+   * design 1, S2), `owner/repo`. Absent when no path was resolved —
+   * `/health`, and `getServiceIdentity().version` in
+   * src/mcpServer.ts, neither of which answer for a project.
    */
-  project: string;
+  project?: string;
   /**
    * The Lambda qualifier this request was invoked through ("live" /
    * "preprod" / "$LATEST"), deliberately absent, not null, when this
@@ -50,17 +49,16 @@ export interface InvokedQualifierInfo {
   qualifier: string;
 }
 
-const DEFAULT_PROJECT = "majodali/project-orchestrator";
-
 export function getServiceIdentity(
   env: NodeJS.ProcessEnv = process.env,
   invokedQualifierInfo?: InvokedQualifierInfo,
+  project?: string,
 ): ServiceIdentity {
   return {
     service: packageJson.name,
     version: packageJson.version,
     commit: env.SERVICE_COMMIT?.trim() || "unknown",
-    project: env.MCP_PROJECT?.trim() || DEFAULT_PROJECT,
+    ...(project !== undefined ? { project } : {}),
     ...(invokedQualifierInfo
       ? { invokedQualifier: invokedQualifierInfo.qualifier }
       : {}),

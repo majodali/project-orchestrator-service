@@ -15,14 +15,20 @@
 #   GITHUB_APP_ID                   The GitHub App's numeric ID
 #                                   (owner action O3, docs/runbook.md).
 #                                   Not secret.
-#   GITHUB_APP_INSTALLATION_ID      The App's installation ID for
-#                                   majodali/project-orchestrator
-#                                   (owner action O3). Not secret.
 #   GITHUB_APP_PRIVATE_KEY_SECRET_NAME   Name (not ARN) of the Secrets
 #                                   Manager secret holding the App's
 #                                   PEM private key (owner action O3).
 #                                   Never read by this script, the same
 #                                   pattern as AUTH_TOKEN_SECRET_NAME.
+#   MCP_PROJECTS                    Comma-separated list of
+#                                   "<owner>/<repo>" this deployment
+#                                   serves, one endpoint path each
+#                                   (node P2-N054). The first is what
+#                                   the bare /mcp path serves. No
+#                                   default: a deployment with no list
+#                                   refuses every call (RU-013), so this
+#                                   script requires it rather than
+#                                   deploying a misconfigured instance.
 #   VIEW_TOKEN_SECRET_NAME          Name (not ARN) of the Secrets
 #                                   Manager secret holding the web
 #                                   view's token (node P2-N021, owner
@@ -45,15 +51,14 @@
 #                 stage is fixed to $default in template.yaml so the
 #                 endpoint carries no stage segment; see that file's
 #                 Stage parameter and HttpApi resource for why.
-#   PROJECT_NAME  Default: majodali/project-orchestrator
 
 set -euo pipefail
 
 : "${AWS_REGION:?Set AWS_REGION (the region chosen under O1; see docs/runbook.md).}"
 : "${AUTH_TOKEN_SECRET_NAME:?Set AUTH_TOKEN_SECRET_NAME to the secret created under O4 (docs/runbook.md Step 1).}"
-: "${GITHUB_APP_ID:?Set GITHUB_APP_ID to the GitHub App's numeric ID (owner action O3; see docs/runbook.md).}"
-: "${GITHUB_APP_INSTALLATION_ID:?Set GITHUB_APP_INSTALLATION_ID to the App's installation ID for majodali/project-orchestrator (owner action O3; see docs/runbook.md).}"
+: "${GITHUB_APP_ID:?Set GITHUB_APP_ID to the numeric ID of the GitHub App (owner action O3; see docs/runbook.md).}"
 : "${GITHUB_APP_PRIVATE_KEY_SECRET_NAME:?Set GITHUB_APP_PRIVATE_KEY_SECRET_NAME to the secret created under O3 (see docs/runbook.md).}"
+: "${MCP_PROJECTS:?Set MCP_PROJECTS to the comma-separated list of \"<owner>/<repo>\" this deployment serves (node P2-N054; see docs/runbook.md).}"
 
 # node P2-N021 — the web view's token secret. Passed only when set; see
 # this variable's entry in the header comment for why an unset value
@@ -67,7 +72,6 @@ fi
 
 STACK_NAME="${STACK_NAME:-project-orchestrator-service}"
 STAGE="${STAGE:-prod}"
-PROJECT_NAME="${PROJECT_NAME:-majodali/project-orchestrator}"
 SERVICE_COMMIT="$(git -C "$(dirname "${BASH_SOURCE[0]}")/.." rev-parse HEAD)"
 
 # node P2-N015 (I4) — read back `live`'s actual current FunctionVersion
@@ -158,10 +162,9 @@ sam deploy \
   --parameter-overrides \
     "Stage=${STAGE}" \
     "AuthTokenSecretName=${AUTH_TOKEN_SECRET_NAME}" \
-    "ProjectName=${PROJECT_NAME}" \
+    "McpProjects=${MCP_PROJECTS}" \
     "ServiceCommit=${SERVICE_COMMIT}" \
     "GithubAppId=${GITHUB_APP_ID}" \
-    "GithubAppInstallationId=${GITHUB_APP_INSTALLATION_ID}" \
     "GithubAppPrivateKeySecretName=${GITHUB_APP_PRIVATE_KEY_SECRET_NAME}" \
     "LiveVersion=${LIVE_VERSION}" \
     ${VIEW_TOKEN_OVERRIDE[@]+"${VIEW_TOKEN_OVERRIDE[@]}"}

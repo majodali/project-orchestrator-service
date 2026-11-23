@@ -21,8 +21,9 @@ const MCP_HEADERS = {
 function mcpRequest(
   body: unknown,
   headers: Record<string, string> = {},
+  path = "/mcp",
 ): Request {
-  return new Request("http://localhost/mcp", {
+  return new Request(`http://localhost${path}`, {
     method: "POST",
     headers: { ...MCP_HEADERS, ...headers },
     body: JSON.stringify(body),
@@ -59,6 +60,7 @@ describe("GET /health", () => {
 describe("POST /mcp — auth", () => {
   beforeEach(() => {
     process.env.MCP_AUTH_TOKEN = "test-token-123";
+    process.env.MCP_PROJECT = "majodali/project-orchestrator";
   });
   afterEach(() => {
     process.env = { ...ORIGINAL_ENV };
@@ -153,5 +155,98 @@ describe("POST /mcp — service_identity", () => {
       commit: "deadbeef",
       project: "majodali/project-orchestrator",
     });
+  });
+});
+
+describe("POST /mcp/:owner/:repo — several projects (P2-N054)", () => {
+  beforeEach(() => {
+    process.env.MCP_AUTH_TOKEN = "test-token-123";
+    process.env.MCP_PROJECTS =
+      "majodali/project-orchestrator,majodali/methodology-tools";
+  });
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  it("answers service_identity with the project its own path names (criterion 1)", async () => {
+    const app = createApp();
+    const res = await app.request(
+      mcpRequest(
+        TOOLS_CALL_BODY,
+        { Authorization: "Bearer test-token-123" },
+        "/mcp/majodali/methodology-tools",
+      ),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      result: { structuredContent: { project: string } };
+    };
+    expect(body.result.structuredContent.project).toBe(
+      "majodali/methodology-tools",
+    );
+  });
+
+  it("serves the list's first project at the bare /mcp path (criterion 5)", async () => {
+    const app = createApp();
+    const res = await app.request(
+      mcpRequest(TOOLS_CALL_BODY, { Authorization: "Bearer test-token-123" }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      result: { structuredContent: { project: string } };
+    };
+    expect(body.result.structuredContent.project).toBe(
+      "majodali/project-orchestrator",
+    );
+  });
+
+  it("refuses a path naming a repository outside the project list, naming neither a token nor the other projects (criterion 3)", async () => {
+    const app = createApp();
+    const res = await app.request(
+      mcpRequest(
+        TOOLS_CALL_BODY,
+        { Authorization: "Bearer test-token-123" },
+        "/mcp/majodali/not-a-served-project",
+      ),
+    );
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { reason: string };
+    expect(body.reason).not.toContain("test-token-123");
+    expect(body.reason).not.toContain("methodology-tools");
+    expect(body.reason).not.toContain("project-orchestrator");
+  });
+});
+
+describe("POST /mcp — a misconfigured project list (P2-N054, criterion 4)", () => {
+  beforeEach(() => {
+    process.env.MCP_AUTH_TOKEN = "test-token-123";
+    delete process.env.MCP_PROJECT;
+    delete process.env.MCP_PROJECTS;
+  });
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  it("refuses every call when no project list is configured, naming what was required", async () => {
+    const app = createApp();
+    const res = await app.request(
+      mcpRequest(TOOLS_CALL_BODY, { Authorization: "Bearer test-token-123" }),
+    );
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as { reason: string };
+    expect(body.reason).toContain("MCP_PROJECTS");
+  });
+
+  it("refuses every call when MCP_PROJECT and MCP_PROJECTS disagree, naming both", async () => {
+    process.env.MCP_PROJECT = "majodali/project-orchestrator";
+    process.env.MCP_PROJECTS = "majodali/methodology-tools";
+    const app = createApp();
+    const res = await app.request(
+      mcpRequest(TOOLS_CALL_BODY, { Authorization: "Bearer test-token-123" }),
+    );
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as { reason: string };
+    expect(body.reason).toContain("majodali/project-orchestrator");
+    expect(body.reason).toContain("majodali/methodology-tools");
   });
 });

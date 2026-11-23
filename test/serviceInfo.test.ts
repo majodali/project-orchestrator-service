@@ -19,13 +19,13 @@ describe("getServiceIdentity", () => {
     expect(identity.commit).toBe("abc1234");
   });
 
-  it("defaults project to the coordinating repository", () => {
+  it("omits project when none is given (P2-N054: it is no longer read from MCP_PROJECT)", () => {
     const identity = getServiceIdentity({});
-    expect(identity.project).toBe("majodali/project-orchestrator");
+    expect(identity).not.toHaveProperty("project");
   });
 
-  it("reports the configured project from MCP_PROJECT when set", () => {
-    const identity = getServiceIdentity({ MCP_PROJECT: "example/other-repo" });
+  it("reports the project it is given — the endpoint path's resolved project", () => {
+    const identity = getServiceIdentity({}, undefined, "example/other-repo");
     expect(identity.project).toBe("example/other-repo");
   });
 
@@ -39,7 +39,6 @@ describe("getServiceIdentity", () => {
     expect(identity).not.toHaveProperty("invokedQualifier");
     expect(Object.keys(identity).sort()).toEqual([
       "commit",
-      "project",
       "service",
       "version",
     ]);

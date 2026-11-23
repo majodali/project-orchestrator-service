@@ -45,6 +45,24 @@ export class GithubAppAuthError extends Error {
   }
 }
 
+/** The App is not installed on this repository (or it does not
+ * exist): `GET /repos/{owner}/{repo}/installation` answered 404. No
+ * other repository's call is affected (P2-N054, criterion 7). */
+export class GithubAppInstallationNotFoundError extends Error {
+  readonly owner: string;
+  readonly repo: string;
+
+  constructor(owner: string, repo: string) {
+    super(
+      `the GitHub App is not installed on ${owner}/${repo} (or that repository does not exist). ` +
+        "Install the App on it, or correct the deployment's project list, before a call for this repository can succeed.",
+    );
+    this.name = "GithubAppInstallationNotFoundError";
+    this.owner = owner;
+    this.repo = repo;
+  }
+}
+
 interface CachedToken {
   token: string;
   expiresAtMs: number;
@@ -103,6 +121,84 @@ export function createInstallationTokenProvider(
     const body = (await res.json()) as { token: string; expires_at: string };
     cached = { token: body.token, expiresAtMs: Date.parse(body.expires_at) };
     return cached.token;
+  };
+}
+
+/**
+ * Resolves the installed App's installation ID for one repository
+ * (P2-N054, design 2), via `GET /repos/{owner}/{repo}/installation`
+ * — signed with a fresh App JWT, never an installation token, since
+ * no installation is known yet. A repository the App is not
+ * installed on throws `GithubAppInstallationNotFoundError`, naming
+ * it; no other repository's resolution is affected.
+ */
+export async function resolveInstallationId(
+  credentials: { appId: string; privateKey: string },
+  owner: string,
+  repo: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  const { token: appJwt } = await githubAppJwt({
+    id: credentials.appId,
+    privateKey: credentials.privateKey,
+  });
+
+  const res = await fetchImpl(
+    `${GITHUB_API_BASE}/repos/${owner}/${repo}/installation`,
+    {
+      headers: {
+        Authorization: `Bearer ${appJwt}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": USER_AGENT,
+      },
+    },
+  );
+
+  if (res.status === 404) {
+    throw new GithubAppInstallationNotFoundError(owner, repo);
+  }
+  if (!res.ok) {
+    throw new GithubAppAuthError(
+      `could not resolve the GitHub App installation for ${owner}/${repo}`,
+      res.status,
+      await safeText(res),
+    );
+  }
+
+  const body = (await res.json()) as { id: number };
+  return String(body.id);
+}
+
+/**
+ * An installation token provider for one repository, resolving which
+ * installation backs it lazily, on first use, and caching that
+ * resolution for the life of this provider (P2-N054, design 2) — so
+ * construction stays synchronous and the network round trip happens
+ * only when a caller actually needs a token.
+ */
+export function createRepoInstallationTokenProvider(
+  credentials: { appId: string; privateKey: string },
+  owner: string,
+  repo: string,
+  fetchImpl: typeof fetch = fetch,
+): InstallationTokenProvider {
+  let tokenProvider: InstallationTokenProvider | null = null;
+
+  return async function getInstallationToken(): Promise<string> {
+    if (!tokenProvider) {
+      const installationId = await resolveInstallationId(
+        credentials,
+        owner,
+        repo,
+        fetchImpl,
+      );
+      tokenProvider = createInstallationTokenProvider(
+        { ...credentials, installationId },
+        fetchImpl,
+      );
+    }
+    return tokenProvider();
   };
 }
 

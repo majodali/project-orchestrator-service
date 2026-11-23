@@ -5,15 +5,24 @@
  *
  * Routes:
  *   GET  /health  — unauthenticated liveness check (no MCP framing).
- *   ALL  /mcp     — the MCP endpoint, bearer-token authenticated.
+ *   ALL  /mcp/:owner/:repo, ALL /mcp
+ *                   — the MCP endpoint, bearer-token authenticated.
+ *                   `/mcp/<owner>/<repo>` names the project the call
+ *                   is for, resolved against the deployment's project
+ *                   list (MCP_PROJECTS / MCP_PROJECT, src/projects.ts)
+ *                   before any tool runs; a path outside the list is
+ *                   refused and nothing is read (P2-N054, design 1).
+ *                   The bare `/mcp` serves the list's first project,
+ *                   so every repository enlisted against it keeps
+ *                   working until P2-N059 retires the bare path.
  *                   Stateless streamable HTTP: a fresh McpServer and
  *                   transport per request (no session store), and
  *                   `enableJsonResponse: true` so every response is a
  *                   single JSON body rather than an SSE stream — the
  *                   shape a buffered Lambda-proxy response can carry.
  *                   The tools read and write orchestration/state.json
- *                   of the coordinating repository through the GitHub
- *                   App (src/stateTools.ts).
+ *                   of the resolved project's repository through the
+ *                   GitHub App (src/stateTools.ts).
  *   GET  /view/sign-in, POST /view/sign-in, GET /view, GET /view/node/*,
  *   GET  /view/task/*
  *                 — the web view: server-rendered pages of the state
@@ -34,6 +43,8 @@ import { requireBearerToken } from "./auth.js";
 import { parseInvokedQualifier } from "./lambdaQualifier.js";
 import { createMcpServer } from "./mcpServer.js";
 import type { CreateMcpServerOptions } from "./mcpServer.js";
+import { findProject, loadProjectList } from "./projects.js";
+import type { Project } from "./projects.js";
 import { getServiceIdentity } from "./serviceInfo.js";
 import type { InvokedQualifierInfo } from "./serviceInfo.js";
 import { isViewPath, registerViewRoutes } from "./view/routes.js";
@@ -91,27 +102,74 @@ export function createApp(options: CreateAppOptions = {}): Hono {
     });
   });
 
-  app.all(
-    "/mcp",
-    requireBearerToken(() => process.env.MCP_AUTH_TOKEN),
-    async (c) => {
-      const transport = new WebStandardStreamableHTTPServerTransport({
-        sessionIdGenerator: undefined, // stateless: no session store
-        enableJsonResponse: true, // single JSON response, not SSE
-      });
-      const server = createMcpServer({
-        state: options.state,
-        lambdaQualifier: invokedQualifier(c),
-      });
-      await server.connect(transport);
-      try {
-        return await transport.handleRequest(c.req.raw);
-      } finally {
-        await transport.close();
-        await server.close();
-      }
-    },
+  /** Resolves the project a `/mcp` call is for: by path params, or —
+   * for the bare `/mcp` — the deployment's list's first project
+   * (P2-N054, criterion 5). Returns the response to send instead when
+   * the deployment's project list is misconfigured (RU-013) or the
+   * named path is outside it; neither names a token or another
+   * project (criterion 3). */
+  function resolveProject(
+    c: Context,
+    params: { owner: string; repo: string } | undefined,
+  ): Project | Response {
+    const list = loadProjectList(process.env);
+    if (!list.ok) {
+      return c.json(
+        {
+          error: "server_misconfigured",
+          reason: `the deployment's project list is misconfigured: ${list.missing.join("; ")}`,
+        },
+        500,
+      );
+    }
+    if (!params) {
+      return list.projects[0]!;
+    }
+    const project = findProject(list.projects, params.owner, params.repo);
+    if (!project) {
+      return c.json(
+        {
+          error: "not_found",
+          reason: `${params.owner}/${params.repo} is not a project this deployment serves`,
+        },
+        404,
+      );
+    }
+    return project;
+  }
+
+  async function handleMcp(
+    c: Context,
+    params: { owner: string; repo: string } | undefined,
+  ): Promise<Response> {
+    const resolved = resolveProject(c, params);
+    if (resolved instanceof Response) return resolved;
+
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: undefined, // stateless: no session store
+      enableJsonResponse: true, // single JSON response, not SSE
+    });
+    const server = createMcpServer({
+      state: options.state,
+      lambdaQualifier: invokedQualifier(c),
+      project: resolved,
+    });
+    await server.connect(transport);
+    try {
+      return await transport.handleRequest(c.req.raw);
+    } finally {
+      await transport.close();
+      await server.close();
+    }
+  }
+
+  const authenticated = requireBearerToken(() => process.env.MCP_AUTH_TOKEN);
+
+  app.all("/mcp/:owner/:repo", authenticated, (c) =>
+    handleMcp(c, { owner: c.req.param("owner"), repo: c.req.param("repo") }),
   );
+
+  app.all("/mcp", authenticated, (c) => handleMcp(c, undefined));
 
   registerViewRoutes(app, options.view);
 

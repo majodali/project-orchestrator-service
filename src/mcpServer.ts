@@ -24,7 +24,9 @@ const identityOutputShape = {
     ),
   project: z
     .string()
-    .describe("The coordinating repository this deployment is configured for."),
+    .describe(
+      "The project this request's endpoint path resolved to, owner/repo.",
+    ),
   invokedQualifier: z
     .string()
     .optional()
@@ -42,6 +44,12 @@ export interface CreateMcpServerOptions {
   /** The invoked Lambda qualifier, forwarded into `service_identity`;
    * undefined outside Lambda. */
   lambdaQualifier?: InvokedQualifierInfo;
+  /** The project this server's endpoint path resolved to (P2-N054,
+   * design 1, S2): `service_identity` answers it, and it is forwarded
+   * into the state tools so their default clients read and write that
+   * repository. Absent only in a test that supplies its own store and
+   * pull request client. */
+  project?: { owner: string; repo: string };
 }
 
 export const TOOL_NAMES = [
@@ -81,7 +89,13 @@ export function createMcpServer(
       outputSchema: identityOutputShape,
     },
     () => {
-      const identity = getServiceIdentity(process.env, options.lambdaQualifier);
+      const identity = getServiceIdentity(
+        process.env,
+        options.lambdaQualifier,
+        options.project
+          ? `${options.project.owner}/${options.project.repo}`
+          : undefined,
+      );
       const structuredContent = identityOutputSchema.parse(identity);
       return {
         content: [
@@ -92,7 +106,10 @@ export function createMcpServer(
     },
   );
 
-  registerStateTools(server, options.state);
+  registerStateTools(server, {
+    ...options.state,
+    project: options.state?.project ?? options.project,
+  });
 
   return server;
 }

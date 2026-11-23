@@ -3,7 +3,10 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   GithubAppAuthError,
+  GithubAppInstallationNotFoundError,
   createInstallationTokenProvider,
+  createRepoInstallationTokenProvider,
+  resolveInstallationId,
 } from "../src/planRegister/githubAppAuth.js";
 
 /**
@@ -139,5 +142,112 @@ describe("createInstallationTokenProvider", () => {
       name: "GithubAppAuthError",
       status: 403,
     });
+  });
+});
+
+/**
+ * `resolveInstallationId` and `createRepoInstallationTokenProvider`
+ * (P2-N054, design 2): the installation is resolved per repository
+ * through the App, not a configured `GITHUB_APP_INSTALLATION_ID`.
+ */
+describe("resolveInstallationId", () => {
+  it("resolves the installation ID from GET /repos/{owner}/{repo}/installation", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementationOnce(async () => jsonResponse({ id: 42 }));
+
+    const id = await resolveInstallationId(
+      { appId: "12345", privateKey: privateKeyPem },
+      "majodali",
+      "project-orchestrator",
+      fetchImpl,
+    );
+
+    expect(id).toBe("42");
+    const [url] = fetchImpl.mock.calls[0]!;
+    expect(String(url)).toBe(
+      "https://api.github.com/repos/majodali/project-orchestrator/installation",
+    );
+  });
+
+  it("throws GithubAppInstallationNotFoundError, naming the repository, on a 404", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async () => errorResponse(404, "Not Found"));
+
+    await expect(
+      resolveInstallationId(
+        { appId: "12345", privateKey: privateKeyPem },
+        "majodali",
+        "no-such-repo",
+        fetchImpl,
+      ),
+    ).rejects.toMatchObject({
+      name: "GithubAppInstallationNotFoundError",
+      owner: "majodali",
+      repo: "no-such-repo",
+    });
+  });
+
+  it("is an instance of GithubAppInstallationNotFoundError", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async () => errorResponse(404, "Not Found"));
+
+    await expect(
+      resolveInstallationId(
+        { appId: "12345", privateKey: privateKeyPem },
+        "majodali",
+        "no-such-repo",
+        fetchImpl,
+      ),
+    ).rejects.toBeInstanceOf(GithubAppInstallationNotFoundError);
+  });
+});
+
+describe("createRepoInstallationTokenProvider", () => {
+  it("resolves the installation once, then mints a token for it, and caches both", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementationOnce(async () => jsonResponse({ id: 42 }))
+      .mockImplementationOnce(async () =>
+        jsonResponse({
+          token: "ghs_for_42",
+          expires_at: new Date(Date.now() + 3600_000).toISOString(),
+        }),
+      );
+
+    const getToken = createRepoInstallationTokenProvider(
+      { appId: "12345", privateKey: privateKeyPem },
+      "majodali",
+      "project-orchestrator",
+      fetchImpl,
+    );
+
+    const first = await getToken();
+    const second = await getToken();
+
+    expect(first).toBe("ghs_for_42");
+    expect(second).toBe("ghs_for_42");
+    // One call to resolve the installation, one to mint the token —
+    // the second `getToken()` reuses both cached values.
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails a repository the App is not installed on without affecting others", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async () => errorResponse(404, "Not Found"));
+
+    const getToken = createRepoInstallationTokenProvider(
+      { appId: "12345", privateKey: privateKeyPem },
+      "majodali",
+      "not-installed",
+      fetchImpl,
+    );
+
+    await expect(getToken()).rejects.toBeInstanceOf(
+      GithubAppInstallationNotFoundError,
+    );
   });
 });

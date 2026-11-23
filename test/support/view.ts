@@ -200,6 +200,7 @@ export function validCookie(
 export function viewEnv(): void {
   process.env.VIEW_TOKEN = FAKE_VIEW_TOKEN;
   process.env.MCP_AUTH_TOKEN = FAKE_MCP_TOKEN;
+  process.env.MCP_PROJECT = "majodali/project-orchestrator";
 }
 
 /** The three headers every `/view` response carries (V11). Since D085
