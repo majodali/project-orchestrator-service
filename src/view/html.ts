@@ -127,6 +127,7 @@ export const PAGE_CSS = [
   "form.decide input[type=text],form.act input[type=text]{font-size:14px;padding:5px 8px}",
   "form.decide button,form.act button{font-size:14px;padding:5px 12px}",
   "form.act{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 8px}",
+  "form.act [data-action-sentence]{flex-basis:100%}",
   ".checks-failing{color:var(--err);font-weight:600}.checks-passing{color:var(--done)}",
   ".kind{display:inline-block;font-size:11px;line-height:1.4;padding:0 6px;border-radius:4px;background:var(--soft);color:var(--muted);text-transform:uppercase;letter-spacing:.04em;vertical-align:middle}",
   ".committed{margin:0 0 10px;padding:6px 12px;border-left:3px solid var(--done);background:var(--card);font-size:14px}",

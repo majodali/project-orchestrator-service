@@ -97,8 +97,14 @@ import {
   sourceLine,
   viewLink,
 } from "./html.js";
+import {
+  needsYouRows,
+  renderLandingSections,
+  reviewRefOf,
+  type ReviewInfo,
+} from "./landing.js";
 import { renderNodePage } from "./nodePage.js";
-import { nodePagePath, taskPagePath } from "./parts.js";
+import { nodePagePath, pullRequestUrl, taskPagePath } from "./parts.js";
 import { STATE_PATH, stateAtPage } from "./stateRead.js";
 import { renderTaskPage } from "./taskPage.js";
 import { openMode, renderTreePage } from "./treePage.js";
@@ -537,6 +543,35 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
     return value !== undefined && SHA.test(value) ? value : undefined;
   }
 
+  /** The state of a held node's pull request (section 1, a "review"
+   * row): `null` on any failure, so the row still shows, saying so. */
+  async function reviewInfoOf(ref: string): Promise<ReviewInfo> {
+    const url = pullRequestUrl(ref);
+    try {
+      const pr = await pullRequests().get(ref);
+      const m = /^([\w.-]+)\/([\w.-]+)#\d+$/.exec(ref)!;
+      const checksClient = options.checks ?? getDefaultCommitChecks();
+      const summary = await checksClient.summary(m[1]!, m[2]!, pr.headSha);
+      return { pr: ref, url, checks: summary };
+    } catch {
+      return { pr: ref, url, checks: null };
+    }
+  }
+
+  /** The "Needs you", "Ready", "Running" and "Just finished" sections
+   * ahead of the tree (section 1): review state is read only for the
+   * held nodes shown, each once. */
+  async function landingOf(state: State, commit: PageCommit): Promise<string> {
+    const reviews = new Map<string, ReviewInfo>();
+    for (const row of needsYouRows(state)) {
+      if (row.kind !== "hold") continue;
+      const ref = reviewRefOf(state, row.node.id);
+      if (ref === null) continue;
+      reviews.set(row.node.id, await reviewInfoOf(ref));
+    }
+    return renderLandingSections(state, commit, reviews);
+  }
+
   app.get("/view", async (c) => {
     // An empty `ref` names no ref, the same as an absent one.
     const requestedRef = c.req.query("ref") || undefined;
@@ -544,9 +579,11 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
     if (!read.ok) return read.response;
     const state = stateAtPage(read.page.files.get(STATE_PATH)!);
     const mode = openMode(c.req.query("open") || undefined);
+    const landing =
+      state.state === null ? "" : await landingOf(state.state, read.commit);
     return htmlResponse(
       c,
-      renderTreePage(state, read.commit, mode, committedQuery(c)),
+      renderTreePage(state, read.commit, mode, committedQuery(c), landing),
       200,
     );
   });

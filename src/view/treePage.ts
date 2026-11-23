@@ -305,6 +305,7 @@ export function renderTreePage(
   commit: PageCommit,
   mode: OpenMode = "owner",
   committed?: string,
+  landing = "",
 ): string {
   const title = read.state ? `Plan: ${read.state.project}` : "Plan";
   const body: string[] = [
@@ -343,6 +344,7 @@ export function renderTreePage(
     `<h1>${escapeHtml(title)}</h1>`,
     committedLine(commit, committed, commit.sha),
     summary(state, classes, openDecisions),
+    landing,
     "<section data-plan>",
     modeLinks(mode, commit),
     legend(),
