@@ -429,6 +429,20 @@ Resources:
       RouteKey: "ANY /mcp"
       Target: !Sub "integrations/${McpIntegration}"
 
+  # node P2-N054 rework (T240/T241): `src/httpApp.ts` has registered
+  # `/mcp/:owner/:repo` since T238, but this template declared only
+  # "ANY /mcp" — API Gateway 404d the per-project path before the
+  # request ever reached the Lambda (criteria 1, 2 and 9 failed
+  # verification at the deployed commit). Same integration, same
+  # LiveAlias; the per-project path carries no auth or routing
+  # difference API Gateway itself needs to know about.
+  McpProjectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "ANY /mcp/{owner}/{repo}"
+      Target: !Sub "integrations/${McpIntegration}"
+
   HealthRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
