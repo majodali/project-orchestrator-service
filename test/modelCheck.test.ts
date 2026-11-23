@@ -83,6 +83,29 @@ describe("checkState", () => {
     expect(findings).toEqual([]);
   });
 
+  it("validates a node's repository absent and set, defaulting to null (P2-N055)", () => {
+    const absent = checkState(state());
+    expect(absent.findings).toEqual([]);
+    expect(
+      absent.state!.nodes.find((n) => n.id === "P1-N003")!.repository,
+    ).toBeNull();
+    const withRepo = state({
+      nodes: state().nodes.map((n) =>
+        n.id === "P1-N003"
+          ? { ...n, repository: "majodali/project-orchestrator-service" }
+          : n,
+      ),
+    });
+    const { state: parsed, findings } = checkState(withRepo);
+    expect(findings).toEqual([]);
+    expect(parsed!.nodes.find((n) => n.id === "P1-N003")!.repository).toBe(
+      "majodali/project-orchestrator-service",
+    );
+    expect(formatState(parsed!)).toContain(
+      '"repository": "majodali/project-orchestrator-service"',
+    );
+  });
+
   it("reports schema failures as invariant 1 with the path", () => {
     const bad = { ...state(), nodes: [{ id: "nope" }] };
     const { state: parsed, findings } = checkState(bad);

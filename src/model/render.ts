@@ -79,8 +79,15 @@ function md(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
-function nodeLabel(n: Node): string {
-  return `${n.title} (${n.id})`;
+/** A node's repository, printed only when it is not the project's
+ * coordinating repository (P2-N055, design 3, S3). */
+function repoSuffix(n: Node, project: string): string {
+  const resolved = n.repository ?? project;
+  return resolved === project ? "" : ` [${resolved}]`;
+}
+
+function nodeLabel(n: Node, project?: string): string {
+  return `${n.title} (${n.id})${project !== undefined ? repoSuffix(n, project) : ""}`;
 }
 
 function docLinks(n: Node): string {
@@ -90,12 +97,16 @@ function docLinks(n: Node): string {
   return parts.join(", ");
 }
 
-function decisionLine(d: Decision, fullById: Map<string, Node>): string {
+function decisionLine(
+  d: Decision,
+  fullById: Map<string, Node>,
+  project: string,
+): string {
   // A decision's node can be a hidden check node, out of the shown
   // subset other lookups use: looked up in the full state, naming the
   // identifier where even that does not resolve, rather than failing.
   const node = d.node ? fullById.get(d.node) : undefined;
-  const where = d.node ? ` on ${node ? nodeLabel(node) : d.node}` : "";
+  const where = d.node ? ` on ${node ? nodeLabel(node, project) : d.node}` : "";
   const dflt = d.default ? ` Default: ${md(d.default)}` : "";
   return `- ${d.id}${where}: ${md(d.question)}${dflt}`;
 }
@@ -126,13 +137,16 @@ export function renderPlan(full: State): string {
   } else {
     if (open.length > 0) {
       lines.push("Open decisions:", "");
-      for (const d of open) lines.push(decisionLine(d, fullById));
+      for (const d of open)
+        lines.push(decisionLine(d, fullById, state.project));
       lines.push("");
     }
     if (gated.length > 0) {
       lines.push("Gated nodes:", "");
       for (const n of gated)
-        lines.push(`- ${nodeLabel(n)}: ${md(attentionReason(n))}`);
+        lines.push(
+          `- ${nodeLabel(n, state.project)}: ${md(attentionReason(n))}`,
+        );
       lines.push("");
     }
   }
@@ -156,7 +170,7 @@ export function renderPlan(full: State): string {
       let extra = "";
       if (cls === "waiting") {
         const pending = n.after.filter((d) => byId.get(d)?.stage !== "done");
-        extra = ` — after ${pending.map((d) => nodeLabel(byId.get(d)!)).join(", ")}`;
+        extra = ` — after ${pending.map((d) => nodeLabel(byId.get(d)!, state.project)).join(", ")}`;
       } else if (cls === "blocked") {
         extra = ` — ${md(n.hold!.reason)}`;
       } else if (cls === "in-flight") {
@@ -165,7 +179,7 @@ export function renderPlan(full: State): string {
         );
         extra = ` — ${tasks.map((t) => t.id).join(", ")}`;
       }
-      lines.push(`- ${nodeLabel(n)} [${n.stage}]${extra}`);
+      lines.push(`- ${nodeLabel(n, state.project)} [${n.stage}]${extra}`);
     }
     lines.push("");
   }
@@ -177,7 +191,9 @@ export function renderPlan(full: State): string {
     lines.push("## Paused by a hold or a park above", "");
     for (const n of paused) {
       const by = pausedBy(n, byId)!;
-      lines.push(`- ${nodeLabel(n)} [${n.stage}] — under ${nodeLabel(by)}`);
+      lines.push(
+        `- ${nodeLabel(n, state.project)} [${n.stage}] — under ${nodeLabel(by, state.project)}`,
+      );
     }
     lines.push("");
   }
@@ -185,7 +201,7 @@ export function renderPlan(full: State): string {
   lines.push("## The plan", "");
   const children = childrenOf(state);
   for (const root of state.nodes.filter((n) => n.parent === null)) {
-    lines.push(`### ${nodeLabel(root)}`, "");
+    lines.push(`### ${nodeLabel(root, state.project)}`, "");
     lines.push(
       `Stage: ${root.stage}, ${NODE_CLASS_LABELS[classes.get(root.id)!]}.`,
     );
@@ -200,7 +216,8 @@ export function renderPlan(full: State): string {
       const hold = n.hold ? `, ${n.hold.kind}: ${md(n.hold.reason)}` : "";
       const stage = n.stage === "done" && n.done ? `done ${n.done}` : n.stage;
       const kind = n.kind === "check" ? "check: " : "";
-      const head = `${indent}- ${kind}**${md(n.title)}** (${n.id}, ${stage}${hold})`;
+      const repo = repoSuffix(n, state.project);
+      const head = `${indent}- ${kind}**${md(n.title)}** (${n.id}, ${stage}${hold})${repo}`;
       lines.push(head);
       if (n.outcome) lines.push(`${indent}  ${md(n.outcome)}`);
       const detail: string[] = [];
@@ -282,7 +299,7 @@ export function renderBacklog(full: State): string {
   if (done.length === 0) lines.push("None.");
   for (const n of done) {
     lines.push(
-      `- [x] **${md(n.title)}** (${n.id}) — When: ${n.done ?? "not recorded"}. Status: done. Pointer: ${pointer(n)}.`,
+      `- [x] **${md(n.title)}** (${n.id})${repoSuffix(n, full.project)} — When: ${n.done ?? "not recorded"}. Status: done. Pointer: ${pointer(n)}.`,
     );
   }
   lines.push("", "## Upcoming", "");
@@ -295,7 +312,7 @@ export function renderBacklog(full: State): string {
     const label = NODE_CLASS_LABELS[classes.get(n.id)!];
     const status = label === n.stage ? label : `${n.stage}, ${label}`;
     lines.push(
-      `- [ ] **${md(n.title)}** (${n.id}) — When: ${when}. Status: ${status}. Pointer: ${pointer(n)}.`,
+      `- [ ] **${md(n.title)}** (${n.id})${repoSuffix(n, full.project)} — When: ${when}. Status: ${status}. Pointer: ${pointer(n)}.`,
     );
   }
   return lines.join("\n") + "\n";

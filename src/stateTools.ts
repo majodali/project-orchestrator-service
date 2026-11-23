@@ -41,6 +41,7 @@ import {
   pullRequestsOf,
   recordCost,
   removeNode,
+  repositoryOf,
   scopeOf,
   staleTasks,
   type CloseInput,
@@ -85,7 +86,7 @@ import { requirePendingDocs } from "./pendingDocs.js";
 export const SERVER_INSTRUCTIONS = [
   "This service holds the plan of the project as one checked file, orchestration/state.json, and is the only writer of it, of docs/plan.md, of docs/plan-register.md, of docs/backlog.md and of orchestration/journal.jsonl. Never edit those five files; every change goes through these tools, one commit each.",
   "Work on a plan node goes through a task, whoever asked for it:",
-  "1. `task_next` (with your role: planner, implementer or reviewer) answers the next node that offers a step, or call `plan_read` with a node to see one you were pointed at.",
+  "1. `task_next` (with your role: planner, implementer or reviewer) answers the next node that offers a step, or call `plan_read` with a node to see one you were pointed at. Pass the repository you are working in, and it answers only that repository's steps.",
   "2. `task_open` claims the node for a step before you start. It answers the node, its documents, the decisions on it and above it, and the standing decisions, which bind every task. If it refuses, the reason is the answer: tell the person and stop.",
   "3. Do the work on a branch and open a pull request. Do not merge it: the service merges it when the result is accepted. Commit to it only while your task is open: the service refuses to merge a pull request that has commits made after its last execute task closed.",
   "4. `task_close` records the result: status, a summary of at most sixty words, the pull request (or the branch, and the service opens one), and questions for the owner as `asks`. A plan or specify step delivers the node's outcome and documents here.",
@@ -604,6 +605,13 @@ export function registerStateTools(
         "first, in one commit. The claim is `task_open`.",
       inputSchema: {
         role: z.enum(["planner", "implementer", "reviewer"]).optional(),
+        repository: z
+          .string()
+          .regex(/^[\w.-]+\/[\w.-]+$/, "owner/name")
+          .optional()
+          .describe(
+            "The repository this session is working in: answers only the candidates whose node resolves to it. Default: every repository.",
+          ),
         session: sessionField,
       },
     },
@@ -634,7 +642,7 @@ export function registerStateTools(
           }
         }
         const state = read.state;
-        const found = candidates(state, input.role);
+        const found = candidates(state, input.role, input.repository);
         const first = found[0];
         if (first === undefined) {
           return ok({
@@ -644,7 +652,7 @@ export function registerStateTools(
             staleClosed,
             next: null,
             candidates: [],
-            message: `no node offers a step${input.role ? ` for ${input.role}` : ""}; what remains waits on the owner, on a dependency or on an open task`,
+            message: `no node offers a step${input.role ? ` for ${input.role}` : ""}${input.repository ? ` in ${input.repository}` : ""}; what remains waits on the owner, on a dependency or on an open task`,
           });
         }
         return ok({
@@ -689,6 +697,13 @@ export function registerStateTools(
           .string()
           .optional()
           .describe("What the task sets out to do, in at most sixty words."),
+        repository: z
+          .string()
+          .regex(/^[\w.-]+\/[\w.-]+$/, "owner/name")
+          .optional()
+          .describe(
+            "The repository this claim is for: refused when the node resolves to another, naming which.",
+          ),
         session: sessionField,
       },
     },
@@ -845,7 +860,7 @@ export function registerStateTools(
           if (!accepted) return;
           if (pr === undefined && task.pr === null && input.branch) {
             pr = await pullRequests().create({
-              repo: input.repo ?? state.project,
+              repo: input.repo ?? repositoryOf(headNode, state),
               branch: input.branch,
               title: `${headNode.id} ${task.step}: ${headNode.title}`,
               body: `${input.summary}\n\nTask ${task.id} on node ${headNode.id}, opened by the orchestration service at task_close.`,

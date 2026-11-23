@@ -106,6 +106,15 @@ export const nodeSchema = z.object({
   outcome: z.string().min(1).nullable(),
   stage: z.enum(STAGES),
   parent: nodeId.nullable(),
+  /** The repository this node's work is claimed from and its pull
+   * request opened in: `owner/name`, or null for the project's
+   * coordinating repository (P2-N055, design 3, S3). Not necessarily
+   * a project: a repository can hold no state file of its own. */
+  repository: z
+    .string()
+    .regex(/^[\w.-]+\/[\w.-]+$/, "owner/name")
+    .nullable()
+    .default(null),
   /** Nodes this one waits for. Sibling order implies nothing. */
   after: z.array(nodeId),
   hold: holdSchema.nullable(),

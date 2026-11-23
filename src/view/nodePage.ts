@@ -215,6 +215,9 @@ export function renderNodePage(
         ? nodeRef(parent, classes, commit)
         : '<span class="note">a top-level line of work</span>',
     ),
+    ...((node.repository ?? state.project) !== state.project
+      ? [field("repository", "Repository", escapeHtml(node.repository!))]
+      : []),
     field(
       "children",
       "Children",

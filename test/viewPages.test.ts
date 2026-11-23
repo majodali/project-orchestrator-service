@@ -378,6 +378,24 @@ describe("the node page", () => {
       `No node P9-N999 in orchestration/state.json at ${SHA_A}.`,
     );
   });
+
+  it("shows a node's repository when it is not the coordinating one, and nothing when it is (P2-N055)", async () => {
+    const withRepo = sampleState();
+    withRepo.nodes.find((n) => n.id === "P1-N003")!.repository =
+      "majodali/project-orchestrator-service";
+    const repo = new FakeRepository();
+    repo.heads.set("main", SHA_A);
+    repo.setFile(SHA_A, "orchestration/state.json", stateJson(withRepo));
+    const { html: elsewhere } = await get(appOver(repo), "/view/node/P1-N003");
+    expect(fieldText(elsewhere, "repository")).toBe(
+      "majodali/project-orchestrator-service",
+    );
+    const { html: coordinating } = await get(
+      appOver(repo),
+      "/view/node/P1-N002",
+    );
+    expect(coordinating).not.toContain('data-field="repository"');
+  });
 });
 
 describe("the task page", () => {

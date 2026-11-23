@@ -224,6 +224,41 @@ describe("what a node offers", () => {
       candidates(state).map((c) => `${c.node.id} ${c.step} ${c.role}`),
     ).toEqual(["P1-N003 execute implementer"]);
   });
+
+  it("filters candidates by repository, offering a first-in-line step in the asking repository and passing over one in another (the trial, T216, T219; D129)", () => {
+    const state = plan();
+    // P0-N001 is first in tree order and resolves to the project, the
+    // coordinating repository; P1-N003 resolves to a repository of its
+    // own and comes later in tree order.
+    state.nodes.unshift(
+      node({
+        id: "P0-N001",
+        title: "An earlier line of work",
+        stage: "specified",
+      }),
+    );
+    state.nodes.find((n) => n.id === "P1-N003")!.repository =
+      "majodali/project-orchestrator-service";
+    expect(candidates(state).map((c) => c.node.id)).toEqual([
+      "P0-N001",
+      "P1-N003",
+    ]);
+    // Asked for its own repository, P1-N003 is offered though it is
+    // not first in tree order: it is not passed over (T216).
+    expect(
+      candidates(state, undefined, "majodali/project-orchestrator-service").map(
+        (c) => c.node.id,
+      ),
+    ).toEqual(["P1-N003"]);
+    // Asked for the coordinating repository, only the first-in-line
+    // step there is offered: P1-N003's repository is not claimed for
+    // it (T219).
+    expect(
+      candidates(state, undefined, "majodali/project-orchestrator").map(
+        (c) => c.node.id,
+      ),
+    ).toEqual(["P0-N001"]);
+  });
 });
 
 describe("task_next", () => {
@@ -649,6 +684,69 @@ describe("the claim and the close-out", () => {
     expect(claim.isError).toBe(true);
     expect(claim.content[0]!.text).toContain("task T001 is open on it");
     expect(repo.commits).toHaveLength(0);
+  });
+
+  it("refuses a claim naming a repository the node does not resolve to, saying which it belongs to", async () => {
+    const state = plan();
+    state.nodes.find((n) => n.id === "P1-N003")!.repository =
+      "majodali/project-orchestrator-service";
+    const repo = repoWith(state);
+    const app = appOver(repo);
+    const wrong = await call(app, "task_open", {
+      nodeId: "P1-N003",
+      step: "execute",
+      repository: "majodali/project-orchestrator",
+    });
+    expect(wrong.isError).toBe(true);
+    expect(wrong.content[0]!.text).toContain(
+      "P1-N003 belongs to majodali/project-orchestrator-service, not majodali/project-orchestrator",
+    );
+    expect(repo.commits).toHaveLength(0);
+    const right = await call(app, "task_open", {
+      nodeId: "P1-N003",
+      step: "execute",
+      repository: "majodali/project-orchestrator-service",
+    });
+    expect(right.isError).toBeUndefined();
+  });
+
+  it("defaults a branch's repository to the node's own, and to the project only when it is null (F4)", async () => {
+    const prs = new FakePullRequests();
+    const ownRepoState = plan();
+    ownRepoState.nodes.find((n) => n.id === "P1-N003")!.repository =
+      "majodali/project-orchestrator-service";
+    const ownRepo = repoWith(ownRepoState);
+    const ownApp = appOver(ownRepo, () => NOW, prs);
+    await call(ownApp, "task_open", { nodeId: "P1-N003", step: "execute" });
+    await call(ownApp, "task_close", {
+      taskId: "T001",
+      status: "closed",
+      summary: "Built the part.",
+      branch: "build-the-part",
+    });
+    expect(prs.created).toContainEqual(
+      expect.objectContaining({
+        repo: "majodali/project-orchestrator-service",
+        branch: "build-the-part",
+      }),
+    );
+
+    const defaultState = plan();
+    const defaultRepo = repoWith(defaultState);
+    const defaultApp = appOver(defaultRepo, () => NOW, prs);
+    await call(defaultApp, "task_open", { nodeId: "P1-N003", step: "execute" });
+    await call(defaultApp, "task_close", {
+      taskId: "T001",
+      status: "closed",
+      summary: "Built the other part.",
+      branch: "build-the-other-part",
+    });
+    expect(prs.created).toContainEqual(
+      expect.objectContaining({
+        repo: "majodali/project-orchestrator",
+        branch: "build-the-other-part",
+      }),
+    );
   });
 
   it("opens the asks as decisions on the node and tells the session to stop", async () => {

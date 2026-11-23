@@ -12,6 +12,7 @@ export function node(
     kind: "work",
     outcome: `${partial.title} exists and works.`,
     parent: null,
+    repository: null,
     after: [],
     hold: null,
     start: "auto",
