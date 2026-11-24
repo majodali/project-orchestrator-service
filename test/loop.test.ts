@@ -829,6 +829,26 @@ describe("the claim and the close-out", () => {
     expect(s.nodes.some((n) => n.kind === "check")).toBe(false);
   });
 
+  it("closes a task whose node's repository changed as needs-judgment too (its own scope)", async () => {
+    const repo = repoWith(plan());
+    const app = appOver(repo);
+    await call(app, "task_open", { nodeId: "P1-N003", step: "execute" });
+    await call(app, "node_update", {
+      nodeId: "P1-N003",
+      reason: "its work moved",
+      repository: "majodali/project-orchestrator-service",
+    });
+    const closed = await call(app, "task_close", {
+      taskId: "T001",
+      status: "closed",
+      summary: "Built the part as first described.",
+    });
+    expect(closed.structuredContent!.status).toBe("needs-judgment");
+    expect(closed.structuredContent!.stop).toContain("scope changed");
+    const s = stateAtHead(repo);
+    expect(s.tasks[0]!.summary).toContain("Scope changed during T001");
+  });
+
   it("keeps a task from before the loop closable: no base, no scope check", async () => {
     const state = plan();
     state.tasks.push(

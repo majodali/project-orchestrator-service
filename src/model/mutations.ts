@@ -21,6 +21,9 @@ export interface NodeUpdateInput {
   start?: Node["start"];
   outcome?: string;
   title?: string;
+  /** The repository the node's work is claimed from, `owner/name`, or
+   * null for the project's coordinating repository (P2-N065). */
+  repository?: string | null;
   note?: string | null;
   /** The full list of nodes this one waits for. */
   after?: string[];
@@ -131,6 +134,10 @@ export function updateNode(
   if (input.title !== undefined) {
     changes.push(`title "${input.title}"`);
     n.title = input.title;
+  }
+  if (input.repository !== undefined && input.repository !== n.repository) {
+    changes.push(`repository ${input.repository ?? "none"}`);
+    n.repository = input.repository;
   }
   if (input.note !== undefined) {
     changes.push("note");

@@ -222,6 +222,47 @@ describe("node_update", () => {
     expect(n3.after).toEqual(["P1-N002"]);
   });
 
+  it("sets and clears a node's repository, which task_next then filters candidates by", async () => {
+    const repo = repoWith(sampleState());
+    const app = appOver(repo);
+    const set = await call(app, "node_update", {
+      nodeId: "P1-N006",
+      repository: "majodali/project-orchestrator-service",
+      reason: "its work moved there",
+    });
+    expect(set.structuredContent!.changes).toEqual([
+      "repository majodali/project-orchestrator-service",
+    ]);
+    expect(
+      stateAtHead(repo).nodes.find((n) => n.id === "P1-N006")!.repository,
+    ).toBe("majodali/project-orchestrator-service");
+
+    const there = await call(app, "task_next", {
+      role: "implementer",
+      repository: "majodali/project-orchestrator-service",
+    });
+    const thereBrief = there.structuredContent!.next as {
+      node: { id: string };
+    } | null;
+    expect(thereBrief?.node.id).toBe("P1-N006");
+
+    const elsewhere = await call(app, "task_next", {
+      role: "implementer",
+      repository: "majodali/project-orchestrator",
+    });
+    expect(elsewhere.structuredContent!.next).toBeNull();
+
+    const cleared = await call(app, "node_update", {
+      nodeId: "P1-N006",
+      repository: null,
+      reason: "its work moved back",
+    });
+    expect(cleared.structuredContent!.changes).toEqual(["repository none"]);
+    expect(
+      stateAtHead(repo).nodes.find((n) => n.id === "P1-N006")!.repository,
+    ).toBeNull();
+  });
+
   it("refuses a change that violates an invariant, and commits nothing", async () => {
     const repo = repoWith(sampleState());
     const app = appOver(repo);
