@@ -231,6 +231,41 @@ describe("renderPlan", () => {
   });
 });
 
+describe("a node's repository (P2-N055)", () => {
+  const withRepo: State = {
+    ...sample,
+    nodes: sample.nodes.map((n) =>
+      n.id === "P1-N004"
+        ? { ...n, repository: "majodali/project-orchestrator-service" }
+        : n,
+    ),
+  };
+
+  it("prints a node's repository in the plan when it differs from the project, and nothing when it does not", () => {
+    const text = renderPlan(withRepo);
+    expect(text).toContain(
+      "The third part waits (P1-N004) [majodali/project-orchestrator-service] [identified] — after The second part gated (P1-N003)",
+    );
+    expect(text).toContain(
+      "- **The third part waits** (P1-N004, identified) [majodali/project-orchestrator-service]",
+    );
+    // The node with no repository of its own carries no suffix.
+    expect(text).toContain(
+      "- **The second part gated** (P1-N003, planned, gated: owner review of the plan)",
+    );
+  });
+
+  it("prints a node's repository in the Backlog when it differs from the project, and nothing when it does not", () => {
+    const text = renderBacklog(withRepo);
+    expect(text).toContain(
+      "- [ ] **The third part waits** (P1-N004) [majodali/project-orchestrator-service] — When: after P1-N003.",
+    );
+    expect(text).toContain(
+      "- [x] **The first part done** (P1-N002) — When: 2026-11-01.",
+    );
+  });
+});
+
 describe("renderBacklog", () => {
   it("writes one row per work node: done rows checked under Completed, the rest under Upcoming", () => {
     const text = renderBacklog(sample);

@@ -820,6 +820,7 @@ describe("what a session is told", () => {
       "task_close",
       "node_remove",
       "Never edit",
+      "Pass the repository you are working in, and it answers only that repository's steps",
     ]) {
       expect(SERVER_INSTRUCTIONS).toContain(word);
     }

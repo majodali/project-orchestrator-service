@@ -159,6 +159,13 @@ export function offerOn(
   return { offered: true, steps, role: STEP_ROLES[steps[0]!] };
 }
 
+/** The repository a node's work is claimed from: its own `repository`,
+ * or the project's coordinating repository when it is null (design 3,
+ * S3, docs/specs/p2-n026-several-projects.md). */
+export function repositoryOf(node: Node, state: State): string {
+  return node.repository ?? state.project;
+}
+
 /** Nodes in tree order: each root, then its subtree, in file order. */
 export function treeOrdered(state: State): Node[] {
   const children = childrenOf(state);
@@ -178,8 +185,14 @@ export interface Candidate {
   role: string;
 }
 
-/** The nodes that offer a step, in tree order, for a role when given. */
-export function candidates(state: State, role?: string): Candidate[] {
+/** The nodes that offer a step, in tree order, for a role when given,
+ * and for a repository when given: only candidates whose node
+ * resolves to it (design 3, S4). */
+export function candidates(
+  state: State,
+  role?: string,
+  repository?: string,
+): Candidate[] {
   const byId = nodesById(state);
   const children = childrenOf(state);
   const openTasks = openTaskByNode(state);
@@ -191,6 +204,9 @@ export function candidates(state: State, role?: string): Candidate[] {
     // to a claim that names them (break down instead of execute).
     const first = offer.steps[0]!;
     if (role !== undefined && STEP_ROLES[first] !== role) continue;
+    if (repository !== undefined && repositoryOf(node, state) !== repository) {
+      continue;
+    }
     out.push({
       node,
       step: first,
@@ -309,6 +325,7 @@ export function enterVerifying(state: State, node: Node): Node {
     outcome: `${node.id} is verified against its outcome.`,
     stage: "specified",
     parent: node.id,
+    repository: node.repository,
     after: [],
     hold: null,
     start: "auto",
@@ -531,6 +548,9 @@ export interface OpenInput {
   model?: string;
   summary?: string;
   session?: string;
+  /** The repository the claim is for: refused when the node resolves
+   * to another (design 3, S4). */
+  repository?: string;
 }
 
 export interface OpenResult {
@@ -551,6 +571,14 @@ export function openTask(
 ): OpenResult {
   const node = state.nodes.find((n) => n.id === input.nodeId);
   if (!node) throw new NotFoundError(`no node ${input.nodeId}`);
+  if (input.repository !== undefined) {
+    const resolved = repositoryOf(node, state);
+    if (resolved !== input.repository) {
+      throw new NotFoundError(
+        `${node.id} belongs to ${resolved}, not ${input.repository}`,
+      );
+    }
+  }
   const offer = offerOn(node, state);
   if (!offer.offered) {
     throw new NotFoundError(
@@ -872,10 +900,12 @@ export function addNode(
 ): { node: Node; event: WriteEvent } {
   let line: string;
   let parentMoved = "";
+  let parentRepository: string | null = null;
   if (input.parentId !== null) {
     const parent = state.nodes.find((n) => n.id === input.parentId);
     if (!parent) throw new NotFoundError(`no node ${input.parentId}`);
     line = lineOf(parent.id);
+    parentRepository = parent.repository;
     // A node with children is broken down (invariant 3).
     if (
       parent.stage === "identified" ||
@@ -895,6 +925,10 @@ export function addNode(
     id: nextNodeId(state, line),
     kind: "work",
     title: input.title,
+    // A child's work is claimed from its parent's repository by
+    // default (as a check node's is, enterVerifying); a root starts
+    // in the project's coordinating repository.
+    repository: parentRepository,
     outcome: input.outcome,
     stage: input.stage ?? "identified",
     parent: input.parentId,
