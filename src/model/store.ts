@@ -276,6 +276,53 @@ export class StateStore {
       throw err;
     }
   }
+
+  /** The journal's content at one commit, or "" when the file does
+   * not exist there yet. */
+  async readJournalAt(sha: string): Promise<string> {
+    return this.readOptional(sha, JOURNAL_PATH);
+  }
+
+  /**
+   * Appends one line to the journal and commits it alone: no
+   * invariant check and no rendering, because nothing in
+   * `orchestration/state.json` changes. For an event `write`'s own
+   * fixed `state-written` line does not shape — the fire ledger's
+   * `fired` and `fire-429` lines (src/fire/run.ts) — each its own
+   * commit, written before the action it records. Retries once
+   * against a moved branch head, like `write`.
+   */
+  async appendJournalLine(
+    message: string,
+    buildLine: () => string,
+  ): Promise<WriteResult> {
+    let lastConflict: GitConflictError | null = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const resolved = await this.reader.resolveRef();
+      const branch = resolved.ref;
+      const baseSha = resolved.sha;
+      const journal = await this.readOptional(baseSha, JOURNAL_PATH);
+      const files = new Map<string, string>([
+        [JOURNAL_PATH, appendLine(journal, buildLine())],
+      ]);
+      try {
+        const result = await this.writer.commitFiles({
+          branch,
+          expectedHeadSha: baseSha,
+          message,
+          files,
+        });
+        return { sha: result.sha, parentSha: baseSha, branch, warnings: [] };
+      } catch (err) {
+        if (err instanceof GitConflictError) {
+          lastConflict = err;
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw lastConflict!;
+  }
 }
 
 function appendLine(text: string, line: string): string {
