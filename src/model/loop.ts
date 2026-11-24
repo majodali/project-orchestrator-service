@@ -536,6 +536,7 @@ export function scopeOf(node: Node): string {
     title: node.title,
     outcome: node.outcome,
     parent: node.parent,
+    repository: node.repository,
     after: node.after,
     docs: node.docs,
   });
@@ -714,7 +715,7 @@ export function closeTask(
     // The prefix must not push a summary that fitted past the limit,
     // or the write itself is refused (invariant on a task's summary).
     summary = fitWords(
-      `Scope changed during ${task.id}: the node's title, outcome, parent, dependencies or documents differ from its base commit. Given status ${input.status}: ${input.summary}`,
+      `Scope changed during ${task.id}: the node's title, outcome, parent, repository, dependencies or documents differ from its base commit. Given status ${input.status}: ${input.summary}`,
       SUMMARY_MAX_WORDS,
     );
     stop = `scope changed during ${task.id}; the owner confirms the result and lifts the hold`;

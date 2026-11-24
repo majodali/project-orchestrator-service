@@ -98,6 +98,7 @@ export const SERVER_INSTRUCTIONS = [
   "Every write to a node or a decision (`node_update`, `node_add`, `node_remove`, `decision_open`, `decision_close`) names the open task it is part of as `task`, and is refused without one. The only exception is a change the owner dictated to you in this conversation: pass their words as `ownerInstruction`. Being asked to work on a node is not that: claim it.",
   "A node that turns out to be obsolete is removed with `node_remove`, not parked or held; git keeps its history. A hold or a park is for work that will resume.",
   "To move a document a node links: under your open execute task, call `node_update` on that node with `docsOnMerge` naming the new path, then move the file in your task's pull request. The old path is cleared at once and the new one is set when your node is done. Never move a linked file without it: the state file would name a path that is gone.",
+  "A node's `repository`, the repository its work is claimed from, is set or cleared with `node_update`, under an open task or the owner's words; a child's defaults to its parent's at `node_add`. Changing it during another session's open task counts as a changed scope, like the title, outcome, parent, dependencies or documents.",
   "Do not estimate token counts at `task_close`: the repository's hook measures a task's cost and records it with `task_cost`.",
   "Pass `session` on every write: your session's own name or identifier, so the journal says who wrote.",
 ].join("\n");
@@ -415,11 +416,12 @@ export function registerStateTools(
     {
       title: "Update a node",
       description:
-        "Changes one node's stage, hold, start, outcome, title, note, dependencies " +
-        "or document paths and commits the state file. A node moved to `done` gains " +
-        "today's date. Refused, with nothing committed, when the result would violate " +
-        "an invariant. To move a linked document: name its new path in `docsOnMerge` " +
-        "under your open execute task, then move the file in that task's pull request.",
+        "Changes one node's stage, hold, start, outcome, title, note, dependencies, " +
+        "repository or document paths and commits the state file. A node moved to " +
+        "`done` gains today's date. Refused, with nothing committed, when the result " +
+        "would violate an invariant. To move a linked document: name its new path in " +
+        "`docsOnMerge` under your open execute task, then move the file in that " +
+        "task's pull request.",
       inputSchema: {
         nodeId,
         reason: z
@@ -436,6 +438,17 @@ export function registerStateTools(
         start: z.enum(["auto", "approve"]).optional(),
         outcome: z.string().min(1).optional(),
         title: z.string().min(1).optional(),
+        repository: z
+          .string()
+          .regex(/^[\w.-]+\/[\w.-]+$/, "owner/name")
+          .nullable()
+          .optional()
+          .describe(
+            "The repository the node's work is claimed from and its pull request " +
+              "opened in, owner/name, or null for the project's coordinating " +
+              "repository. Counts as the node's scope, like its title, outcome, " +
+              "parent, dependencies and documents.",
+          ),
         note: z.string().nullable().optional(),
         after: z
           .array(nodeId)
