@@ -88,11 +88,13 @@ export function decideFires(
   const reports: FireReport[] = [];
   const nowIso = now.toISOString();
   const hourAgo = new Date(now.getTime() - 3600_000).toISOString();
+  const dayAgo = new Date(now.getTime() - 24 * 3600_000).toISOString();
 
   // Running counts: two attempts accepted in the same plan still
-  // respect the hourly caps against each other, not just against the
-  // journal as it stood before this write.
-  let perAccountCount = fired.filter((f) => f.ts > hourAgo).length;
+  // respect the hourly and daily caps against each other, not just
+  // against the journal as it stood before this write.
+  let perAccountHourlyCount = fired.filter((f) => f.ts > hourAgo).length;
+  let perAccountDailyCount = fired.filter((f) => f.ts > dayAgo).length;
   const perTaskCount = new Map<string, number>();
   for (const f of fired) {
     if (f.ts <= hourAgo) continue;
@@ -141,7 +143,8 @@ export function decideFires(
 
     if ((perTaskCount.get(ref.trig) ?? 0) >= settings.perTaskHourlyCap)
       continue;
-    if (perAccountCount >= settings.perAccountHourlyCap) continue;
+    if (perAccountHourlyCount >= settings.perAccountHourlyCap) continue;
+    if (perAccountDailyCount >= settings.perAccountDailyCap) continue;
 
     attempts.push({
       node: candidate.node,
@@ -151,7 +154,8 @@ export function decideFires(
       ref,
     });
     perTaskCount.set(ref.trig, (perTaskCount.get(ref.trig) ?? 0) + 1);
-    perAccountCount += 1;
+    perAccountHourlyCount += 1;
+    perAccountDailyCount += 1;
   }
 
   return { attempts, reports };

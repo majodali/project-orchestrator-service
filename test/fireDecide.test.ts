@@ -205,6 +205,48 @@ describe("decideFires", () => {
     expect(plan.attempts).toEqual([]);
   });
 
+  it("stops firing once the per-account daily cap is reached, even with the hourly caps unspent (design 4)", () => {
+    // More than an hour ago, so the hourly caps are clear, but within
+    // the last 24 hours, so the daily cap still counts it.
+    const fired: FiredLine[] = [
+      {
+        ts: "2026-11-23T13:00:00Z",
+        node: "P9-N999",
+        step: "plan",
+        task: "trig_other",
+        session: null,
+      },
+    ];
+    const plan = decideFires(
+      specifiedState(),
+      settingsWith({ perAccountDailyCap: 1 }),
+      fired,
+      [],
+      NOW,
+    );
+    expect(plan.attempts).toEqual([]);
+  });
+
+  it("does not count a fire older than 24 hours against the daily cap", () => {
+    const fired: FiredLine[] = [
+      {
+        ts: "2026-11-23T11:00:00Z", // just over 24 hours before NOW
+        node: "P9-N999",
+        step: "plan",
+        task: "trig_other",
+        session: null,
+      },
+    ];
+    const plan = decideFires(
+      specifiedState(),
+      settingsWith({ perAccountDailyCap: 1 }),
+      fired,
+      [],
+      NOW,
+    );
+    expect(plan.attempts).toHaveLength(1);
+  });
+
   it("does not fire a task a 429 still blocks", () => {
     const fire429: Fire429Line[] = [
       {

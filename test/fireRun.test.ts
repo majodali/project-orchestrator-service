@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { FireResponse } from "../src/fire/client.js";
 import { FireHttpError } from "../src/fire/client.js";
@@ -208,10 +208,67 @@ describe("runFireCheck", () => {
     expect(fireCalls).toBe(2);
   });
 
-  it("opens a decision, once, when no scheduled task is configured for the offered role", async () => {
+  it("logs, rather than opening a decision, when no scheduled task is configured for the offered role (T250 rework)", async () => {
+    // D122 leaves most role/repository pairs unconfigured at first, so
+    // this is the ordinary case, not an anomaly: a decision here would
+    // gate the node for every session until merely acknowledged.
     const repo = repoWith(baseState(), {
       fire: { enabled: true, repositories: {} },
     });
+    const store = new StateStore({
+      reader: repo,
+      writer: repo,
+      now: () => NOW,
+    });
+    let fireCalls = 0;
+    const runtime = fakeRuntime(repo, async () => {
+      fireCalls += 1;
+      return OK_RESPONSE;
+    });
+    const logged: unknown[][] = [];
+    const logSpy = vi.spyOn(console, "log").mockImplementation((...args) => {
+      logged.push(args);
+    });
+
+    await runFireCheck(store, runtime, { session: null });
+    await runFireCheck(store, runtime, { session: null });
+
+    logSpy.mockRestore();
+    expect(fireCalls).toBe(0);
+    expect(repo.commits).toHaveLength(0); // nothing committed: no decision opened
+    const state = stateAt(repo);
+    expect(state.decisions.filter((d) => d.node === "P2-N001")).toHaveLength(0);
+    expect(
+      logged.some((args) =>
+        String(args[0]).includes("no scheduled task is configured"),
+      ),
+    ).toBe(true);
+  });
+
+  it("still opens a decision, once, when two bare fires stand with nothing claimed (a real anomaly)", async () => {
+    const repo = repoWith(baseState(), ENABLED_SETTINGS);
+    repo.setFile(
+      SHA_A,
+      "orchestration/journal.jsonl",
+      [
+        JSON.stringify({
+          ts: "2026-10-30T10:00:00Z",
+          event: "fired",
+          node: "P2-N001",
+          step: "execute",
+          task: "trig_impl",
+          session: null,
+        }),
+        JSON.stringify({
+          ts: "2026-10-30T11:00:00Z",
+          event: "fired",
+          node: "P2-N001",
+          step: "execute",
+          task: "trig_impl",
+          session: null,
+        }),
+      ].join("\n"),
+    );
     const store = new StateStore({
       reader: repo,
       writer: repo,
@@ -227,11 +284,10 @@ describe("runFireCheck", () => {
     await runFireCheck(store, runtime, { session: null });
 
     expect(fireCalls).toBe(0);
-    const state = stateAt(repo);
-    const reports = state.decisions.filter(
+    const reports = stateAt(repo).decisions.filter(
       (d) =>
         d.node === "P2-N001" &&
-        d.question.startsWith("Fire: no scheduled task"),
+        d.question.startsWith("Fire: too many bare attempts"),
     );
     expect(reports).toHaveLength(1); // not duplicated on the second check
   });

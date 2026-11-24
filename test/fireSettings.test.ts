@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DEFAULT_PER_ACCOUNT_DAILY_CAP,
   DISABLED_FIRE_SETTINGS,
   DOCUMENTED_PER_ACCOUNT_HOURLY_CAP,
   DOCUMENTED_PER_TASK_HOURLY_CAP,
@@ -91,6 +92,35 @@ describe("parseFireSettings", () => {
       }),
     );
     expect(settings.perTaskHourlyCap).toBe(5);
+  });
+
+  it("defaults the daily cap, which the endpoint documents no maximum for", () => {
+    const settings = parseFireSettings(
+      JSON.stringify({ fire: { enabled: true, repositories: {} } }),
+    );
+    expect(settings.perAccountDailyCap).toBe(DEFAULT_PER_ACCOUNT_DAILY_CAP);
+  });
+
+  it("takes the daily cap from the settings file when given, with no clamp", () => {
+    const settings = parseFireSettings(
+      JSON.stringify({
+        fire: {
+          enabled: true,
+          perAccountDailyCap: 500,
+          repositories: {},
+        },
+      }),
+    );
+    expect(settings.perAccountDailyCap).toBe(500);
+  });
+
+  it("falls back to the default daily cap on a non-positive or invalid value", () => {
+    const settings = parseFireSettings(
+      JSON.stringify({
+        fire: { enabled: true, perAccountDailyCap: -3, repositories: {} },
+      }),
+    );
+    expect(settings.perAccountDailyCap).toBe(DEFAULT_PER_ACCOUNT_DAILY_CAP);
   });
 
   it("skips a role entry missing a trig or a secret", () => {

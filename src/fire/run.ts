@@ -14,6 +14,16 @@
  * this module: the triggering write already committed, so a fire that
  * fails leaves the plan correct and the work merely unstarted (design
  * 1), never a reason to fail the tool call that got us here.
+ *
+ * A role and repository with no scheduled task configured
+ * (`no-task-configured`) is logged, not opened as a decision: D122
+ * sets up only some role/repository pairs at first, so this is the
+ * ordinary case for the rest, and an open decision would gate the
+ * node for every session until the owner merely acknowledges it
+ * (owner, 2026-11-24, the T250 rework). `too-many-attempts` is a real
+ * anomaly — a node fired twice with nothing claiming it — and keeps
+ * gating the node with a decision, as design 3's "the third case is
+ * reported to the owner" already did.
  */
 
 import { nextDecisionId } from "../model/loop.js";
@@ -58,18 +68,17 @@ const REPORT_QUESTION_PREFIX: Record<FireReport["reason"], string> = {
   "too-many-attempts": "Fire: too many bare attempts",
 };
 
-function hasOpenReport(
-  state: State,
-  nodeId: string,
-  reason: FireReport["reason"],
-): boolean {
-  const prefix = REPORT_QUESTION_PREFIX[reason];
+function hasOpenReport(state: State, nodeId: string): boolean {
+  const prefix = REPORT_QUESTION_PREFIX["too-many-attempts"];
   return state.decisions.some(
     (d) =>
       d.node === nodeId && d.chosen === null && d.question.startsWith(prefix),
   );
 }
 
+/** Opens a decision for the one report reason that is a real anomaly
+ * (`too-many-attempts`): a node fired twice with nothing claiming it.
+ * `no-task-configured` never reaches here — see `runFireCheck` below. */
 async function reportToOwner(
   store: StateStore,
   report: FireReport,
@@ -127,7 +136,15 @@ export async function runFireCheck(
   const plan = decideFires(state, settings, fired, fire429, now);
 
   for (const report of plan.reports) {
-    if (hasOpenReport(state, report.node.id, report.reason)) continue;
+    if (report.reason === "no-task-configured") {
+      // The ordinary case while D122 leaves most role/repository
+      // pairs unconfigured: logged for the owner to see in the
+      // function's logs, never a decision that would gate the node
+      // for every session until merely acknowledged.
+      console.log(`fire: ${report.node.id} not fired: ${report.detail}`);
+      continue;
+    }
+    if (hasOpenReport(state, report.node.id)) continue;
     await reportToOwner(store, report, trigger.session);
   }
 

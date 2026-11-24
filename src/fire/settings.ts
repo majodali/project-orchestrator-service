@@ -35,6 +35,12 @@ export interface FireSettings {
    * itself enforces. */
   readonly perTaskHourlyCap: number;
   readonly perAccountHourlyCap: number;
+  /** The account-wide cap across a rolling day, counted from the
+   * journal's `fired` lines the same way the hourly caps are (design
+   * 4: "so a fault cannot spend the subscription"). The endpoint
+   * documents no daily limit, so this is the service's own ceiling,
+   * not a clamp against a documented maximum. */
+  readonly perAccountDailyCap: number;
   /** repository -> role -> the scheduled task firing that role's work
    * in that repository. A repository or role missing here has no
    * scheduled task configured; an offer that needs one is reported to
@@ -53,6 +59,12 @@ export interface FireSettings {
 export const DOCUMENTED_PER_TASK_HOURLY_CAP = 30;
 export const DOCUMENTED_PER_ACCOUNT_HOURLY_CAP = 100;
 
+/** The service's own default daily ceiling (design 4): nothing the
+ * endpoint documents clamps this one, so the default is chosen to sit
+ * well under the two hourly caps compounded over a day while still
+ * covering ordinary use. */
+export const DEFAULT_PER_ACCOUNT_DAILY_CAP = 200;
+
 const DEFAULT_CHECK_AFTER_MINUTES = 45;
 
 export const DISABLED_FIRE_SETTINGS: FireSettings = {
@@ -60,6 +72,7 @@ export const DISABLED_FIRE_SETTINGS: FireSettings = {
   checkAfterMinutes: DEFAULT_CHECK_AFTER_MINUTES,
   perTaskHourlyCap: DOCUMENTED_PER_TASK_HOURLY_CAP,
   perAccountHourlyCap: DOCUMENTED_PER_ACCOUNT_HOURLY_CAP,
+  perAccountDailyCap: DEFAULT_PER_ACCOUNT_DAILY_CAP,
   repositories: new Map(),
 };
 
@@ -68,6 +81,16 @@ function clampToDocumented(value: unknown, documentedMax: number): number {
     return documentedMax;
   }
   return Math.min(value, documentedMax);
+}
+
+/** A positive number from the settings file, or the service's own
+ * default when absent or invalid: used for the daily cap, which has
+ * no documented maximum to clamp against. */
+function positiveOrDefault(value: unknown, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+  return value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -108,6 +131,10 @@ export function parseFireSettings(text: string | null): FireSettings {
     fire.perAccountHourlyCap,
     DOCUMENTED_PER_ACCOUNT_HOURLY_CAP,
   );
+  const perAccountDailyCap = positiveOrDefault(
+    fire.perAccountDailyCap,
+    DEFAULT_PER_ACCOUNT_DAILY_CAP,
+  );
 
   const repositories = new Map<
     string,
@@ -139,6 +166,7 @@ export function parseFireSettings(text: string | null): FireSettings {
     checkAfterMinutes,
     perTaskHourlyCap,
     perAccountHourlyCap,
+    perAccountDailyCap,
     repositories,
   };
 }
