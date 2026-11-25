@@ -135,7 +135,7 @@ describe("runFireCheck", () => {
     expect(captured?.token).toBe("sk-ant-oat01-fake");
     expect(captured?.text).toContain("P2-N001");
 
-    const { fired } = parseJournal(journalAt(repo));
+    const { fired, firedSession } = parseJournal(journalAt(repo));
     expect(fired).toHaveLength(1);
     expect(fired[0]).toMatchObject({
       node: "P2-N001",
@@ -143,6 +143,37 @@ describe("runFireCheck", () => {
       task: "trig_impl",
       session: "session_x",
     });
+
+    // A second line records the session the call started, tied to
+    // the fired line above by node, step, task and ts.
+    expect(firedSession).toHaveLength(1);
+    expect(firedSession[0]).toEqual({
+      ts: fired[0]?.ts,
+      node: "P2-N001",
+      step: "execute",
+      task: "trig_impl",
+      sessionId: "session_fired",
+      sessionUrl: "https://claude.ai/code/session_fired",
+    });
+  });
+
+  it("writes no fired-session line when the call fails", async () => {
+    const repo = repoWith(baseState(), ENABLED_SETTINGS);
+    const store = new StateStore({
+      reader: repo,
+      writer: repo,
+      now: () => NOW,
+    });
+    await runFireCheck(
+      store,
+      fakeRuntime(repo, async () => {
+        throw new Error("network blip");
+      }),
+      { session: "session_x" },
+    );
+    const { fired, firedSession } = parseJournal(journalAt(repo));
+    expect(fired).toHaveLength(1);
+    expect(firedSession).toHaveLength(0);
   });
 
   it("records a 429's Retry-After and does not fire again before it passes", async () => {

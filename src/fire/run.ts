@@ -63,6 +63,10 @@ function fireText(attempt: FireAttempt, sha: string): string {
   return `Node ${attempt.node.id}, step ${attempt.step}, repository ${attempt.repository}, commit ${sha}.`;
 }
 
+function isoNoMillis(date: Date): string {
+  return date.toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
 const REPORT_QUESTION_PREFIX: Record<FireReport["reason"], string> = {
   "no-task-configured": "Fire: no scheduled task is configured",
   "too-many-attempts": "Fire: too many bare attempts",
@@ -152,11 +156,12 @@ export async function runFireCheck(
     // Written before the HTTP call (criterion 2): a crash between the
     // two loses a fire rather than risking a second one for the same
     // attempt.
+    const firedTs = isoNoMillis(now);
     await store.appendJournalLine(
       `fire ${attempt.node.id} ${attempt.step}`,
       () =>
         JSON.stringify({
-          ts: now.toISOString().replace(/\.\d{3}Z$/, "Z"),
+          ts: firedTs,
           event: "fired",
           node: attempt.node.id,
           step: attempt.step,
@@ -166,7 +171,28 @@ export async function runFireCheck(
     );
     try {
       const token = await runtime.getToken(attempt.ref.secret);
-      await runtime.fire(attempt.ref.trig, token, fireText(attempt, read.sha));
+      const response = await runtime.fire(
+        attempt.ref.trig,
+        token,
+        fireText(attempt, read.sha),
+      );
+      // Tied to the `fired` line just written by matching `ts`,
+      // `node`, `step` and `task`: the session a fire started
+      // (provenance gap D127 / P2-N047's record; owner, 2026-11-24,
+      // note (b)). Today that identifier was discarded.
+      await store.appendJournalLine(
+        `fire-session ${attempt.node.id} ${attempt.step}`,
+        () =>
+          JSON.stringify({
+            ts: firedTs,
+            event: "fired-session",
+            node: attempt.node.id,
+            step: attempt.step,
+            task: attempt.ref.trig,
+            sessionId: response.claudeCodeSessionId,
+            sessionUrl: response.claudeCodeSessionUrl,
+          }),
+      );
     } catch (err) {
       if (err instanceof FireHttpError && err.status === 429) {
         const retryAfterSeconds = err.retryAfterSeconds ?? 3600;

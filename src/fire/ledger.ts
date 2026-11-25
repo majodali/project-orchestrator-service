@@ -26,9 +26,23 @@ export interface Fire429Line {
   readonly retryAfter: string;
 }
 
+/** Written after a successful fire call, tied to the `fired` line
+ * that preceded it by matching `ts`, `node`, `step` and `task`: the
+ * provenance gap D127 and P2-N047's record named — which session a
+ * fire started (owner, 2026-11-24, note (b)). */
+export interface FiredSessionLine {
+  readonly ts: string;
+  readonly node: string;
+  readonly step: string;
+  readonly task: string;
+  readonly sessionId: string;
+  readonly sessionUrl: string;
+}
+
 export interface ParsedJournal {
   readonly fired: readonly FiredLine[];
   readonly fire429: readonly Fire429Line[];
+  readonly firedSession: readonly FiredSessionLine[];
 }
 
 function isString(value: unknown): value is string {
@@ -42,6 +56,7 @@ function isString(value: unknown): value is string {
 export function parseJournal(text: string): ParsedJournal {
   const fired: FiredLine[] = [];
   const fire429: Fire429Line[] = [];
+  const firedSession: FiredSessionLine[] = [];
   for (const rawLine of text.split("\n")) {
     const line = rawLine.trim();
     if (line === "") continue;
@@ -74,7 +89,24 @@ export function parseJournal(text: string): ParsedJournal {
       isString(obj.retryAfter)
     ) {
       fire429.push({ ts: obj.ts, task: obj.task, retryAfter: obj.retryAfter });
+    } else if (
+      obj.event === "fired-session" &&
+      isString(obj.ts) &&
+      isString(obj.node) &&
+      isString(obj.step) &&
+      isString(obj.task) &&
+      isString(obj.sessionId) &&
+      isString(obj.sessionUrl)
+    ) {
+      firedSession.push({
+        ts: obj.ts,
+        node: obj.node,
+        step: obj.step,
+        task: obj.task,
+        sessionId: obj.sessionId,
+        sessionUrl: obj.sessionUrl,
+      });
     }
   }
-  return { fired, fire429 };
+  return { fired, fire429, firedSession };
 }
