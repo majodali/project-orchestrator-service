@@ -47,7 +47,7 @@ function ofType(type: string): string[] {
 }
 
 describe("V18 — the template", () => {
-  it("routes the three E1 paths to the existing McpIntegration", () => {
+  it("routes the three E1 paths, and P2-N069's five, to the existing McpIntegration", () => {
     const routes = new Map(
       ofType("AWS::ApiGatewayV2::Route").map((id) => {
         const block = resources().get(id)!;
@@ -66,8 +66,11 @@ describe("V18 — the template", () => {
     }
     for (const [key] of routes) {
       if (key.includes("/view")) {
+        // D160: widened for P2-N069's four routes, plus its optional
+        // catch-all, alongside test/routeGatewayCoverage.test.ts's
+        // general check that every registered path has a route key.
         expect(key).toMatch(
-          /^(GET \/view|GET \/view\/sign-in|POST \/view\/sign-in|GET \/view\/node\/\{nodeId\}|GET \/view\/task\/\{taskId\})$/,
+          /^(GET \/view|GET \/view\/sign-in|POST \/view\/sign-in|GET \/view\/node\/\{nodeId\}|GET \/view\/task\/\{taskId\}|GET \/view\/app\.js|GET \/view\/version|POST \/view\/decision\/\{id\}\/close|POST \/view\/node\/\{id\}\/action|GET \/view\/\{proxy\+\})$/,
         );
       }
     }

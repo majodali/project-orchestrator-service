@@ -523,15 +523,44 @@ The service also serves the plan as web pages, for a desktop browser.
 Since the rebuild's milestone 2 (the coordinating repository's
 `docs/plans/rebuild.md`) the pages read one file of the coordinating
 repository at one commit, `orchestration/state.json`, through the same
-GitHub App `plan_read` uses. They change nothing. Five routes:
+GitHub App `plan_read` uses. Nine routes, two of which write: the
+decision answer and the node action below go through the same service
+writes as any other task.
 
-| Method and path            | Answers                                                                                                                                                                                                                             |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /view/sign-in`        | the sign-in form                                                                                                                                                                                                                    |
-| `POST /view/sign-in`       | the exchange of the view token for the view cookie                                                                                                                                                                                  |
-| `GET /view`                | the tree page: every node in its tree with its class and outcome, what waits on the owner marked in context and unfolded, the problems `check` reports; `?ref=<branch, tag or SHA>` reads that ref, `?open=` picks what is unfolded |
-| `GET /view/node/<node ID>` | a node page: class and stage, outcome, position, dependencies, documents, decisions and tasks                                                                                                                                       |
-| `GET /view/task/<task ID>` | a task page: the task's fields and notes                                                                                                                                                                                            |
+### Which address to use (node P2-N069)
+
+Sign in and work from `$ENDPOINT` — the production endpoint (the
+`live` alias, routed through the HTTP API), the same address
+`.mcp.json` enlists against and `/mcp` answers from. Not
+`$PREPROD_ENDPOINT`, the `preprod` Function URL: child D's
+deploy-and-smoke-test sequence (node P2-N016) repoints it to a new,
+unpromoted version on every deploy, so a page left open there can go
+stale, point at a commit that never reached `live`, or vanish mid-deploy.
+
+Before node P2-N069, `template.yaml` routed only `GET /view`,
+`GET /view/sign-in`, `POST /view/sign-in`, `GET /view/node/{nodeId}`
+and `GET /view/task/{taskId}` at the production gateway; the view's
+own script (`GET /view/app.js`), its version poll (`GET /view/version`)
+and its two write routes (`POST /view/decision/{id}/close`,
+`POST /view/node/{id}/action`) answered API Gateway's own
+`{"message":"Not Found"}` there, though `src/httpApp.ts` had always
+registered them. The preprod Function URL has no such gap — it
+forwards every path to the Lambda unfiltered — which is why the owner
+used it for the view instead: the buttons and the live update only
+ever worked there. Node P2-N069 routed the missing paths at the
+gateway, so that gap is closed; use the production endpoint now.
+
+| Method and path                           | Answers                                                                                                                                                                                                                             |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /view/sign-in`                       | the sign-in form                                                                                                                                                                                                                    |
+| `POST /view/sign-in`                      | the exchange of the view token for the view cookie                                                                                                                                                                                  |
+| `GET /view`                               | the tree page: every node in its tree with its class and outcome, what waits on the owner marked in context and unfolded, the problems `check` reports; `?ref=<branch, tag or SHA>` reads that ref, `?open=` picks what is unfolded |
+| `GET /view/node/<node ID>`                | a node page: class and stage, outcome, position, dependencies, documents, decisions and tasks                                                                                                                                       |
+| `GET /view/task/<task ID>`                | a task page: the task's fields and notes                                                                                                                                                                                            |
+| `GET /view/app.js`                        | the view's one first-party script, served with a script content type                                                                                                                                                                |
+| `GET /view/version`                       | the default branch's SHA, for the script to poll; answered from a 10-second memory so several tabs cost one read of GitHub                                                                                                          |
+| `POST /view/decision/<decision ID>/close` | the owner's answer to an open decision, committed through the store                                                                                                                                                                 |
+| `POST /view/node/<node ID>/action`        | one lifecycle action on a node (approve its start, lift its hold, accept its review), committed through the store                                                                                                                   |
 
 The view has its own credential, the **view token**. It is held in
 Secrets Manager apart from the MCP bearer token, and `/mcp` refuses
