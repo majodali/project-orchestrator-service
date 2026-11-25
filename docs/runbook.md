@@ -525,6 +525,29 @@ Since the rebuild's milestone 2 (the coordinating repository's
 repository at one commit, `orchestration/state.json`, through the same
 GitHub App `plan_read` uses. They change nothing. Five routes:
 
+### Which address to use (node P2-N069)
+
+Sign in and work from `$ENDPOINT` — the production endpoint (the
+`live` alias, routed through the HTTP API), the same address
+`.mcp.json` enlists against and `/mcp` answers from. Not
+`$PREPROD_ENDPOINT`, the `preprod` Function URL: child D's
+deploy-and-smoke-test sequence (node P2-N016) repoints it to a new,
+unpromoted version on every deploy, so a page left open there can go
+stale, point at a commit that never reached `live`, or vanish mid-deploy.
+
+Before node P2-N069, `template.yaml` routed only `GET /view`,
+`GET /view/sign-in`, `POST /view/sign-in`, `GET /view/node/{nodeId}`
+and `GET /view/task/{taskId}` at the production gateway; the view's
+own script (`GET /view/app.js`), its version poll (`GET /view/version`)
+and its two write routes (`POST /view/decision/{id}/close`,
+`POST /view/node/{id}/action`) answered API Gateway's own
+`{"message":"Not Found"}` there, though `src/httpApp.ts` had always
+registered them. The preprod Function URL has no such gap — it
+forwards every path to the Lambda unfiltered — which is why the owner
+used it for the view instead: the buttons and the live update only
+ever worked there. Node P2-N069 routed the missing paths at the
+gateway, so that gap is closed; use the production endpoint now.
+
 | Method and path            | Answers                                                                                                                                                                                                                             |
 | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /view/sign-in`        | the sign-in form                                                                                                                                                                                                                    |

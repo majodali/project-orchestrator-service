@@ -494,6 +494,63 @@ Resources:
       RouteKey: "GET /view/task/{taskId}"
       Target: !Sub "integrations/${McpIntegration}"
 
+  # node P2-N069 — the view's own script and the version poll it
+  # reads (src/view/appScript.ts via src/view/routes.ts), unrouted
+  # until now: reachable at the preprod Function URL (which serves
+  # every path src/httpApp.ts registers) but 404ing at API Gateway's
+  # own hand here, before the request ever reached the Lambda. Same
+  # integration, same reasoning as the view routes above.
+  ViewAppScriptRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "GET /view/app.js"
+      Target: !Sub "integrations/${McpIntegration}"
+
+  ViewVersionRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "GET /view/version"
+      Target: !Sub "integrations/${McpIntegration}"
+
+  # node P2-N069 — the two write routes (milestone 4): the owner's
+  # decision answer and a node's lifecycle action. Also unrouted until
+  # now, which is why these buttons only ever worked for the owner at
+  # the preprod Function URL (the node's note, "what was observed").
+  ViewDecisionCloseRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "POST /view/decision/{id}/close"
+      Target: !Sub "integrations/${McpIntegration}"
+
+  ViewNodeActionRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "POST /view/node/{id}/action"
+      Target: !Sub "integrations/${McpIntegration}"
+
+  # node P2-N069, criterion 1 — routing this one is the implementer's
+  # choice: src/view/routes.ts's own `app.get("/view/*", ...)` already
+  # answers "No page here yet" for any other GET under /view, so this
+  # route key only changes which 404 the caller sees (the service's
+  # own page instead of API Gateway's bare `{"message":"Not Found"}`),
+  # matching what the preprod Function URL already does. A greedy
+  # route is scoped under the literal `/view/` prefix, so it reaches
+  # nothing a `/view` path does not already reach; API Gateway
+  # evaluates a literal or single-segment route (every other /view
+  # route above) before a greedy one, so this never shadows them.
+  # Only GET, matching the application's own catch-all exactly (V17:
+  # no route here widens what POST reaches).
+  ViewCatchAllRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "GET /view/{proxy+}"
+      Target: !Sub "integrations/${McpIntegration}"
+
   LiveInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
