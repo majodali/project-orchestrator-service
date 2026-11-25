@@ -79,6 +79,8 @@ import {
 } from "./planRegister/pullRequests.js";
 import { GithubFetchError } from "./planRegister/registerFetcher.js";
 import { requirePendingDocs } from "./pendingDocs.js";
+import { defaultFireRuntime } from "./fire/default.js";
+import { runFireCheck, type FireRuntime } from "./fire/run.js";
 
 /** What every enlisted session is told when it connects: the loop's
  * protocol, since nothing else reaches a session that was simply
@@ -115,6 +117,12 @@ export interface StateToolsOptions {
    * `pullRequests` are built from it; a test that supplies both
    * directly need not pass it. */
   project?: { owner: string; repo: string };
+  /** Test-only: the fire check's runtime (P2-N048). Production builds
+   * one over AWS Secrets Manager and the real endpoint, from
+   * `project`; with no `project` either, the fire check is skipped —
+   * every existing test that supplies its own `store` with no
+   * `project` keeps running with firing off, not failing. */
+  fire?: FireRuntime;
 }
 
 type ToolResult = {
@@ -307,6 +315,43 @@ export function registerStateTools(
       const { owner, repo } = requireProject();
       return getDefaultPullRequests(owner, repo);
     })();
+
+  // Lazy, like `store()` and `pullRequests()` above, and for the same
+  // reason: building the default runtime touches GitHub App
+  // configuration (it shares the commit reader `plan_read` uses), and
+  // a deployment missing that configuration — or a test that gives
+  // neither a project nor its own runtime — must still serve every
+  // other tool rather than fail at server construction.
+  const fireRuntime = (): FireRuntime | undefined =>
+    options.fire ??
+    (options.project ? defaultFireRuntime(options.project, now) : undefined);
+
+  /** Runs the fire check after a write a tool call just committed
+   * (P2-N048, design 1: after a write, and at no other time). Never
+   * lets a fire-check failure turn a successful write into a tool
+   * error — the write already committed correctly; firing is a side
+   * effect of it, not part of it. */
+  const checkFire = async (session?: string): Promise<void> => {
+    try {
+      const runtime = fireRuntime();
+      if (!runtime) return;
+      await runFireCheck(store(), runtime, { session: session ?? null });
+    } catch (err) {
+      console.error("fire check failed:", describeError(err));
+    }
+  };
+
+  /** `writeResult`, with the fire check run first. Every write tool
+   * but `task_cost` returns through this: a task's measured cost never
+   * moves a node's stage, so no step is ever newly offered by it. */
+  const afterWrite = async (
+    result: WriteResult,
+    extra: Record<string, unknown>,
+    session?: string,
+  ): Promise<ToolResult> => {
+    await checkFire(session);
+    return writeResult(result, extra);
+  };
 
   /** A write to nodes or decisions by a session: under an open task,
    * or on the owner's instruction; the commit and the journal say
@@ -536,11 +581,15 @@ export function registerStateTools(
           }
           throw err;
         }
-        return writeResult(result, {
-          nodeId: input.nodeId,
-          changes,
-          ...(merged.length > 0 ? { merged } : {}),
-        });
+        return afterWrite(
+          result,
+          {
+            nodeId: input.nodeId,
+            changes,
+            ...(merged.length > 0 ? { merged } : {}),
+          },
+          input.session,
+        );
       }),
   );
 
@@ -647,6 +696,10 @@ export function registerStateTools(
               note: `task_next closed ${staleClosed.join(", ")} as stale`,
             };
           });
+          // A stale close can itself make a step newly offered (the
+          // node's open task is gone), so it gets the same fire check
+          // every other write does.
+          await checkFire(input.session);
           read = await store().read();
           if (read.state === null) {
             return toolError(
@@ -741,18 +794,22 @@ export function registerStateTools(
         const done = opened!;
         const state = after!;
         const node = state.nodes.find((n) => n.id === input.nodeId)!;
-        return writeResult(result, {
-          taskId: done.task.id,
-          moved: done.moved,
-          ...brief(
-            state,
-            node,
-            input.step,
-            [input.step],
-            done.task.role ?? "",
-            result.sha,
-          ),
-        });
+        return afterWrite(
+          result,
+          {
+            taskId: done.task.id,
+            moved: done.moved,
+            ...brief(
+              state,
+              node,
+              input.step,
+              [input.step],
+              done.task.role ?? "",
+              result.sha,
+            ),
+          },
+          input.session,
+        );
       }),
   );
 
@@ -932,17 +989,21 @@ export function registerStateTools(
           throw err;
         }
         const done = closed!;
-        return writeResult(result, {
-          taskId: done.task.id,
-          status: done.task.status,
-          nodeId: done.node.id,
-          nodeStage: done.node.stage,
-          pr: done.task.pr,
-          merged,
-          moved: done.moved,
-          decisionsOpened: done.decisions,
-          stop: done.stop,
-        });
+        return afterWrite(
+          result,
+          {
+            taskId: done.task.id,
+            status: done.task.status,
+            nodeId: done.node.id,
+            nodeStage: done.node.stage,
+            pr: done.task.pr,
+            merged,
+            moved: done.moved,
+            decisionsOpened: done.decisions,
+            stop: done.stop,
+          },
+          input.session,
+        );
       }),
   );
 
@@ -1019,7 +1080,7 @@ export function registerStateTools(
             return added.event;
           },
         );
-        return writeResult(result, { nodeId: id });
+        return afterWrite(result, { nodeId: id }, input.session);
       }),
   );
 
@@ -1056,13 +1117,17 @@ export function registerStateTools(
           },
         );
         const done = removed!;
-        return writeResult(result, {
-          removed: done.nodes,
-          tasks: done.tasks,
-          decisions: done.decisions,
-          unlinked: done.unlinked,
-          moved: done.moved,
-        });
+        return afterWrite(
+          result,
+          {
+            removed: done.nodes,
+            tasks: done.tasks,
+            decisions: done.decisions,
+            unlinked: done.unlinked,
+            moved: done.moved,
+          },
+          input.session,
+        );
       }),
   );
 
@@ -1124,7 +1189,7 @@ export function registerStateTools(
             };
           },
         );
-        return writeResult(result, { decisionId: id });
+        return afterWrite(result, { decisionId: id }, input.session);
       }),
   );
 
@@ -1158,10 +1223,11 @@ export function registerStateTools(
             return applied.event;
           },
         );
-        return writeResult(result, {
-          decisionId: input.decisionId,
-          nodeId: node,
-        });
+        return afterWrite(
+          result,
+          { decisionId: input.decisionId, nodeId: node },
+          input.session,
+        );
       }),
   );
 }

@@ -79,7 +79,8 @@ schema, invariants, renderings, importer, store and the `plan-state`
 CLI), `stateTools.ts` (the MCP tools over it), `mcpServer.ts`,
 `httpApp.ts` (the Hono app: auth + `/mcp` + `/view` + `/health`,
 shared by both entry points below), `planRegister/` (the GitHub App
-reader and writer), `view/` (the web view), `auth.ts`,
+reader and writer), `fire/` (the scheduled-task fire check that runs
+after a write, P2-N048), `view/` (the web view), `auth.ts`,
 `serviceInfo.ts`, `localServer.ts` (local dev entry point), `lambda.ts`
 (AWS Lambda entry point). `template.yaml`
 and `scripts/deploy.sh` are the infrastructure and the one-command

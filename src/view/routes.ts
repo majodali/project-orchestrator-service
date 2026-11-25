@@ -25,6 +25,9 @@
  * (src/model/store.ts): checked, rendered, one commit on the default
  * branch, one journal event; nothing is held outside git. After a
  * write the browser is sent back to the page, which names the commit.
+ * The two write routes also run the fire check (P2-N048, design 1)
+ * exactly as a session's tool call does, since the owner's own clicks
+ * here are writes too.
  *
  * Every other `/view` route requires a valid view cookie and refuses a
  * request without one by a `303` to the sign-in page. Only the sign-in
@@ -85,6 +88,8 @@ import {
 } from "../planRegister/pullRequests.js";
 import { expectedHeads, pullRequestsOf } from "../model/loop.js";
 import { requirePendingDocs } from "../pendingDocs.js";
+import { defaultFireRuntime } from "../fire/default.js";
+import { runFireCheck, type FireRuntime } from "../fire/run.js";
 import { OTHER_ANSWER } from "./actions.js";
 import { PageReadError, ShaPathCache, readPageFiles } from "./commitRead.js";
 import type { PageFiles } from "./commitRead.js";
@@ -129,6 +134,13 @@ export interface ViewOptions {
   checks?: CommitChecks;
   /** Test-only: the clock. */
   now?: () => Date;
+  /** Test-only: the fire check's runtime (P2-N048, design 1: the
+   * view's own writes — a decision answered, a start approved, a hold
+   * lifted, a review accepted — commit too, and run the fire check
+   * exactly as a session's tool call does). Production builds one
+   * from the deployment's default project; a test that gives neither
+   * this nor a working project skips it, firing nothing. */
+  fire?: FireRuntime;
 }
 
 const SIGN_IN_PATH = "/view/sign-in";
@@ -345,6 +357,37 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
       const { owner, repo } = defaultProject();
       return getDefaultPullRequests(owner, repo);
     })();
+
+  // Lazy, like `store()` and `pullRequests()` above: building the
+  // default runtime touches GitHub App configuration, and a
+  // deployment missing it, or a test with neither `fire` nor a
+  // working default project, must still serve every other route
+  // rather than throw out of a write that already committed.
+  const fireRuntime = (): FireRuntime | undefined => {
+    if (options.fire) return options.fire;
+    try {
+      return defaultFireRuntime(defaultProject(), now);
+    } catch {
+      return undefined;
+    }
+  };
+
+  /** Runs the fire check after the view's own write, exactly as
+   * `src/stateTools.ts`'s `checkFire` does after a session's tool
+   * call (design 1: these are writes too). Never lets a fire-check
+   * failure affect the write that already committed. */
+  const checkFire = async (): Promise<void> => {
+    const runtime = fireRuntime();
+    if (!runtime) return;
+    try {
+      await runFireCheck(store(), runtime, { session: VIEW_SESSION });
+    } catch (err) {
+      console.error(
+        "fire check failed:",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  };
 
   /** The commit's check status, or null when it cannot be read: the
    * page is shown either way. A test that injects a reader and no
@@ -772,6 +815,7 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
         node = applied.decision.node;
         return applied.event;
       });
+      await checkFire();
       const target = node === null ? "/view" : nodePagePath(node);
       return c.redirect(`${target}?committed=${result.sha}`, 303);
     } catch (err) {
@@ -851,6 +895,7 @@ export function registerViewRoutes(app: Hono, options: ViewOptions = {}): void {
         }
         throw err;
       }
+      await checkFire();
       return c.redirect(`${back}?committed=${result.sha}`, 303);
     } catch (err) {
       return writeFailed(c, err, back);
