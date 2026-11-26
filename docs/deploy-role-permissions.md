@@ -592,6 +592,28 @@ and so on). No other statement changes: the view adds route keys to
 the existing HTTP API, which `ApiGatewayV2AuthoringHasNoResourceLevelPermissions`
 already covers, and no new resource type.
 
+### `ReadFireTokens` — not a deploy-role statement, and why this document still names it (node P2-N049, design 6)
+
+P2-N046's fire check needs `secretsmanager:GetSecretValue` on the
+fire secrets, but on the **function's execution role**, not this
+deploy role: a fire token is read at runtime
+(`src/fire/secrets.ts`), never resolved by CloudFormation at deploy
+time the way the three secrets above are, so the deploy role itself
+never calls `GetSecretValue` on a fire secret. `template.yaml`'s
+`McpFunction.Properties.Policies` declares that grant directly, scoped
+to the `project-orchestrator-service/fire/*` secret-name prefix
+(`docs/runbook.md`, "Adding a scheduled task"). SAM renders a
+`Policies` entry as an inline policy on the generated execution role
+(`AWS::IAM::Role.Policies`), which CloudFormation applies with its own
+`iam:PutRolePolicy` / `iam:DeleteRolePolicy` calls against that role —
+exactly the actions `IamExecutionRoleManagement` above already grants
+this deploy role, scoped to the same `project-orchestrator-service-*`
+role-name prefix the execution role falls under. **No new statement
+is added to this policy for design 6.** This section exists only so a
+reader checking "what does the IAM change of design 6 need" finds the
+answer recorded here, as P4-N046 recorded a secrets grant before its
+owner action, rather than concluding the gap was missed.
+
 ## `CAPABILITY_IAM`, summarized
 
 `deploy.sh` passes `--capabilities CAPABILITY_IAM`, not

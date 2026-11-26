@@ -1112,6 +1112,126 @@ belongs (the trust policy, not this workflow). The token itself is
 never printed, in either workflow — see that file's own comments for
 the mechanism, not just the intent.
 
+## Adding a scheduled task (O1, O2, node P2-N049)
+
+P2-N046 has the service fire one of the owner's scheduled tasks after
+every write of its own, instead of a session asking a person to start
+one. `orchestration/orchestrator.json` (the coordinating repository)
+carries a `fire` section naming, per repository and per role, the
+task's `trig_` identifier and the name of the AWS Secrets Manager
+secret holding its bearer token — never the token itself. Two tasks
+first, planner and implementer in `majodali/project-orchestrator`
+(D122); the rest once those are proven.
+
+### O1 — create the scheduled task
+
+In the Claude Code app, create one scheduled task per role and
+repository:
+
+1. **Repositories:** the one repository this task's fires are for.
+2. **Model:** the role's model, exactly as the coordinating
+   repository's `orchestration/orchestrator.json` or `.claude/agents/`
+   records it (`docs/process/how-we-work.md`, "The roles").
+3. **Saved prompt:** names the role, directs the session to call
+   `task_next` with that role and claim whatever it answers, and
+   directs it to push to the branch named for the task rather than
+   the `claude/`-prefixed default (platform.claude.com/docs/en/api/
+   claude-code/routines-fire, read 2026-11-19). The prompt's text
+   reaches the fired session labelled untrusted; correctness never
+   depends on it (D121) — it exists so the run's History says what it
+   was fired for, not to steer the session.
+4. Record the task's `trig_` identifier — shown on the task's own page
+   in the app, never secret.
+
+### O2 — mint and store the task's token
+
+1. In the task's own API trigger row, generate its bearer token once
+   (prefixed `sk-ant-oat01-`, shown once, not retrievable afterward).
+2. Store it in Secrets Manager under a name beginning
+   `project-orchestrator-service/fire/`, following the pattern this
+   repository's other secrets use (`docs/deploy-role-permissions.md`'s
+   `SecretsForDeployTimeResolutionAndSmokeToken` names three of them):
+
+   ```sh
+   aws secretsmanager create-secret \
+     --region "$AWS_REGION" \
+     --name project-orchestrator-service/fire/<repository-slug>-<role> \
+     --secret-string "$TOKEN"
+   ```
+
+   For the two D122 tasks:
+   `project-orchestrator-service/fire/project-orchestrator-planner`
+   and
+   `project-orchestrator-service/fire/project-orchestrator-implementer`.
+   The token is never committed, pasted into a session, or logged —
+   only its secret's name is settings-file data.
+
+3. In the coordinating repository's `orchestration/orchestrator.json`,
+   add the task under `fire.repositories.<owner>/<repo>.<role>`:
+
+   ```json
+   {
+     "trig": "<the trig_ identifier from O1>",
+     "secret": "project-orchestrator-service/fire/<repository-slug>-<role>"
+   }
+   ```
+
+   Set `fire.enabled: true` only once every task this section's list
+   needs is configured — `plugin/scripts/lib/orchestrate.ts`'s
+   `parseSettings` and this service's own `src/fire/settings.ts`
+   both check the section's shape (P2-N049, criterion 2); a malformed
+   or absent section parses as disabled, never as a crash.
+
+**Verify:** `aws secretsmanager get-secret-value --region "$AWS_REGION"
+--secret-id project-orchestrator-service/fire/<repository-slug>-<role>
+--query SecretString --output text` prints the token you generated.
+The service's execution role can read only secrets under the
+`project-orchestrator-service/fire/` prefix (`template.yaml`'s
+`ReadFireTokens` statement on `McpFunction`) — a secret stored under
+any other name is unreadable to the fire check, and the deploy role
+needs no new permission for this (see
+[`docs/deploy-role-permissions.md`](deploy-role-permissions.md)'s note
+on that statement).
+
+### Rotating a task's token
+
+Regenerating a task's token in the app revokes the previous one at
+once (platform.claude.com/docs/en/api/claude-code/routines-fire,
+"Authentication") — unlike the view token (`VIEW_TOKEN_SECRET_NAME`
+above), a fire token is read at runtime, not resolved by
+CloudFormation at deploy time, so the **same** secret name is updated
+in place and no new secret, settings-file edit, or deploy is needed:
+
+```sh
+aws secretsmanager put-secret-value \
+  --region "$AWS_REGION" \
+  --secret-id project-orchestrator-service/fire/<repository-slug>-<role> \
+  --secret-string "$NEW_TOKEN"
+```
+
+The service caches a token for up to five minutes
+(`src/fire/secrets.ts`, `FIRE_TOKEN_CACHE_MS`), so a fire in that
+window after regenerating may still carry the revoked token and get a
+401 from the endpoint; retry after the cache window passes, or wait
+for the next write-triggered fire.
+
+### When firing stops
+
+- **A 429 with `Retry-After`** — the service records it and fires
+  nothing for that task until the named time passes (P2-N046, design
+  4). No owner action is needed; the node stays unfired until then and
+  the next write retries it.
+- **A rotated token** — every fire for that task answers 401 until the
+  new value is stored under the same secret name (see "Rotating a
+  task's token" above) and the cache window passes.
+- **Turning firing off** — set `fire.enabled` to `false` in
+  `orchestration/orchestrator.json`, or remove the one
+  repository/role entry under `fire.repositories` that should stop.
+  Either takes effect on the coordinating repository's next write; no
+  redeploy of this repository is needed, since the fire check reads
+  the settings file fresh from the coordinating repository at the
+  commit it has just written (P2-N046, design 2).
+
 ## Running cost
 
 **Unmeasured.** No AWS Cost Explorer figure for this stack has been
