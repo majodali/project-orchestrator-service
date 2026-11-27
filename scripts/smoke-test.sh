@@ -111,8 +111,13 @@ echo "OK — /health returned 200."
 
 echo
 echo "== Check 2/4: tools/list carries the eleven tools =="
+# An answer reaches the helper on standard input, never through the
+# environment: Linux refuses a single environment value over about
+# 128 KB ("Argument list too long"), and plan_read's answer passed
+# that size on 2026-11-27, failing this script before it read the
+# answer (Deploy runs 57 and 58).
 TOOLS_RESPONSE="$(mcp_call '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}')"
-MISSING_TOOLS="$(TOOLS_RESPONSE="$TOOLS_RESPONSE" node -e '
+MISSING_TOOLS="$(printf '%s' "$TOOLS_RESPONSE" | node -e '
   const required = [
     "service_identity",
     "plan_read",
@@ -128,7 +133,7 @@ MISSING_TOOLS="$(TOOLS_RESPONSE="$TOOLS_RESPONSE" node -e '
   ];
   let body;
   try {
-    body = JSON.parse(process.env.TOOLS_RESPONSE);
+    body = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
   } catch {
     process.stdout.write(required.join(","));
     process.exit(0);
@@ -147,10 +152,10 @@ echo
 echo "== Check 3/4: plan_read answers the state file at a commit =="
 # A read only: the smoke test never writes the coordinating repository.
 READ_RESPONSE="$(mcp_call '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"plan_read","arguments":{}}}')"
-READ_SHA="$(READ_RESPONSE="$READ_RESPONSE" node -e '
+READ_SHA="$(printf '%s' "$READ_RESPONSE" | node -e '
   let body;
   try {
-    body = JSON.parse(process.env.READ_RESPONSE);
+    body = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
   } catch {
     process.exit(0);
   }
