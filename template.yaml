@@ -255,6 +255,32 @@ Resources:
           # routes refuse to run when it is unset or equal to
           # MCP_AUTH_TOKEN (src/view/viewAuth.ts).
           VIEW_TOKEN: !Sub "{{resolve:secretsmanager:${ViewTokenSecretName}:SecretString}}"
+      # The fire check's own Secrets Manager read (P2-N048, design 6;
+      # owner action O3, node P2-N049): a fire token cannot follow the
+      # three dynamic references above, because regenerating one in
+      # the web UI revokes the previous one at once, which would leave
+      # firing broken until the next deploy (src/fire/secrets.ts). So
+      # the function reads it at runtime instead, with its own
+      # execution role's credentials (the Lambda environment's
+      # AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN,
+      # no template change). This grant is scoped to the
+      # `agent/project-orchestrator*` secret-name prefix (see
+      # docs/runbook.md, "Adding a scheduled task") — the owner's four
+      # scheduled tasks' secrets already carried that prefix (D166,
+      # P2-N049 rework) — never to the other three secrets above, and
+      # never to the account's full Secrets Manager. SAM renders this
+      # as an inline policy on the generated execution role
+      # (`AWS::IAM::Role.Policies`), created by CloudFormation's own
+      # `iam:PutRolePolicy` call — already granted to the deploy role
+      # by the `IamExecutionRoleManagement` statement in
+      # docs/deploy-role-permissions.md, so that document needed no
+      # new statement for this (see its own note).
+      Policies:
+        - Statement:
+            - Sid: ReadFireTokens
+              Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:agent/project-orchestrator*"
       # No Events: here (node P2-N015) — SAM's `HttpApi` event-source
       # sugar always binds to the function's own unqualified ARN
       # ($LATEST), which is exactly the untested-code-served-on-every-
