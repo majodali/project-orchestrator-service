@@ -1353,6 +1353,128 @@ DEPLOY` and naming `live`'s current state** (node P2-N016, T036,
   resource actually exists — `aws cloudformation describe-stack-resources`
   — before retrying). Nothing was deployed in either case.
 
+## Preview deployments (node P2-N073)
+
+A second, preview-only stack, `project-orchestrator-service-preview`,
+deploys one same-repository pull request's merge ref so it can be seen
+running before it is merged — never production, and never with a
+production secret (D151, bounded by four things: explicit dispatch
+only, never a `pull_request` event; the workflow definition is always
+`main`'s; same-repository pull requests only; and a preview-scoped
+credential, below).
+
+**The stable endpoint.** `project-orchestrator-service-preview`'s
+`Endpoint` stack output, printed by `.github/workflows/preview.yml`'s
+"Read stack outputs" step on every run. **Not yet measured** — no run
+has happened yet (this section is written before O-prev-1 to O-prev-5,
+per I8's ordering). Record it here after the first run. It changes
+every time the stack is deleted and recreated (see "How it is torn
+down" below), so a reader should treat a recorded value as stale once a
+teardown has run since.
+
+**How a preview is started.** Dispatch `.github/workflows/preview.yml`
+(Actions tab → **Preview deploy** → **Run workflow**, or
+`gh workflow run preview.yml -f pull_request_number=<N>`) with the pull
+request's number. The run refuses, naming the head repository, if the
+pull request is not from `majodali/project-orchestrator-service` itself
+— a fork is never deployed. The same workflow also runs once a day on a
+schedule, redeploying `main` rather than a pull request, so the stack
+never drifts far from `main` between pull-request previews.
+
+GitHub dispatches `workflow_dispatch` (and runs `schedule`) only from a
+workflow file as it stands on the repository's default branch — never
+from a pull request's own copy of it. So `.github/workflows/preview.yml`
+and `.github/workflows/preview-teardown.yml` must already be on `main`
+before the first preview run, including the run that proves criteria 7
+to 12 and 14 of node P2-N073. The owner merges the pull request that
+adds them by hand, as on P2-N055 (D154); that merge deploys production,
+but changes only workflow and documentation files. Any fix the first
+runs find goes into a second pull request, on a new branch.
+
+**What it serves.** Only the fixture project
+`majodali/orchestrator-preview` (D150) — never
+`majodali/project-orchestrator`'s real plan, so a preview run that
+exercises a write tool cannot touch the real plan or P2-N051's
+measurements. It runs with its own GitHub App (O-prev-1), its own
+bearer and view tokens (O-prev-3), and a deploy role scoped to its own
+stack and resource names (O-prev-4,
+[`docs/deploy-role-permissions-preview.md`](deploy-role-permissions-preview.md)).
+
+**How it is torn down.** Dispatch
+`.github/workflows/preview-teardown.yml`. It deletes
+`project-orchestrator-service-preview` and nothing else — not the
+production stack, not the shared SAM-managed artifact stack both
+deploys use. Before dispatching it, set the repository variable
+`PREVIEW_SCHEDULE_ENABLED` to `false` (Settings → Secrets and variables
+→ Actions → Variables); otherwise the next day's scheduled run in
+`preview.yml` recreates the stack, with a new endpoint, before you are
+ready for one. Set `PREVIEW_SCHEDULE_ENABLED` back to `true` when you
+want the preview back — the next scheduled run, or a manual dispatch of
+`preview.yml` with a pull request number, recreates it. A delete and a
+recreate changes the HTTP API's id and so `Endpoint` (F3): re-record
+the stable endpoint above once it has.
+
+(`PREVIEW_SCHEDULE_ENABLED` is this switch's own name, distinct from
+`PREVIEW_DEPLOYS` — node P2-N074's setting, the comma-separated list of
+previews the service itself dispatches at `task_open` of a `verify`
+step. The two are not interchangeable.)
+
+**O-prev-1 to O-prev-5** are the five owner actions this feature cannot
+finish without; each is also named, verbatim, in node P2-N073's own
+note.
+
+- **O-prev-1 — the second GitHub App (D151).** A new App owned by
+  `majodali`, repository permissions **Contents: Read and write** and
+  **Pull requests: Read and write**, installed on
+  `majodali/orchestrator-preview` and nothing else. Record its numeric
+  App ID (not secret) and generate a private key, the same mechanics as
+  Step 2 above. It never holds `Actions`.
+- **O-prev-2 — the fixture repository (D150).**
+  `majodali/orchestrator-preview`, with its own
+  `orchestration/state.json`, O-prev-1's App installed on it. New to
+  the project, so it is the owner's (RU-016).
+- **O-prev-3 — the three preview secrets**, in the production stack's
+  region, under exactly the names
+  `project-orchestrator-service-preview/mcp-auth-token`,
+  `project-orchestrator-service-preview/github-app-private-key` and
+  `project-orchestrator-service-preview/view-token` — the same
+  mechanics as Steps 1, 2 and O-view-1 above, with a freshly minted
+  bearer token, O-prev-1's PEM private key, and a freshly minted view
+  token. Never a production value, and never pasted anywhere else.
+- **O-prev-4 — the preview deploy role**,
+  `project-orchestrator-service-preview-deploy`, with
+  [`docs/deploy-role-permissions-preview.md`](deploy-role-permissions-preview.md)'s
+  policy and trust policy. Record its ARN.
+- **O-prev-5 — the `preview` GitHub Environment** on
+  `majodali/project-orchestrator-service` (Settings → Environments →
+  **New environment** → name it `preview`), with these environment
+  variables (Settings within the Environment, not the repository's own
+  Variables tab) — none a secret value and none permitted to begin
+  `GITHUB_` (see "Where `GITHUB_` may and may not appear" above, which
+  applies here too):
+
+  | Environment variable name                            | Value                                                                    |
+  | ---------------------------------------------------- | ------------------------------------------------------------------------ |
+  | `AWS_PREVIEW_DEPLOY_ROLE_ARN`                        | O-prev-4's role ARN                                                      |
+  | `PREVIEW_STACK_NAME`                                 | `project-orchestrator-service-preview`                                   |
+  | `PREVIEW_AUTH_TOKEN_SECRET_NAME`                     | `project-orchestrator-service-preview/mcp-auth-token` (O-prev-3)         |
+  | `PREVIEW_SERVICE_GITHUB_APP_ID`                      | O-prev-1's App ID                                                        |
+  | `PREVIEW_SERVICE_GITHUB_APP_PRIVATE_KEY_SECRET_NAME` | `project-orchestrator-service-preview/github-app-private-key` (O-prev-3) |
+  | `PREVIEW_VIEW_TOKEN_SECRET_NAME`                     | `project-orchestrator-service-preview/view-token` (O-prev-3)             |
+  | `PREVIEW_MCP_PROJECTS`                               | `majodali/orchestrator-preview` (D150) — nothing else                    |
+
+  `AWS_REGION` is not repeated here: `.github/workflows/preview.yml`
+  reads the same repository variable production's workflows do (O8) —
+  there is one AWS account and region for both stacks.
+
+**Not yet proven.** Criteria 7 to 12 and 14 of node P2-N073 — the
+preview actually answering, a second run onto the same stack
+succeeding, production staying untouched, the write-isolation check,
+and no secret value leaking into a log or this document — need a real
+run against O-prev-1 to O-prev-5, which this write-up precedes (I8).
+Record each as it is observed, the same way Steps 4, 6 and 8 above do,
+rather than asserting it here.
+
 ## Pull-request checks (branch protection, O10)
 
 `.github/workflows/checks.yml` (node P2-N014, child B of node P2-N012,
