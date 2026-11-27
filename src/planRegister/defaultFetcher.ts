@@ -31,6 +31,8 @@ import { GithubAppCommitChecks } from "./commitChecks.js";
 import type { CommitChecks } from "./commitChecks.js";
 import { GithubAppPullRequests } from "./pullRequests.js";
 import type { PullRequests } from "./pullRequests.js";
+import { GithubAppPullRequestDetails } from "./pullRequestDetails.js";
+import type { PullRequestDetails } from "./pullRequestDetails.js";
 import { GithubAppRegisterFetcher } from "./registerFetcher.js";
 import type { CommitReader, RegisterFetcher } from "./registerFetcher.js";
 
@@ -118,6 +120,29 @@ export function getDefaultPullRequests(
   return pullRequests;
 }
 
+const pullRequestDetailsCache = new Map<string, GithubAppPullRequestDetails>();
+
+/** The pull request detail reader for one repository: its own App
+ * token (P2-N087). */
+export function getDefaultPullRequestDetails(
+  owner: string,
+  repo: string,
+  env: NodeJS.ProcessEnv = process.env,
+): PullRequestDetails {
+  const key = repoKey(owner, repo);
+  const cached = pullRequestDetailsCache.get(key);
+  if (cached) return cached;
+  const result = loadGithubAppConfig(env);
+  if (!result.ok) {
+    throw new GithubAppNotConfiguredError(result.missing);
+  }
+  const details = new GithubAppPullRequestDetails(
+    sharedTokenProvider(owner, repo, result.config),
+  );
+  pullRequestDetailsCache.set(key, details);
+  return details;
+}
+
 const writerCache = new Map<string, GithubAppGitWriter>();
 
 /** The writer the state store commits through, for one repository:
@@ -190,6 +215,7 @@ export function resetDefaultRegisterFetcherForTests(): void {
   fetcherCache.clear();
   writerCache.clear();
   pullRequestsCache.clear();
+  pullRequestDetailsCache.clear();
   checksCache.clear();
   tokenProviders.clear();
 }

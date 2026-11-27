@@ -23,6 +23,12 @@ import type {
   PullRequestState,
   PullRequests,
 } from "../../src/planRegister/pullRequests.js";
+import type {
+  PullRequestDetail,
+  PullRequestDetails,
+  PullRequestDetailsAnswer,
+  UnreadablePullRequest,
+} from "../../src/planRegister/pullRequestDetails.js";
 import { signViewCookie } from "../../src/view/viewAuth.js";
 import { VIEW_COOKIE_NAME } from "../../src/view/viewAuth.js";
 
@@ -187,6 +193,51 @@ export class FakePullRequests implements PullRequests {
       title: request.title,
     });
     return `${request.repo}#${900 + this.created.length}`;
+  }
+}
+
+/**
+ * A fake pull request detail reader (P2-N087): `set` names one `ref`
+ * readable with the given detail, `fail` names one unreadable with a
+ * reason; a `ref` named by neither is readable with sensible
+ * defaults, so most tests need only `set` the fields that matter.
+ */
+export class FakePullRequestDetails implements PullRequestDetails {
+  readonly details = new Map<string, Partial<PullRequestDetail>>();
+  readonly failures = new Map<string, string>();
+
+  set(ref: string, detail: Partial<PullRequestDetail>): void {
+    this.details.set(ref, detail);
+  }
+
+  fail(ref: string, reason: string): void {
+    this.failures.set(ref, reason);
+  }
+
+  async describe(refs: readonly string[]): Promise<PullRequestDetailsAnswer> {
+    const readable: PullRequestDetail[] = [];
+    const unreadable: UnreadablePullRequest[] = [];
+    for (const ref of refs) {
+      const reason = this.failures.get(ref);
+      if (reason !== undefined) {
+        unreadable.push({ ref, reason });
+        continue;
+      }
+      const m = /^([\w.-]+\/[\w.-]+)#(\d+)$/.exec(ref);
+      readable.push({
+        ref,
+        repository: m ? m[1]! : ref,
+        number: m ? Number(m[2]) : 0,
+        title: "A pull request",
+        description: "What it does.",
+        headSha: "e".repeat(40),
+        open: true,
+        mergeable: true,
+        checks: [],
+        ...this.details.get(ref),
+      });
+    }
+    return { readable, unreadable };
   }
 }
 

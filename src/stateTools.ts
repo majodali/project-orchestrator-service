@@ -68,6 +68,7 @@ import {
   GithubAppNotConfiguredError,
   getDefaultCommitReader,
   getDefaultGitWriter,
+  getDefaultPullRequestDetails,
   getDefaultPullRequests,
 } from "./planRegister/defaultFetcher.js";
 import { GitConflictError, GitWriteError } from "./planRegister/gitWriter.js";
@@ -77,6 +78,10 @@ import {
   ensureMerged,
   type PullRequests,
 } from "./planRegister/pullRequests.js";
+import type {
+  PullRequestDetails,
+  PullRequestDetailsAnswer,
+} from "./planRegister/pullRequestDetails.js";
 import { GithubFetchError } from "./planRegister/registerFetcher.js";
 import { requirePendingDocs } from "./pendingDocs.js";
 import { defaultFireRuntime } from "./fire/default.js";
@@ -111,6 +116,9 @@ export interface StateToolsOptions {
   store?: StateStore;
   /** Test-only: the pull request client. Production uses the App. */
   pullRequests?: PullRequests;
+  /** Test-only: the pull request detail reader (P2-N087), for a
+   * `verify` step's claim. Production uses the App. */
+  pullRequestDetails?: PullRequestDetails;
   now?: () => Date;
   /** The project this server's endpoint path resolved to (P2-N054,
    * design 1, S2): required in production, where `store` and
@@ -316,6 +324,13 @@ export function registerStateTools(
       return getDefaultPullRequests(owner, repo);
     })();
 
+  const pullRequestDetails = (): PullRequestDetails =>
+    options.pullRequestDetails ??
+    (() => {
+      const { owner, repo } = requireProject();
+      return getDefaultPullRequestDetails(owner, repo);
+    })();
+
   // Lazy, like `store()` and `pullRequests()` above, and for the same
   // reason: building the default runtime touches GitHub App
   // configuration (it shares the commit reader `plan_read` uses), and
@@ -430,6 +445,10 @@ export function registerStateTools(
             return toolError(
               `no node ${node} in orchestration/state.json at ${read.sha}`,
             );
+          // So a reviewer can read a verify claim's pull requests
+          // again later in the run, for instance after waiting for
+          // checks, without reopening the task (P2-N087).
+          const verification = await verificationPullRequests(state, n, true);
           return ok({
             ...base,
             node: {
@@ -444,6 +463,7 @@ export function registerStateTools(
                 .map((c) => c.id),
               tasks: state.tasks.filter((t) => t.node === n.id),
               decisions: state.decisions.filter((d) => d.node === n.id),
+              ...(verification ? { pullRequests: verification } : {}),
             },
           });
         }
@@ -593,17 +613,46 @@ export function registerStateTools(
       }),
   );
 
+  /** For a `verify` step's check node: its verified parent's pull
+   * requests, read in full through the App (P2-N087) — the
+   * description, the head commit, whether each is open and mergeable,
+   * and each check run's name and conclusion, so a reviewer's own
+   * scheduled task need not reach the pull request's repository
+   * itself. `undefined` when the node is not a check node (nothing to
+   * verify) or the caller did not ask for it. */
+  const verificationPullRequests = async (
+    state: State,
+    node: Node,
+    include: boolean,
+  ): Promise<PullRequestDetailsAnswer | undefined> => {
+    if (!include || node.kind !== "check" || node.parent === null) {
+      return undefined;
+    }
+    const refs = pullRequestsOf(state, node.parent);
+    if (refs.length === 0) return { readable: [], unreadable: [] };
+    // A failure to read GitHub never fails the claim (P2-N087,
+    // criterion 4): naming every ref unreadable, with why, is as far
+    // as a configuration problem or a network failure goes.
+    try {
+      return await pullRequestDetails().describe(refs);
+    } catch (err) {
+      const reason = describeError(err);
+      return { readable: [], unreadable: refs.map((ref) => ({ ref, reason })) };
+    }
+  };
+
   /** What a session needs to start on a node: the node in full, its
    * step and role, its documents, its ancestors, the tasks that ran on
    * it, and the decisions it reads first. */
-  function brief(
+  async function brief(
     state: State,
     node: Node,
     step: string,
     steps: string[],
     role: string,
     sha: string,
-  ): Record<string, unknown> {
+    includePullRequests = false,
+  ): Promise<Record<string, unknown>> {
     const classes = classifyAll(state);
     const byId = new Map(state.nodes.map((n) => [n.id, n]));
     // An execute step on a node under verification is the rework of
@@ -612,6 +661,11 @@ export function registerStateTools(
       step === "execute" && node.stage === "verifying"
         ? failedCheckNode(node, childrenOf(state))
         : undefined;
+    const verification = await verificationPullRequests(
+      state,
+      node,
+      includePullRequests,
+    );
     return {
       node: {
         ...node,
@@ -652,6 +706,7 @@ export function registerStateTools(
         })),
       decisions: decisionsForTask(state, node.id),
       standing: standingDecisions(state),
+      ...(verification ? { pullRequests: verification } : {}),
     };
   }
 
@@ -726,7 +781,7 @@ export function registerStateTools(
           sha: read.sha,
           fetchedAt: read.fetchedAt,
           staleClosed,
-          next: brief(
+          next: await brief(
             state,
             first.node,
             first.step,
@@ -799,14 +854,15 @@ export function registerStateTools(
           {
             taskId: done.task.id,
             moved: done.moved,
-            ...brief(
+            ...(await brief(
               state,
               node,
               input.step,
               [input.step],
               done.task.role ?? "",
               result.sha,
-            ),
+              input.step === "verify",
+            )),
           },
           input.session,
         );
