@@ -99,7 +99,7 @@ describe("the forms on the pages", () => {
     expect(html).toContain('data-decision-form="D001"');
     expect(html).toContain('action="/view/decision/D001/close"');
     expect(html).toMatch(
-      /<input type="radio" name="chosen" value="git" checked> git <span class="note">\(the default\)<\/span>/,
+      /<input type="radio" name="chosen" value="git" checked> <span class="pre">git<\/span> <span class="note">\(the default\)<\/span>/,
     );
     expect(html).toContain('name="chosen" value="__other__"');
     expect(html).toContain('name="standing"');

@@ -48,6 +48,25 @@ export function escapeHtml(value: string): string {
 }
 
 /**
+ * An author's free text (a node's note, a decision's question, a
+ * hold's reason, a task's summary, and the like): every character
+ * escaped, and a backtick-delimited run shown in the page's code
+ * style. Nothing else is interpreted. The caller wraps the result in
+ * an element carrying the `pre` class (`white-space:pre-wrap`, below)
+ * where the text's line breaks and blank lines matter.
+ */
+export function richText(value: string): string {
+  return value
+    .split(/(`[^`]+`)/g)
+    .map((part) =>
+      part.startsWith("`") && part.endsWith("`")
+        ? `<code>${escapeHtml(part.slice(1, -1))}</code>`
+        : escapeHtml(part),
+    )
+    .join("");
+}
+
+/**
  * The one style sheet. No declaration sets a width in CSS pixels, so
  * nothing forces a page wider than a 360-pixel phone screen (V12).
  * Long SHAs, refs and notes wrap instead of scrolling.
@@ -117,7 +136,9 @@ export const PAGE_CSS = [
   "th,td{border:1px solid var(--line);padding:4px 8px;text-align:left;vertical-align:top}",
   "th{background:var(--soft);color:var(--muted);font-weight:600}",
   "table.tasks th,table.tasks td{white-space:nowrap;overflow-wrap:normal}",
-  "table.tasks td:nth-child(6),table.tasks td:nth-child(7),table.tasks th:nth-child(7){white-space:normal;overflow-wrap:anywhere}",
+  "table.tasks td:nth-child(6),table.tasks td:nth-child(7),table.tasks th:nth-child(7){overflow-wrap:anywhere}",
+  "table.tasks td:nth-child(6){white-space:normal}",
+  "table.tasks td:nth-child(7){white-space:pre-wrap}",
   "form p{margin:0 0 10px}",
   "form.decide{margin:8px 0 2px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--soft);font-size:14px}",
   "form.decide p{margin:6px 0 0}",
