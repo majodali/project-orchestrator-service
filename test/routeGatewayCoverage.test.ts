@@ -6,15 +6,21 @@ import { describe, expect, it } from "vitest";
 import { createApp } from "../src/httpApp.js";
 
 /**
- * P2-N069, criterion 2: a path only answers from the service at the
- * production endpoint when API Gateway itself routes it — a path the
- * application registers but template.yaml does not route answers API
+ * P2-N069, criterion 2, and P2-N072 (its gateway-to-application
+ * direction): a path only answers from the service at the production
+ * endpoint when both sides agree it should route there. The
+ * application-to-gateway direction (below) catches a path the
+ * application registers but template.yaml does not route — API
  * Gateway's own 404 before the request ever reaches the Lambda (the
- * node's note, "what was observed", 2026-11-24). This reads what
- * `src/httpApp.ts` (and, through it, `src/view/routes.ts`) actually
- * registers on the Hono app, and template.yaml's own `RouteKey`s, so
- * a path newly registered but left unrouted fails here instead of
- * only in production.
+ * node's note, "what was observed", 2026-11-24). The
+ * gateway-to-application direction catches the opposite: a route key
+ * template.yaml declares that the application registers no path for,
+ * which would forward a request to the Lambda for a path the
+ * application itself then 404s. Both read what `src/httpApp.ts` (and,
+ * through it, `src/view/routes.ts`) actually registers on the Hono
+ * app, and template.yaml's own `RouteKey`s, so a path newly
+ * registered or newly routed, on either side, without its
+ * counterpart on the other, fails here instead of only in production.
  */
 
 const REPO_ROOT = path.resolve(fileURLToPath(import.meta.url), "..", "..");
@@ -86,26 +92,31 @@ function appRoutes(): { method: string; path: string }[] {
   return out;
 }
 
-/** Paths the application registers that this test does not require a
- * gateway route for, each with why (criterion 2: "An exemption, if
- * any is needed, is named in the test with its reason"). */
-const EXEMPT = new Map<string, string>([
-  [
-    "GET /view/*",
-    "the application's own fallback for any other /view path " +
-      '(src/view/routes.ts, "No page here yet"); whether it is also ' +
-      "routed at the gateway, so the gateway's own 404 never shows " +
-      "instead, is the implementer's choice (node P2-N069, criterion " +
-      "1), not a requirement this test enforces.",
-  ],
-]);
+/** Every exemption either direction's check takes, each naming the
+ * side it exempts (an application route, a gateway route key, or
+ * both as a pair) and the reason it stays — one place, consulted by
+ * both describe blocks below (P2-N072, criterion 5). */
+const EXEMPTIONS: { app?: string; gateway?: string; reason: string }[] = [
+  {
+    app: "GET /view/*",
+    gateway: "GET /view/{proxy+}",
+    reason:
+      "the application's own fallback for any other /view path " +
+      '(src/view/routes.ts, "No page here yet") and the gateway\'s ' +
+      "route key for it (template.yaml's ViewCatchAllRoute, node " +
+      "P2-N069 criterion 1) serve the same paths, but this check's " +
+      "path matching treats a literal `*` and a greedy `{proxy+}` as " +
+      "different shapes, so neither direction requires them to match " +
+      "each other exactly.",
+  },
+];
 
-describe("every path the application registers answers from a gateway route (P2-N069, criterion 2)", () => {
+describe("every path the application registers answers from a gateway route (P2-N069, criterion 2; P2-N072, the application-to-gateway direction)", () => {
   for (const { method, path: appPath } of appRoutes()) {
     const key = `${method} ${appPath}`;
-    const exemption = EXEMPT.get(key);
+    const exemption = EXEMPTIONS.find((e) => e.app === key);
     if (exemption !== undefined) {
-      it.skip(`${key} — exempt: ${exemption}`, () => {
+      it.skip(`${key} — exempt: ${exemption.reason}`, () => {
         /* not checked */
       });
       continue;
@@ -123,6 +134,34 @@ describe("every path the application registers answers from a gateway route (P2-
           `template.yaml matches it: at the production endpoint, API ` +
           `Gateway would answer its own 404 before the request reaches ` +
           `the service.`,
+      ).toBe(true);
+    });
+  }
+});
+
+describe("every route key in template.yaml routes to a path the application registers (P2-N072, the gateway-to-application direction)", () => {
+  for (const { method, path: routePath } of templateRoutes()) {
+    const key = `${method} ${routePath}`;
+    const exemption = EXEMPTIONS.find((e) => e.gateway === key);
+    if (exemption !== undefined) {
+      it.skip(`${key} — exempt: ${exemption.reason}`, () => {
+        /* not checked */
+      });
+      continue;
+    }
+    it(key, () => {
+      const routes = appRoutes();
+      const matched = routes.some(
+        (route) =>
+          methodMatches(route.method, method) &&
+          pathsMatch(route.path, routePath),
+      );
+      expect(
+        matched,
+        `${key} is a route key in template.yaml but the application ` +
+          `registers no path that matches it: at the production ` +
+          `endpoint, API Gateway would forward the request to the ` +
+          `Lambda, which would then answer its own 404.`,
       ).toBe(true);
     });
   }
