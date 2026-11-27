@@ -500,7 +500,8 @@ describe("a verify claim's pull requests (P2-N087)", () => {
     });
   });
 
-  it("carries each pull request's detail, whichever repository it is in", () => {
+  it("carries each pull request's detail, whichever repository it is in", async () => {
+    const SECOND_PR = "majodali/project-orchestrator-service#12";
     const state: State = {
       schema: 0,
       project: "majodali/project-orchestrator",
@@ -527,15 +528,56 @@ describe("a verify claim's pull requests (P2-N087)", () => {
       ],
       tasks: [
         task({ id: "T001", node: "P1-N002", pr: PR }),
-        task({
-          id: "T002",
-          node: "P1-N002",
-          pr: "majodali/project-orchestrator-service#12",
-        }),
+        task({ id: "T002", node: "P1-N002", pr: SECOND_PR }),
       ],
       decisions: [],
     };
     expect(checkState(state).findings).toEqual([]);
+    const repo = repoWith(state);
+    const details = new FakePullRequestDetails();
+    details.set(PR, {
+      title: "The part to build",
+      headSha: HEAD_1,
+      checks: [{ name: "build", conclusion: "success" }],
+    });
+    details.set(SECOND_PR, {
+      title: "The service's part of it",
+      headSha: HEAD_2,
+      checks: [{ name: "build", conclusion: "success" }],
+    });
+    const app = appOver(repo, new FakePullRequests(), details);
+    const opened = await call(app, "task_open", {
+      nodeId: "P1-N003",
+      step: "verify",
+    });
+    expect(opened.isError).toBeFalsy();
+    expect(opened.structuredContent!.pullRequests).toEqual({
+      readable: [
+        {
+          ref: PR,
+          repository: "majodali/project-orchestrator",
+          number: 51,
+          title: "The part to build",
+          description: "What it does.",
+          headSha: HEAD_1,
+          open: true,
+          mergeable: true,
+          checks: [{ name: "build", conclusion: "success" }],
+        },
+        {
+          ref: SECOND_PR,
+          repository: "majodali/project-orchestrator-service",
+          number: 12,
+          title: "The service's part of it",
+          description: "What it does.",
+          headSha: HEAD_2,
+          open: true,
+          mergeable: true,
+          checks: [{ name: "build", conclusion: "success" }],
+        },
+      ],
+      unreadable: [],
+    });
   });
 
   it("names an unreadable pull request, with the reason, and still commits the claim", async () => {
