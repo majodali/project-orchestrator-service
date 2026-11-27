@@ -1147,22 +1147,22 @@ repository:
 
 1. In the task's own API trigger row, generate its bearer token once
    (prefixed `sk-ant-oat01-`, shown once, not retrievable afterward).
-2. Store it in Secrets Manager under a name beginning
-   `project-orchestrator-service/fire/`, following the pattern this
-   repository's other secrets use (`docs/deploy-role-permissions.md`'s
-   `SecretsForDeployTimeResolutionAndSmokeToken` names three of them):
+2. Store it in Secrets Manager under a name of the form
+   `agent/<repository name>/<role>` — apart from this repository's own
+   secrets, which keep the `project-orchestrator-service/` prefix
+   (`docs/deploy-role-permissions.md`'s
+   `SecretsForDeployTimeResolutionAndSmokeToken` names three of them;
+   D166, P2-N049 rework):
 
    ```sh
    aws secretsmanager create-secret \
      --region "$AWS_REGION" \
-     --name project-orchestrator-service/fire/<repository-slug>-<role> \
+     --name agent/<repository name>/<role> \
      --secret-string "$TOKEN"
    ```
 
-   For the two D122 tasks:
-   `project-orchestrator-service/fire/project-orchestrator-planner`
-   and
-   `project-orchestrator-service/fire/project-orchestrator-implementer`.
+   For the two D122 tasks: `agent/project-orchestrator/planner` and
+   `agent/project-orchestrator/implementer`.
    The token is never committed, pasted into a session, or logged —
    only its secret's name is settings-file data.
 
@@ -1172,7 +1172,7 @@ repository:
    ```json
    {
      "trig": "<the trig_ identifier from O1>",
-     "secret": "project-orchestrator-service/fire/<repository-slug>-<role>"
+     "secret": "agent/<repository name>/<role>"
    }
    ```
 
@@ -1183,10 +1183,10 @@ repository:
    or absent section parses as disabled, never as a crash.
 
 **Verify:** `aws secretsmanager get-secret-value --region "$AWS_REGION"
---secret-id project-orchestrator-service/fire/<repository-slug>-<role>
+--secret-id agent/<repository name>/<role>
 --query SecretString --output text` prints the token you generated.
 The service's execution role can read only secrets under the
-`project-orchestrator-service/fire/` prefix (`template.yaml`'s
+`agent/project-orchestrator*` prefix (`template.yaml`'s
 `ReadFireTokens` statement on `McpFunction`) — a secret stored under
 any other name is unreadable to the fire check, and the deploy role
 needs no new permission for this (see
@@ -1205,7 +1205,7 @@ in place and no new secret, settings-file edit, or deploy is needed:
 ```sh
 aws secretsmanager put-secret-value \
   --region "$AWS_REGION" \
-  --secret-id project-orchestrator-service/fire/<repository-slug>-<role> \
+  --secret-id agent/<repository name>/<role> \
   --secret-string "$NEW_TOKEN"
 ```
 

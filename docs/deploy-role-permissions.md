@@ -601,8 +601,9 @@ deploy role: a fire token is read at runtime
 time the way the three secrets above are, so the deploy role itself
 never calls `GetSecretValue` on a fire secret. `template.yaml`'s
 `McpFunction.Properties.Policies` declares that grant directly, scoped
-to the `project-orchestrator-service/fire/*` secret-name prefix
-(`docs/runbook.md`, "Adding a scheduled task"). SAM renders a
+to the `agent/project-orchestrator*` secret-name prefix
+(`docs/runbook.md`, "Adding a scheduled task"; D166, P2-N049 rework).
+SAM renders a
 `Policies` entry as an inline policy on the generated execution role
 (`AWS::IAM::Role.Policies`), which CloudFormation applies with its own
 `iam:PutRolePolicy` / `iam:DeleteRolePolicy` calls against that role —
