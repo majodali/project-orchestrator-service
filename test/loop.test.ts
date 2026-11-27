@@ -917,6 +917,63 @@ describe("node_add", () => {
     expect(bad.isError).toBe(true);
     expect(bad.content[0]!.text).toContain("plan line");
   });
+
+  it("takes a repository of its own in the same write, so task_next answers it for that repository and not for the coordinating one (P2-N086)", async () => {
+    const repo = repoWith(plan());
+    const app = appOver(repo);
+    // P1-N001 resolves to the project, the coordinating repository
+    // (plan()'s nodes carry no repository of their own).
+    await call(app, "node_add", {
+      parentId: "P1-N001",
+      title: "Another repository's part",
+      outcome: "The part exists.",
+      stage: "specified",
+      repository: "majodali/project-orchestrator-service",
+    });
+    expect(
+      stateAtHead(repo).nodes.find((n) => n.id === "P1-N005"),
+    ).toMatchObject({ repository: "majodali/project-orchestrator-service" });
+    expect(
+      candidates(
+        stateAtHead(repo),
+        "implementer",
+        "majodali/project-orchestrator-service",
+      ).map((c) => c.node.id),
+    ).toContain("P1-N005");
+    expect(
+      candidates(
+        stateAtHead(repo),
+        "implementer",
+        "majodali/project-orchestrator",
+      ).map((c) => c.node.id),
+    ).not.toContain("P1-N005");
+  });
+
+  it("takes a null repository of its own, overriding a parent's, and refuses one not shaped owner/name", async () => {
+    const state = plan();
+    state.nodes.find((n) => n.id === "P1-N001")!.repository =
+      "majodali/project-orchestrator-service";
+    const repo = repoWith(state);
+    const app = appOver(repo);
+    const child = await call(app, "node_add", {
+      parentId: "P1-N001",
+      title: "Back to the coordinating repository",
+      outcome: "The part exists.",
+      repository: null,
+    });
+    expect(
+      stateAtHead(repo).nodes.find(
+        (n) => n.id === child.structuredContent!.nodeId,
+      ),
+    ).toMatchObject({ repository: null });
+    const bad = await call(app, "node_add", {
+      parentId: "P1-N001",
+      title: "Badly named repository",
+      outcome: "The part exists.",
+      repository: "not-a-repo",
+    });
+    expect(bad.isError).toBe(true);
+  });
 });
 
 describe("the owner's acceptance", () => {

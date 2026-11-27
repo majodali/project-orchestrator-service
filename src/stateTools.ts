@@ -100,7 +100,7 @@ export const SERVER_INSTRUCTIONS = [
   "Every write to a node or a decision (`node_update`, `node_add`, `node_remove`, `decision_open`, `decision_close`) names the open task it is part of as `task`, and is refused without one. The only exception is a change the owner dictated to you in this conversation: pass their words as `ownerInstruction`. Being asked to work on a node is not that: claim it.",
   "A node that turns out to be obsolete is removed with `node_remove`, not parked or held; git keeps its history. A hold or a park is for work that will resume.",
   "To move a document a node links: under your open execute task, call `node_update` on that node with `docsOnMerge` naming the new path, then move the file in your task's pull request. The old path is cleared at once and the new one is set when your node is done. Never move a linked file without it: the state file would name a path that is gone.",
-  "A node's `repository`, the repository its work is claimed from, is set or cleared with `node_update`, under an open task or the owner's words; a child's defaults to its parent's at `node_add`. Changing it during another session's open task counts as a changed scope, like the title, outcome, parent, dependencies or documents.",
+  "A node's `repository`, the repository its work is claimed from, is set or cleared with `node_update`, under an open task or the owner's words; a child's defaults to its parent's at `node_add`, unless that write names its own repository, for a child whose work is in another repository than its parent's. Changing it during another session's open task counts as a changed scope, like the title, outcome, parent, dependencies or documents.",
   "Do not estimate token counts at `task_close`: the repository's hook measures a task's cost and records it with `task_cost`.",
   "Pass `session` on every write: your session's own name or identifier, so the journal says who wrote.",
 ].join("\n");
@@ -1054,6 +1054,18 @@ export function registerStateTools(
           .describe("The plan line of a root node, such as P5."),
         title: z.string().min(1),
         outcome: z.string().min(1).nullable(),
+        repository: z
+          .string()
+          .regex(/^[\w.-]+\/[\w.-]+$/, "owner/name")
+          .nullable()
+          .optional()
+          .describe(
+            "The repository the node's work is claimed from, owner/name, " +
+              "or null for the project's coordinating repository. Use it " +
+              "for a child whose work is in another repository than its " +
+              "parent's. When absent, a child takes its parent's " +
+              "repository and a root takes the project's.",
+          ),
         after: z.array(nodeId).optional(),
         docs: z
           .object({

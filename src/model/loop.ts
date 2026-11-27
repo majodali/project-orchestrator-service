@@ -886,6 +886,11 @@ export interface AddInput {
   line?: string;
   title: string;
   outcome: string | null;
+  /** The repository the node's work is claimed from, `owner/name`, or
+   * null for the project's coordinating repository. When absent, a
+   * child takes its parent's repository, as a root takes the
+   * project's (P2-N086). */
+  repository?: string | null;
   after?: string[];
   docs?: { plan: string | null; spec: string | null };
   stage?: "identified" | "planned" | "specified";
@@ -927,9 +932,12 @@ export function addNode(
     kind: "work",
     title: input.title,
     // A child's work is claimed from its parent's repository by
-    // default (as a check node's is, enterVerifying); a root starts
-    // in the project's coordinating repository.
-    repository: parentRepository,
+    // default (as a check node's is, enterVerifying), and a root
+    // starts in the project's coordinating repository, unless this
+    // write names one of its own (P2-N086): a child whose work is in
+    // another repository than its parent's.
+    repository:
+      input.repository !== undefined ? input.repository : parentRepository,
     outcome: input.outcome,
     stage: input.stage ?? "identified",
     parent: input.parentId,
