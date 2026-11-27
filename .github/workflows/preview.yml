@@ -1,0 +1,256 @@
+name: Preview deploy
+
+# node P2-N073 (child B of P2-N063, docs/specs/p2-n063-verify-before-deploy.md
+# in majodali/project-orchestrator, amended by findings F1 and F3 and by
+# D157 and D151). An explicit dispatch deploys one same-repository pull
+# request's merge ref to a second, preview-only stack — never
+# production — so a change can be seen running before it is merged. The
+# same file also runs a scheduled, no-pull-request deploy of `main`
+# itself to the same stack (criterion 12): the stack is torn down by
+# .github/workflows/preview-teardown.yml, never recreated by deleting
+# and redeploying here, because deleting changes the HTTP API id and so
+# the preview's own endpoint (F3) — see docs/runbook.md's "Preview
+# deployments" section for the full teardown/refresh procedure and the
+# `PREVIEW_DEPLOYS` repository variable that lets the owner hold the
+# scheduled run off after a deliberate teardown.
+#
+# D151's four bounds, all enforced here: explicit dispatch (or the
+# schedule trigger) only, never a `pull_request` event; GitHub always
+# runs the dispatched/scheduled workflow's own definition from the
+# default branch, never the ref being deployed, so this file is always
+# `main`'s; a pull request from any other repository is refused by head
+# repository, named, before any AWS credential exists (criterion 2); and
+# D149/D157's preview-scoped credential — the `preview` Environment, a
+# second deploy role trusted only for that Environment's own OIDC
+# subject, never the one the production deploy role trusts.
+
+"on":
+  workflow_dispatch:
+    inputs:
+      pull_request_number:
+        description: >
+          The number of the same-repository pull request to deploy to
+          the preview stack.
+        required: true
+  schedule:
+    # Once a day: redeploys `main` to the preview stack, never deletes
+    # it (criterion 12). Skips itself when PREVIEW_DEPLOYS is "false"
+    # (set by the owner as part of a deliberate teardown — see
+    # docs/runbook.md) rather than silently giving the stack a new
+    # endpoint before the owner is ready for one.
+    - cron: "17 6 * * *"
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: preview-stack
+  cancel-in-progress: false
+
+env:
+  STACK_NAME: project-orchestrator-service-preview
+
+jobs:
+  deploy:
+    name: Deploy to the preview stack
+    runs-on: ubuntu-latest
+    environment: preview
+    steps:
+      # ---- Criterion 2: decide what to deploy, and refuse a pull
+      # request whose head repository is not this one, naming it,
+      # before any AWS credential is configured below. No step before
+      # this one touches AWS.
+      - name: Decide the ref, and refuse a pull request from elsewhere
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.inputs.pull_request_number }}
+          REPO: ${{ github.repository }}
+          PREVIEW_DEPLOYS: ${{ vars.PREVIEW_DEPLOYS }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            if [ "${PREVIEW_DEPLOYS:-true}" = "false" ]; then
+              echo "PREVIEW_DEPLOYS is 'false' — skipping the scheduled refresh. See docs/runbook.md's \"Preview deployments\" section to resume."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "ref=refs/heads/main" >> "$GITHUB_OUTPUT"
+            echo "label=main (scheduled refresh)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "${PR_NUMBER:-}" ]; then
+            echo "pull_request_number is required for a manual dispatch." >&2
+            exit 1
+          fi
+          HEAD_REPO="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq .head.repo.full_name)"
+          if [ "$HEAD_REPO" != "$REPO" ]; then
+            echo "Refusing: pull request #${PR_NUMBER}'s head repository is '${HEAD_REPO}', not '${REPO}'. Nothing was deployed." >&2
+            exit 1
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "ref=refs/pull/${PR_NUMBER}/merge" >> "$GITHUB_OUTPUT"
+          echo "label=pull request #${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ steps.gate.outputs.ref }}
+          persist-credentials: false
+
+      - name: Set up Node.js
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.gate.outputs.skip != 'true'
+        run: npm ci
+
+      - name: Set up AWS SAM CLI
+        if: steps.gate.outputs.skip != 'true'
+        uses: aws-actions/setup-sam@89ddb14d60e682855e3fea4be85b3c56485de310 # v3
+
+      # ---- Criterion 3: the role is assumed only after `npm ci`, in
+      # the `preview` GitHub Environment (set on this job above), so
+      # the token's own "sub" carries the environment form D157
+      # requires — see the next step.
+      - name: Assume the preview deploy role
+        if: steps.gate.outputs.skip != 'true'
+        id: assume-role
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
+        with:
+          role-to-assume: ${{ vars.AWS_PREVIEW_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # ---- Criterion 4: print the claim's own "sub", and confirm it
+      # is the environment form ending ":environment:preview" — the
+      # subject the production deploy role's trust policy does not
+      # accept (D157; docs/deploy-role-permissions-preview.md).
+      - name: Print the OIDC claim's sub
+        if: steps.gate.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "No OIDC request token/URL available — this job needs 'permissions: id-token: write' (it has it; this would mean GitHub itself withheld it)." >&2
+            exit 1
+          fi
+          RESPONSE="$(curl -sS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")"
+          JWT="$(RESPONSE_JSON="$RESPONSE" node -e '
+            const r = JSON.parse(process.env.RESPONSE_JSON);
+            process.stdout.write(r.value || "");
+          ')"
+          echo "::add-mask::${JWT}"
+          SUB="$(JWT="$JWT" node -e '
+            const parts = process.env.JWT.split(".");
+            const payload = Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+            process.stdout.write(JSON.parse(payload).sub || "");
+          ')"
+          echo "== OIDC claim sub: ${SUB} =="
+          case "$SUB" in
+            *:environment:preview)
+              echo "OK — ends ':environment:preview', the environment form D157 requires." ;;
+            *)
+              echo "UNEXPECTED: this token's 'sub' does not end ':environment:preview' — see D157 and docs/deploy-role-permissions-preview.md." >&2
+              exit 1 ;;
+          esac
+
+      # ---- Criterion 1: STACK_NAME (workflow env, above), the
+      # preview's own secret names, App ID and project list, and
+      # nothing else. AWS_REGION is the one variable shared with
+      # production (same account and region; O-prev-5 names no
+      # separate preview region).
+      - name: Deploy
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AUTH_TOKEN_SECRET_NAME: ${{ vars.PREVIEW_AUTH_TOKEN_SECRET_NAME }}
+          GITHUB_APP_ID: ${{ vars.PREVIEW_SERVICE_GITHUB_APP_ID }}
+          GITHUB_APP_PRIVATE_KEY_SECRET_NAME: ${{ vars.PREVIEW_SERVICE_GITHUB_APP_PRIVATE_KEY_SECRET_NAME }}
+          VIEW_TOKEN_SECRET_NAME: ${{ vars.PREVIEW_VIEW_TOKEN_SECRET_NAME }}
+          MCP_PROJECTS: ${{ vars.PREVIEW_MCP_PROJECTS }}
+        run: ./scripts/deploy.sh
+
+      - name: Read stack outputs
+        if: steps.gate.outputs.skip != 'true'
+        id: stack-outputs
+        run: |
+          set -euo pipefail
+          FUNCTION_NAME="$(aws cloudformation describe-stacks \
+            --region "$AWS_REGION" --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='McpFunctionName'].OutputValue" \
+            --output text)"
+          PREPROD_ENDPOINT="$(aws cloudformation describe-stacks \
+            --region "$AWS_REGION" --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='PreprodEndpoint'].OutputValue" \
+            --output text)"
+          ENDPOINT="$(aws cloudformation describe-stacks \
+            --region "$AWS_REGION" --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='Endpoint'].OutputValue" \
+            --output text)"
+          echo "function-name=${FUNCTION_NAME}" >> "$GITHUB_OUTPUT"
+          echo "preprod-endpoint=${PREPROD_ENDPOINT}" >> "$GITHUB_OUTPUT"
+          echo "== Preview endpoint: ${ENDPOINT} =="
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+
+      # ---- Criterion 8, first half: publish and point the preview's
+      # own `preprod` alias at the new version.
+      - name: Point the preview's preprod at the new version
+        if: steps.gate.outputs.skip != 'true'
+        id: publish
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          FUNCTION_NAME: ${{ steps.stack-outputs.outputs.function-name }}
+        run: |
+          set -euo pipefail
+          NEW_VERSION="$(aws lambda publish-version \
+            --region "$AWS_REGION" --function-name "$FUNCTION_NAME" \
+            --query Version --output text)"
+          echo "Published version: ${NEW_VERSION}"
+          aws lambda update-alias \
+            --region "$AWS_REGION" --function-name "$FUNCTION_NAME" \
+            --name preprod --function-version "$NEW_VERSION" >/dev/null
+          echo "preview's preprod now points at version ${NEW_VERSION}."
+          echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+
+      # ---- Criterion 8, second half: smoke-test the preview Function
+      # URL with the preview's own secrets, never production's.
+      - name: Smoke test — preview Function URL
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          SERVICE_URL: ${{ steps.stack-outputs.outputs.preprod-endpoint }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AUTH_TOKEN_SECRET_NAME: ${{ vars.PREVIEW_AUTH_TOKEN_SECRET_NAME }}
+          VIEW_TOKEN_SECRET_NAME: ${{ vars.PREVIEW_VIEW_TOKEN_SECRET_NAME }}
+        run: ./scripts/smoke-test.sh
+
+      # ---- Criterion 8, third half: promote the preview's own `live`,
+      # only reached if the smoke test above passed.
+      - name: Promote — repoint the preview's live
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          FUNCTION_NAME: ${{ steps.stack-outputs.outputs.function-name }}
+          NEW_VERSION: ${{ steps.publish.outputs.version }}
+        run: |
+          set -euo pipefail
+          LIVE_BEFORE="$(aws lambda get-alias \
+            --region "$AWS_REGION" --function-name "$FUNCTION_NAME" \
+            --name live --query FunctionVersion --output text)"
+          echo "preview's live currently points at version ${LIVE_BEFORE}."
+          aws lambda update-alias \
+            --region "$AWS_REGION" --function-name "$FUNCTION_NAME" \
+            --name live --function-version "$NEW_VERSION" >/dev/null
+          LIVE_AFTER="$(aws lambda get-alias \
+            --region "$AWS_REGION" --function-name "$FUNCTION_NAME" \
+            --name live --query FunctionVersion --output text)"
+          echo "preview's live now points at version ${LIVE_AFTER} (promoted from ${LIVE_BEFORE})."

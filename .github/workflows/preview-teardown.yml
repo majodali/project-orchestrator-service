@@ -1,0 +1,55 @@
+name: Preview teardown
+
+# Deletes the preview stack (node P2-N073, criterion 12). The scheduled
+# run in .github/workflows/preview.yml redeploys `main` to this same
+# stack once a day — it never deletes it, because deleting changes the
+# HTTP API's id, and so the preview's own endpoint (F3). This workflow
+# is the only thing in this repository that deletes that stack.
+#
+# Before dispatching this: set the repository variable
+# `PREVIEW_DEPLOYS` to "false" (Settings → Secrets and variables →
+# Actions → Variables), or the next scheduled run in preview.yml
+# recreates the stack — with a new endpoint — the same day. Set it back
+# to "true" when you want the preview back; see docs/runbook.md's
+# "Preview deployments" section.
+#
+# Uses the same preview-scoped deploy role as preview.yml (D149/D157),
+# never the production deploy role, and shares that workflow's
+# concurrency group because there is one preview stack (criterion 3's
+# reasoning, applied here too).
+
+"on":
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: preview-stack
+  cancel-in-progress: false
+
+jobs:
+  teardown:
+    name: Delete the preview stack
+    runs-on: ubuntu-latest
+    environment: preview
+    env:
+      STACK_NAME: project-orchestrator-service-preview
+    steps:
+      - name: Assume the preview deploy role
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
+        with:
+          role-to-assume: ${{ vars.AWS_PREVIEW_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Delete the stack
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          echo "== Deleting stack '${STACK_NAME}' — this does not touch the production stack or the shared SAM-managed artifact stack =="
+          aws cloudformation delete-stack --region "$AWS_REGION" --stack-name "$STACK_NAME"
+          aws cloudformation wait stack-delete-complete --region "$AWS_REGION" --stack-name "$STACK_NAME"
+          echo "Stack '${STACK_NAME}' deleted. The preview's endpoint is gone until the next deploy recreates it with a new one."
+          echo "Reminder: PREVIEW_DEPLOYS should be 'false' now, or the next scheduled run in preview.yml recreates the stack today."
