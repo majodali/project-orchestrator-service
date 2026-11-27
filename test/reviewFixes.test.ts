@@ -10,6 +10,7 @@ import { SERVER_INSTRUCTIONS } from "../src/stateTools.js";
 import { node, stateJson, task } from "./support/states.js";
 import {
   FAKE_MCP_TOKEN,
+  FakePullRequestDetails,
   FakePullRequests,
   FakeRepository,
   NOW,
@@ -65,10 +66,14 @@ function repoWith(state: State): FakeRepository {
   return repo;
 }
 
-function appOver(repo: FakeRepository, pullRequests = new FakePullRequests()) {
+function appOver(
+  repo: FakeRepository,
+  pullRequests = new FakePullRequests(),
+  pullRequestDetails = new FakePullRequestDetails(),
+) {
   const store = new StateStore({ reader: repo, writer: repo, now: () => NOW });
   return createApp({
-    state: { store, now: () => NOW, pullRequests },
+    state: { store, now: () => NOW, pullRequests, pullRequestDetails },
     view: { reader: repo, store, pullRequests, now: () => NOW },
   });
 }
@@ -111,8 +116,9 @@ async function executed(
   repo: FakeRepository,
   prs: FakePullRequests,
   head = HEAD_1,
+  pullRequestDetails = new FakePullRequestDetails(),
 ) {
-  const app = appOver(repo, prs);
+  const app = appOver(repo, prs, pullRequestDetails);
   prs.set(PR, { headSha: head });
   await call(app, "task_open", { nodeId: "P1-N002", step: "execute" });
   const closed = await call(app, "task_close", {
@@ -449,6 +455,177 @@ describe("smaller corrections", () => {
     );
     expect(SERVER_INSTRUCTIONS).toContain(
       "commits made after its last execute task closed",
+    );
+  });
+});
+
+describe("a verify claim's pull requests (P2-N087)", () => {
+  it("carries the pull request's description, head commit and checks", async () => {
+    const repo = repoWith(plan());
+    const prs = new FakePullRequests();
+    const details = new FakePullRequestDetails();
+    const app = await executed(repo, prs, HEAD_1, details);
+    details.set(PR, {
+      title: "The part to build",
+      description: "What this pull request does.",
+      headSha: HEAD_1,
+      checks: [
+        { name: "build", conclusion: "success" },
+        { name: "lint", conclusion: "failure" },
+      ],
+    });
+    const opened = await call(app, "task_open", {
+      nodeId: "P1-N003",
+      step: "verify",
+    });
+    expect(opened.isError).toBeFalsy();
+    expect(opened.structuredContent!.pullRequests).toEqual({
+      readable: [
+        {
+          ref: PR,
+          repository: "majodali/project-orchestrator",
+          number: 51,
+          title: "The part to build",
+          description: "What this pull request does.",
+          headSha: HEAD_1,
+          open: true,
+          mergeable: true,
+          checks: [
+            { name: "build", conclusion: "success" },
+            { name: "lint", conclusion: "failure" },
+          ],
+        },
+      ],
+      unreadable: [],
+    });
+  });
+
+  it("carries each pull request's detail, whichever repository it is in", async () => {
+    const SECOND_PR = "majodali/project-orchestrator-service#12";
+    const state: State = {
+      schema: 0,
+      project: "majodali/project-orchestrator",
+      nodes: [
+        node({
+          id: "P1-N001",
+          title: "The line of work",
+          stage: "broken-down",
+        }),
+        node({
+          id: "P1-N002",
+          title: "The part to build",
+          stage: "verifying",
+          parent: "P1-N001",
+        }),
+        node({
+          id: "P1-N003",
+          title: "Verification of The part to build",
+          kind: "check",
+          stage: "specified",
+          parent: "P1-N002",
+          outcome: "P1-N002 is verified against its outcome.",
+        }),
+      ],
+      tasks: [
+        task({ id: "T001", node: "P1-N002", pr: PR }),
+        task({ id: "T002", node: "P1-N002", pr: SECOND_PR }),
+      ],
+      decisions: [],
+    };
+    expect(checkState(state).findings).toEqual([]);
+    const repo = repoWith(state);
+    const details = new FakePullRequestDetails();
+    details.set(PR, {
+      title: "The part to build",
+      headSha: HEAD_1,
+      checks: [{ name: "build", conclusion: "success" }],
+    });
+    details.set(SECOND_PR, {
+      title: "The service's part of it",
+      headSha: HEAD_2,
+      checks: [{ name: "build", conclusion: "success" }],
+    });
+    const app = appOver(repo, new FakePullRequests(), details);
+    const opened = await call(app, "task_open", {
+      nodeId: "P1-N003",
+      step: "verify",
+    });
+    expect(opened.isError).toBeFalsy();
+    expect(opened.structuredContent!.pullRequests).toEqual({
+      readable: [
+        {
+          ref: PR,
+          repository: "majodali/project-orchestrator",
+          number: 51,
+          title: "The part to build",
+          description: "What it does.",
+          headSha: HEAD_1,
+          open: true,
+          mergeable: true,
+          checks: [{ name: "build", conclusion: "success" }],
+        },
+        {
+          ref: SECOND_PR,
+          repository: "majodali/project-orchestrator-service",
+          number: 12,
+          title: "The service's part of it",
+          description: "What it does.",
+          headSha: HEAD_2,
+          open: true,
+          mergeable: true,
+          checks: [{ name: "build", conclusion: "success" }],
+        },
+      ],
+      unreadable: [],
+    });
+  });
+
+  it("names an unreadable pull request, with the reason, and still commits the claim", async () => {
+    const repo = repoWith(plan());
+    const prs = new FakePullRequests();
+    const details = new FakePullRequestDetails();
+    details.fail(PR, "could not read it: HTTP 404");
+    const app = await executed(repo, prs, HEAD_1, details);
+    const opened = await call(app, "task_open", {
+      nodeId: "P1-N003",
+      step: "verify",
+    });
+    expect(opened.isError).toBeFalsy();
+    expect(opened.structuredContent!.taskId).toBe("T002");
+    expect(opened.structuredContent!.pullRequests).toEqual({
+      readable: [],
+      unreadable: [{ ref: PR, reason: "could not read it: HTTP 404" }],
+    });
+  });
+
+  it("is not fetched for task_next's preview, only for the claim itself", async () => {
+    const repo = repoWith(plan());
+    const prs = new FakePullRequests();
+    const details = new FakePullRequestDetails();
+    const app = await executed(repo, prs, HEAD_1, details);
+    const next = await call(app, "task_next", { role: "reviewer" });
+    expect(next.structuredContent!.next).toMatchObject({ step: "verify" });
+    expect(
+      (next.structuredContent!.next as Record<string, unknown>).pullRequests,
+    ).toBeUndefined();
+  });
+
+  it("answers the same from plan_read, so a reviewer can read it again later in the run", async () => {
+    const repo = repoWith(plan());
+    const prs = new FakePullRequests();
+    const details = new FakePullRequestDetails();
+    const app = await executed(repo, prs, HEAD_1, details);
+    details.set(PR, { title: "The part to build" });
+    const opened = await call(app, "task_open", {
+      nodeId: "P1-N003",
+      step: "verify",
+    });
+    const read = await call(app, "plan_read", { node: "P1-N003" });
+    expect(read.isError).toBeFalsy();
+    expect(
+      (read.structuredContent!.node as Record<string, unknown>).pullRequests,
+    ).toEqual(
+      (opened.structuredContent as Record<string, unknown>).pullRequests,
     );
   });
 });
