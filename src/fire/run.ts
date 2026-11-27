@@ -31,9 +31,20 @@ import type { Decision, State } from "../model/schema.js";
 import type { StateStore } from "../model/store.js";
 import { GithubFetchError } from "../planRegister/registerFetcher.js";
 import type { CommitReader } from "../planRegister/registerFetcher.js";
-import { decideFires, type FireAttempt, type FireReport } from "./decide.js";
+import {
+  ACKNOWLEDGE_ANSWER,
+  decideFires,
+  REPORT_QUESTION_PREFIX,
+  RUN_NOW_ANSWER,
+  type FireAttempt,
+  type FireReport,
+} from "./decide.js";
 import { FireHttpError, type FireFn } from "./client.js";
-import { parseJournal } from "./ledger.js";
+import {
+  lastLineDecisionClose,
+  parseDecisionCloses,
+  parseJournal,
+} from "./ledger.js";
 import { parseFireSettings } from "./settings.js";
 
 const SETTINGS_PATH = "orchestration/orchestrator.json";
@@ -67,11 +78,6 @@ function isoNoMillis(date: Date): string {
   return date.toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
-const REPORT_QUESTION_PREFIX: Record<FireReport["reason"], string> = {
-  "no-task-configured": "Fire: no scheduled task is configured",
-  "too-many-attempts": "Fire: too many bare attempts",
-};
-
 function hasOpenReport(state: State, nodeId: string): boolean {
   const prefix = REPORT_QUESTION_PREFIX["too-many-attempts"];
   return state.decisions.some(
@@ -96,8 +102,8 @@ async function reportToOwner(
         id,
         node: report.node.id,
         question: `${REPORT_QUESTION_PREFIX[report.reason]}: ${report.detail}.`,
-        options: ["acknowledge", "fire it by hand with Run now"],
-        default: "acknowledge",
+        options: [ACKNOWLEDGE_ANSWER, RUN_NOW_ANSWER],
+        default: ACKNOWLEDGE_ANSWER,
         chosen: null,
         decided: null,
         rationale:
@@ -136,8 +142,18 @@ export async function runFireCheck(
 
   const journalText = await store.readJournalAt(read.sha);
   const { fired, fire429 } = parseJournal(journalText);
+  const decisionCloses = parseDecisionCloses(journalText);
+  const lastDecisionClose = lastLineDecisionClose(journalText);
   const now = runtime.now();
-  const plan = decideFires(state, settings, fired, fire429, now);
+  const plan = decideFires(
+    state,
+    settings,
+    fired,
+    fire429,
+    now,
+    decisionCloses,
+    lastDecisionClose,
+  );
 
   for (const report of plan.reports) {
     if (report.reason === "no-task-configured") {

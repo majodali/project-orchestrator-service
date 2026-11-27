@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import { MAX_FIRES_PER_WRITE, decideFires } from "../src/fire/decide.js";
-import type { Fire429Line, FiredLine } from "../src/fire/ledger.js";
+import type {
+  DecisionCloseLine,
+  Fire429Line,
+  FiredLine,
+} from "../src/fire/ledger.js";
 import {
   DISABLED_FIRE_SETTINGS,
   type FireSettings,
 } from "../src/fire/settings.js";
 import type { State } from "../src/model/schema.js";
-import { node, task } from "./support/states.js";
+import { decision, node, task } from "./support/states.js";
 
 const NOW = new Date("2026-11-24T12:00:00Z");
 const REPO = "majodali/project-orchestrator-service";
@@ -281,6 +285,188 @@ describe("decideFires", () => {
       NOW,
     );
     expect(plan.attempts).toHaveLength(1);
+  });
+
+  describe("recovery after an acknowledged report (P2-N082)", () => {
+    // A separate clock from the file's own NOW (2026-11-24): these
+    // fixtures replay P2-N033's own dates, 2026-11-27.
+    const RECOVERY_NOW = new Date("2026-11-27T11:22:35Z");
+
+    const REPORT_QUESTION =
+      "Fire: too many bare attempts: P1-N001 execute has been fired twice since its last close with no task opened.";
+
+    function stateWithClosedReport(chosen: string): State {
+      const state = specifiedState();
+      state.decisions.push(
+        decision({
+          id: "D173",
+          node: "P1-N001",
+          question: REPORT_QUESTION,
+          chosen,
+          decided: "2026-11-27",
+        }),
+      );
+      return state;
+    }
+
+    const OLD_FIRES: FiredLine[] = [
+      {
+        ts: "2026-11-27T09:05:41Z",
+        node: "P1-N001",
+        step: "execute",
+        task: REF.trig,
+        session: null,
+      },
+      {
+        ts: "2026-11-27T11:06:20Z",
+        node: "P1-N001",
+        step: "execute",
+        task: REF.trig,
+        session: null,
+      },
+    ];
+
+    const REPORT_CLOSED: DecisionCloseLine = {
+      ts: "2026-11-27T11:22:31Z",
+      node: "P1-N001",
+      decisionId: "D173",
+      chosen: "acknowledge",
+    };
+
+    it("fires once, and opens no report, on the write that closes the report (criterion 2)", () => {
+      const plan = decideFires(
+        stateWithClosedReport("acknowledge"),
+        settingsWith(),
+        OLD_FIRES,
+        [],
+        RECOVERY_NOW,
+        [REPORT_CLOSED],
+        REPORT_CLOSED,
+      );
+      expect(plan.attempts).toHaveLength(1);
+      expect(plan.reports).toEqual([]);
+    });
+
+    it("only counts fires since the report's closing, not since the node's last close", () => {
+      // Two bare fires stood before the close; none since. Counting
+      // them again would report right back rather than recovering.
+      const plan = decideFires(
+        stateWithClosedReport("acknowledge"),
+        settingsWith(),
+        OLD_FIRES,
+        [],
+        RECOVERY_NOW,
+        [REPORT_CLOSED],
+        null, // a later write, not the one that closed the report
+      );
+      expect(plan.attempts).toHaveLength(1);
+      expect(plan.reports).toEqual([]);
+    });
+
+    it("reports again once two further bare fires stand since the restart (criterion 3)", () => {
+      const fired: FiredLine[] = [
+        ...OLD_FIRES,
+        {
+          ts: "2026-11-27T11:30:00Z", // after the report's closing
+          node: "P1-N001",
+          step: "execute",
+          task: REF.trig,
+          session: null,
+        },
+        {
+          ts: "2026-11-27T12:15:00Z",
+          node: "P1-N001",
+          step: "execute",
+          task: REF.trig,
+          session: null,
+        },
+      ];
+      const plan = decideFires(
+        stateWithClosedReport("acknowledge"),
+        settingsWith(),
+        fired,
+        [],
+        new Date("2026-11-27T13:00:00Z"),
+        [REPORT_CLOSED],
+        null,
+      );
+      expect(plan.attempts).toEqual([]);
+      expect(plan.reports).toHaveLength(1);
+      expect(plan.reports[0]?.reason).toBe("too-many-attempts");
+    });
+
+    it('restarts the count the same way for "fire it by hand with Run now"', () => {
+      const runNowClosed: DecisionCloseLine = {
+        ...REPORT_CLOSED,
+        chosen: "fire it by hand with Run now",
+      };
+      const plan = decideFires(
+        stateWithClosedReport("fire it by hand with Run now"),
+        settingsWith(),
+        OLD_FIRES,
+        [],
+        RECOVERY_NOW,
+        [runNowClosed],
+        null, // a later write, not the one that closed the report
+      );
+      expect(plan.attempts).toHaveLength(1);
+      expect(plan.reports).toEqual([]);
+    });
+
+    it('does not fire on the write that closes the report with "fire it by hand with Run now" (criterion 4)', () => {
+      const runNowClosed: DecisionCloseLine = {
+        ...REPORT_CLOSED,
+        chosen: "fire it by hand with Run now",
+      };
+      const plan = decideFires(
+        stateWithClosedReport("fire it by hand with Run now"),
+        settingsWith(),
+        OLD_FIRES,
+        [],
+        RECOVERY_NOW,
+        [runNowClosed],
+        runNowClosed, // this round's own trigger was that very write
+      );
+      expect(plan.attempts).toEqual([]);
+      expect(plan.reports).toEqual([]);
+    });
+
+    it("fires normally on the next write after a Run-now hand-off", () => {
+      const runNowClosed: DecisionCloseLine = {
+        ...REPORT_CLOSED,
+        chosen: "fire it by hand with Run now",
+      };
+      const plan = decideFires(
+        stateWithClosedReport("fire it by hand with Run now"),
+        settingsWith(),
+        OLD_FIRES,
+        [],
+        RECOVERY_NOW,
+        [runNowClosed],
+        null, // the suppression only ever applies to its own write
+      );
+      expect(plan.attempts).toHaveLength(1);
+    });
+
+    it("does not restart the count when the journal cannot give the closing's time, and stays gated rather than guess", () => {
+      // The decision is closed in the state, but its journal line
+      // cannot be found (should not happen: defensive only). The count
+      // then stays exactly as it stood before the close: the two old
+      // fires are still counted, and reported again rather than fired
+      // on a guessed boundary.
+      const plan = decideFires(
+        stateWithClosedReport("acknowledge"),
+        settingsWith(),
+        OLD_FIRES,
+        [],
+        RECOVERY_NOW,
+        [], // no decision_close line at all for D173
+        null,
+      );
+      expect(plan.attempts).toEqual([]);
+      expect(plan.reports).toHaveLength(1);
+      expect(plan.reports[0]?.reason).toBe("too-many-attempts");
+    });
   });
 
   it("never plans more than two attempts from one write", () => {

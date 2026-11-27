@@ -45,8 +45,89 @@ export interface ParsedJournal {
   readonly firedSession: readonly FiredSessionLine[];
 }
 
+/** One `decision_close` of the store's own `state-written` lines
+ * (`src/model/mutations.ts`'s `closeDecision`), read back for the
+ * fire check's recovery rule (P2-N082, criterion 1): a closed
+ * too-many-attempts report restarts the bare-attempt count for its
+ * node at the moment the owner's answer committed. */
+export interface DecisionCloseLine {
+  readonly ts: string;
+  readonly node: string | null;
+  readonly decisionId: string;
+  readonly chosen: string;
+}
+
 function isString(value: unknown): value is string {
   return typeof value === "string";
+}
+
+function parseLine(raw: string): Record<string, unknown> | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+/** `obj` as a `decision_close` line, or null when it is some other
+ * `state-written` line, or not one at all. */
+function asDecisionClose(
+  obj: Record<string, unknown>,
+): DecisionCloseLine | null {
+  if (
+    obj.event !== "state-written" ||
+    !isString(obj.ts) ||
+    !isString(obj.note)
+  ) {
+    return null;
+  }
+  const m = /^decision_close (\S+): ([\s\S]*)$/.exec(obj.note);
+  if (!m) return null;
+  return {
+    ts: obj.ts,
+    node: isString(obj.node) ? obj.node : null,
+    decisionId: m[1]!,
+    chosen: m[2]!,
+  };
+}
+
+/** Every `decision_close` line in the journal, in file order. */
+export function parseDecisionCloses(text: string): DecisionCloseLine[] {
+  const out: DecisionCloseLine[] = [];
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine.trim();
+    if (line === "") continue;
+    const obj = parseLine(line);
+    if (obj === null) continue;
+    const dc = asDecisionClose(obj);
+    if (dc !== null) out.push(dc);
+  }
+  return out;
+}
+
+/**
+ * The journal's very last line, parsed as a `decision_close`, or null
+ * when the journal is empty or that line is something else. Every
+ * write appends its own line before the fire check that runs right
+ * after it (`src/fire/run.ts`), and nothing else writes to the journal
+ * in between, so this is how a fire check tells whether *this* round's
+ * own trigger was the owner answering a report (P2-N082, criterion 4)
+ * — never true on a later round, once some other write has appended
+ * its own line after it.
+ */
+export function lastLineDecisionClose(text: string): DecisionCloseLine | null {
+  const lines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l !== "");
+  const last = lines[lines.length - 1];
+  if (last === undefined) return null;
+  const obj = parseLine(last);
+  return obj === null ? null : asDecisionClose(obj);
 }
 
 /** Parses every `fired` and `fire-429` line of a journal's text. A
