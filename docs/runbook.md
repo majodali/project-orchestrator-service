@@ -1231,6 +1231,16 @@ for the next write-triggered fire.
   redeploy of this repository is needed, since the fire check reads
   the settings file fresh from the coordinating repository at the
   commit it has just written (P2-N046, design 2).
+- **Too many bare attempts** — a node fired twice with no task opened
+  is reported to the owner once, as a decision that gates the node
+  (design 3). Closing it, either "acknowledge" or "fire it by hand
+  with Run now", restarts the node's count at the moment that answer
+  committed: the very next write's fire check fires the node once more
+  if it is still on offer, and opens no new report — except on "fire
+  it by hand with Run now"'s own write, which does not fire the node,
+  since the owner said they would. Two further bare fires after the
+  restart open one new report, the same way the first one did
+  (P2-N082).
 
 ## Running cost
 
