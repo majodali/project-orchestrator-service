@@ -32,7 +32,13 @@ import {
 import type { Decision, Node, State } from "../model/schema.js";
 import { committedLine, decisionForm } from "./actions.js";
 import type { PageCommit } from "./html.js";
-import { escapeHtml, pageHeader, pageShell, sourceLine } from "./html.js";
+import {
+  escapeHtml,
+  pageHeader,
+  pageShell,
+  richText,
+  sourceLine,
+} from "./html.js";
 import { classBadge, nodeHref } from "./parts.js";
 import type { StateAtPage } from "./stateRead.js";
 import { STATE_PATH } from "./stateRead.js";
@@ -48,6 +54,12 @@ export function openMode(value: string | undefined): OpenMode {
 
 function titleLink(n: Node, commit: PageCommit): string {
   return `<a class="row-title" data-node-link href="${escapeHtml(nodeHref(n.id, commit.requestedRef))}">${escapeHtml(n.title)}</a> <span class="id" data-node-id>${escapeHtml(n.id)}</span>`;
+}
+
+/** An author's free text, with its line breaks and blank lines shown
+ * as written and a backtick run in the page's code style (P2-N077). */
+function richSpan(value: string, extraClass = ""): string {
+  return `<span class="pre${extraClass ? ` ${extraClass}` : ""}">${richText(value)}</span>`;
 }
 
 /** The "Problems found" section, or nothing when there are none. */
@@ -72,21 +84,21 @@ export function problemsSection(findings: Finding[]): string {
  * link to the node page, where the form that closes it is. */
 function decisionLine(d: Decision, commit: PageCommit): string {
   const dflt = d.default
-    ? ` <span class="note">Default: ${escapeHtml(d.default)}</span>`
+    ? ` <span class="note">Default: ${richSpan(d.default)}</span>`
     : "";
   const answer =
     d.node === null
       ? ""
       : ` <a href="${escapeHtml(nodeHref(d.node, commit.requestedRef))}#${escapeHtml(d.id)}">answer</a>`;
-  return `<li data-open-decision="${escapeHtml(d.id)}"><span class="id">${escapeHtml(d.id)}</span> ${escapeHtml(d.question)}${dflt}${answer}</li>`;
+  return `<li data-open-decision="${escapeHtml(d.id)}"><span class="id">${escapeHtml(d.id)}</span> ${richSpan(d.question)}${dflt}${answer}</li>`;
 }
 
 /** A project decision, on no node, with the form that closes it. */
 function projectDecision(d: Decision): string {
   const dflt = d.default
-    ? ` <span class="note">Default: ${escapeHtml(d.default)}</span>`
+    ? ` <span class="note">Default: ${richSpan(d.default)}</span>`
     : "";
-  return `<li id="${escapeHtml(d.id)}" data-open-decision="${escapeHtml(d.id)}"><span class="id">${escapeHtml(d.id)}</span> ${escapeHtml(d.question)}${dflt}${decisionForm(d)}</li>`;
+  return `<li id="${escapeHtml(d.id)}" data-open-decision="${escapeHtml(d.id)}"><span class="id">${escapeHtml(d.id)}</span> ${richSpan(d.question)}${dflt}${decisionForm(d)}</li>`;
 }
 
 /** Counts over a node's subtree, the node itself included. */
@@ -154,9 +166,9 @@ function treeRow(
 ): string {
   const attention =
     cls === "gated"
-      ? `<span class="hold" data-hold>${escapeHtml(attentionReason(n))}</span>`
+      ? `<span class="hold pre" data-hold>${richText(attentionReason(n))}</span>`
       : cls === "blocked"
-        ? `<span class="hold" data-hold>blocked: ${escapeHtml(n.hold!.reason)}</span>`
+        ? `<span class="hold pre" data-hold>blocked: ${richText(n.hold!.reason)}</span>`
         : "";
   const paused =
     cls === "paused" && pausedAbove

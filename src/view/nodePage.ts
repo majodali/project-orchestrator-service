@@ -25,6 +25,7 @@ import {
   escapeHtml,
   pageHeader,
   pageShell,
+  richText,
   sourceLine,
   viewLink,
 } from "./html.js";
@@ -38,6 +39,12 @@ import {
 
 function field(name: string, heading: string, body: string): string {
   return `<dt>${escapeHtml(heading)}</dt><dd data-field="${name}">${body}</dd>`;
+}
+
+/** An author's free text, with its line breaks and blank lines shown
+ * as written and a backtick run in the page's code style (P2-N077). */
+function richSpan(value: string, extraClass = ""): string {
+  return `<span class="pre${extraClass ? ` ${extraClass}` : ""}">${richText(value)}</span>`;
 }
 
 function nodeRef(
@@ -101,12 +108,12 @@ function documentsField(node: Node, commit: PageCommit): string {
 function decisionRow(d: Decision): string {
   const status =
     d.chosen === null
-      ? `<span class="badge c-gated">open</span> ${d.default ? `default: ${escapeHtml(d.default)}` : ""}`
-      : `<span class="badge c-done">${d.standing ? "standing" : "closed"}</span> ${escapeHtml(d.chosen)}${d.decided ? ` <span class="note">(${escapeHtml(d.decided)})</span>` : ""}`;
+      ? `<span class="badge c-gated">open</span> ${d.default ? `default: ${richSpan(d.default)}` : ""}`
+      : `<span class="badge c-done">${d.standing ? "standing" : "closed"}</span> ${richSpan(d.chosen)}${d.decided ? ` <span class="note">(${escapeHtml(d.decided)})</span>` : ""}`;
   const source = d.source
     ? `<br><span class="note">${escapeHtml(d.source)}</span>`
     : "";
-  return `<li id="${escapeHtml(d.id)}" data-decision="${escapeHtml(d.id)}"><span class="id">${escapeHtml(d.id)}</span> ${escapeHtml(d.question)}<br>${status}${d.rationale ? `<br><span class="note">${escapeHtml(d.rationale)}</span>` : ""}${source}${decisionForm(d)}</li>`;
+  return `<li id="${escapeHtml(d.id)}" data-decision="${escapeHtml(d.id)}"><span class="id">${escapeHtml(d.id)}</span> ${richSpan(d.question)}<br>${status}${d.rationale ? `<br>${richSpan(d.rationale, "note")}` : ""}${source}${decisionForm(d)}</li>`;
 }
 
 function decisionsSection(node: Node, state: State): string {
@@ -140,7 +147,7 @@ function taskRow(t: Task, commit: PageCommit): string {
     `<td>${escapeHtml(t.opened?.slice(0, 10) ?? "")}</td>`,
     `<td>${escapeHtml(t.closed?.slice(0, 10) ?? "")}</td>`,
     `<td>${prCell}</td>`,
-    `<td>${escapeHtml(t.summary ?? "")}</td>`,
+    `<td class="pre">${richText(t.summary ?? "")}</td>`,
     "</tr>",
   ].join("");
 }
@@ -185,11 +192,11 @@ export function renderNodePage(
   // loop's, not a question for the owner: say so where it is shown.
   const failedCheck = node.kind === "check" && node.hold?.kind === "blocked";
   const hold = failedCheck
-    ? `<p class="hold" data-hold data-failed-check>verification failed: ${escapeHtml(node.hold!.reason)}</p><p class="note" data-rework>The rework is offered on ${parent ? `${escapeHtml(parent.title)} (${escapeHtml(parent.id)})` : "the verified node"} and starts without you. To overrule the verification, accept the review on that node.</p>`
+    ? `<p class="hold pre" data-hold data-failed-check>verification failed: ${richText(node.hold!.reason)}</p><p class="note" data-rework>The rework is offered on ${parent ? `${escapeHtml(parent.title)} (${escapeHtml(parent.id)})` : "the verified node"} and starts without you. To overrule the verification, accept the review on that node.</p>`
     : node.hold
-      ? `<p class="hold" data-hold>${escapeHtml(node.hold.kind)}: ${escapeHtml(node.hold.reason)}</p>`
+      ? `<p class="hold pre" data-hold>${escapeHtml(node.hold.kind)}: ${richText(node.hold.reason)}</p>`
       : cls === "gated"
-        ? `<p class="hold" data-hold>${escapeHtml(attentionReason(node))}</p>`
+        ? `<p class="hold pre" data-hold>${richText(attentionReason(node))}</p>`
         : "";
   const body = [
     pageHeader(commit, nodePagePath(node.id)),
@@ -203,7 +210,7 @@ export function renderNodePage(
     node.outcome
       ? `<p class="outcome" data-outcome>${escapeHtml(node.outcome)}</p>`
       : '<p class="note" data-outcome>No outcome sentence recorded yet.</p>',
-    node.note ? `<p class="note" data-note>${escapeHtml(node.note)}</p>` : "",
+    node.note ? `<p class="note pre" data-note>${richText(node.note)}</p>` : "",
     '<div class="columns">',
     "<section>",
     "<h2>Position</h2>",

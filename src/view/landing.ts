@@ -34,7 +34,7 @@ import {
 } from "../model/loop.js";
 import type { Decision, Node, State, Task } from "../model/schema.js";
 import { decisionForm, nodeActionForms } from "./actions.js";
-import { escapeHtml, viewLink, type PageCommit } from "./html.js";
+import { escapeHtml, richText, viewLink, type PageCommit } from "./html.js";
 import { classBadge, nodeHref, pullRequestUrl, taskPagePath } from "./parts.js";
 
 export interface NeedsYouRow {
@@ -108,6 +108,12 @@ function titleLink(n: Node, commit: PageCommit): string {
   return `<a href="${escapeHtml(nodeHref(n.id, commit.requestedRef))}">${escapeHtml(n.title)}</a> <span class="id">${escapeHtml(n.id)}</span>`;
 }
 
+/** An author's free text, with its line breaks and blank lines shown
+ * as written and a backtick run in the page's code style (P2-N077). */
+function richSpan(value: string, extraClass = ""): string {
+  return `<span class="pre${extraClass ? ` ${extraClass}` : ""}">${richText(value)}</span>`;
+}
+
 function reviewLine(info: ReviewInfo | undefined): string {
   if (info === undefined) return "";
   const prLink = info.url
@@ -131,11 +137,11 @@ function needsYouRow(
   if (row.kind === "decision") {
     const d = row.decision!;
     const dflt = d.default
-      ? ` <span class="note">Default: ${escapeHtml(d.default)}</span>`
+      ? ` <span class="note">Default: ${richSpan(d.default)}</span>`
       : "";
     return [
       `<li data-needs-you-row="decision" data-node="${escapeHtml(node.id)}" data-open-decision="${escapeHtml(d.id)}">`,
-      `${titleLink(node, commit)}: <span class="id">${escapeHtml(d.id)}</span> ${escapeHtml(d.question)}${dflt}`,
+      `${titleLink(node, commit)}: <span class="id">${escapeHtml(d.id)}</span> ${richSpan(d.question)}${dflt}`,
       decisionForm(d),
       "</li>",
     ].join("");
@@ -144,7 +150,7 @@ function needsYouRow(
     return [
       `<li data-needs-you-row="hold" data-node="${escapeHtml(node.id)}">`,
       `${classBadge(classes.get(node.id)!)} ${titleLink(node, commit)}`,
-      `<p class="hold" data-hold>${escapeHtml(node.hold!.kind)}: ${escapeHtml(node.hold!.reason)}</p>`,
+      `<p class="hold pre" data-hold>${escapeHtml(node.hold!.kind)}: ${richText(node.hold!.reason)}</p>`,
       reviewLine(reviews.get(node.id)),
       nodeActionForms(node, state),
       "</li>",
@@ -255,7 +261,7 @@ function justFinishedRow(
     node ? titleLink(node, commit) : escapeHtml(t.node),
     `: <span data-step>${escapeHtml(t.step)}</span>, <span data-status>${escapeHtml(t.status)}</span>`,
     t.closed ? `, closed <time>${escapeHtml(t.closed)}</time>` : "",
-    t.summary ? `: ${escapeHtml(t.summary)}` : "",
+    t.summary ? `: ${richSpan(t.summary)}` : "",
     "</li>",
   ].join("");
 }

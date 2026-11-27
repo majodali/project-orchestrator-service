@@ -20,7 +20,12 @@ import {
   type Offer,
 } from "../model/loop.js";
 import type { Decision, Node, State } from "../model/schema.js";
-import { commitUrl, escapeHtml, type RepoCoordinates } from "./html.js";
+import {
+  commitUrl,
+  escapeHtml,
+  richText,
+  type RepoCoordinates,
+} from "./html.js";
 
 /** The value of the `chosen` radio that takes the answer from the
  * `other` text field. */
@@ -61,7 +66,7 @@ export function decisionForm(d: Decision): string {
       radio(
         "chosen",
         option,
-        `${escapeHtml(option)}${isDefault ? ' <span class="note">(the default)</span>' : ""}`,
+        `<span class="pre">${richText(option)}</span>${isDefault ? ' <span class="note">(the default)</span>' : ""}`,
         isDefault,
       ),
     );

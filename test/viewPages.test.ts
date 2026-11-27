@@ -396,6 +396,80 @@ describe("the node page", () => {
     );
     expect(coordinating).not.toContain('data-field="repository"');
   });
+
+  it("shows a note's paragraphs, numbered list and backtick code style as written (P2-N077)", async () => {
+    const state = sampleState();
+    state.nodes.push(
+      node({
+        id: "P1-N020",
+        title: "Readable note node",
+        stage: "identified",
+        parent: "P1-N001",
+        outcome: null,
+        note: "Paragraph one.\n\nParagraph two.\n\n1. First item\n2. Second item\n\nSee `plan-state check`.",
+      }),
+    );
+    const repo = new FakeRepository();
+    repo.heads.set("main", SHA_A);
+    repo.setFile(SHA_A, "orchestration/state.json", stateJson(state));
+    const { html } = await get(appOver(repo), "/view/node/P1-N020");
+    expect(html).toContain("<code>plan-state check</code>");
+    expect(attributeText(html, "data-note")).toBe(
+      "Paragraph one.\n\nParagraph two.\n\n1. First item\n2. Second item\n\nSee plan-state check.",
+    );
+  });
+
+  it("escapes a script tag and an ampersand in a note, even beside a backtick run (P2-N077)", async () => {
+    const state = sampleState();
+    state.nodes.push(
+      node({
+        id: "P1-N021",
+        title: "Note with markup",
+        stage: "identified",
+        parent: "P1-N001",
+        outcome: null,
+        note: "Caution: <script>alert(1)</script> & more, as in `a & b`.",
+      }),
+    );
+    const repo = new FakeRepository();
+    repo.heads.set("main", SHA_A);
+    repo.setFile(SHA_A, "orchestration/state.json", stateJson(state));
+    const { html } = await get(appOver(repo), "/view/node/P1-N021");
+    expect(html).not.toContain("<script>alert(1)</script>");
+    expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(html).toContain("<code>a &amp; b</code>");
+    expect(attributeText(html, "data-note")).toBe(
+      "Caution: <script>alert(1)</script> & more, as in a & b.",
+    );
+  });
+
+  it("shows a hold's reason and a decision's rationale with their line breaks and backtick code style (P2-N077)", async () => {
+    const state = sampleState();
+    state.nodes.find((n) => n.id === "P1-N007")!.hold = {
+      kind: "blocked",
+      reason: "No credential.\n\nAsk the owner for `AWS_PROFILE`.",
+    };
+    state.decisions.find((d) => d.id === "RU-001")!.rationale =
+      "The contract is under discussion.\n\nSee `docs/rulings.md`.";
+    const repo = new FakeRepository();
+    repo.heads.set("main", SHA_A);
+    repo.setFile(SHA_A, "orchestration/state.json", stateJson(state));
+    const node1 = await get(appOver(repo), "/view/node/P1-N007");
+    expect(attributeText(node1.html, "data-hold")).toBe(
+      "blocked: No credential.\n\nAsk the owner for AWS_PROFILE.",
+    );
+    expect(node1.html).toContain("<code>AWS_PROFILE</code>");
+    const node2 = await get(appOver(repo), "/view/node/P1-N002");
+    const tagStart = node2.html.indexOf('<span class="pre note">');
+    const rationale = node2.html.slice(
+      tagStart,
+      node2.html.indexOf("</span>", tagStart),
+    );
+    expect(rationale).toContain("<code>docs/rulings.md</code>");
+    expect(textOf(rationale)).toContain(
+      "The contract is under discussion.\n\nSee docs/rulings.md.",
+    );
+  });
 });
 
 describe("the task page", () => {
@@ -417,6 +491,23 @@ describe("the task page", () => {
   it("answers 404 for a task the state file lacks", async () => {
     const { res } = await get(appOver(sampleRepo()), "/view/task/T999");
     expect(res.status).toBe(404);
+  });
+
+  it("shows a task's summary with its line breaks and backtick code style, on its own page and on its node's page (P2-N077)", async () => {
+    const state = sampleState();
+    state.tasks.find((t) => t.id === "T001")!.summary =
+      "Landed the first part.\n\nRan `npm test`.";
+    const repo = new FakeRepository();
+    repo.heads.set("main", SHA_A);
+    repo.setFile(SHA_A, "orchestration/state.json", stateJson(state));
+    const task = await get(appOver(repo), "/view/task/T001");
+    expect(attributeText(task.html, "data-summary")).toBe(
+      "Landed the first part.\n\nRan npm test.",
+    );
+    expect(task.html).toContain("<code>npm test</code>");
+    const node = await get(appOver(repo), "/view/node/P1-N002");
+    expect(node.html).toContain("<code>npm test</code>");
+    expect(node.html).toContain("Landed the first part.\n\nRan");
   });
 });
 

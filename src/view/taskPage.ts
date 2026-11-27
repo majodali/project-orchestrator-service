@@ -12,6 +12,7 @@ import {
   escapeHtml,
   pageHeader,
   pageShell,
+  richText,
   sourceLine,
   viewLink,
 } from "./html.js";
@@ -53,7 +54,7 @@ export function renderTaskPage(
     `<p class="crumbs"><a href="${escapeHtml(viewLink("/view", commit.requestedRef))}">Plan</a> › ${nodeLink}</p>`,
     `<h1 data-title>Task <span data-task-id>${escapeHtml(task.id)}</span></h1>`,
     task.summary
-      ? `<p class="outcome" data-summary>${escapeHtml(task.summary)}</p>`
+      ? `<p class="outcome pre" data-summary>${richText(task.summary)}</p>`
       : "",
     "<section>",
     "<dl>",
