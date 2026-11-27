@@ -7,11 +7,12 @@ name: Preview teardown
 # is the only thing in this repository that deletes that stack.
 #
 # Before dispatching this: set the repository variable
-# `PREVIEW_DEPLOYS` to "false" (Settings → Secrets and variables →
-# Actions → Variables), or the next scheduled run in preview.yml
-# recreates the stack — with a new endpoint — the same day. Set it back
-# to "true" when you want the preview back; see docs/runbook.md's
-# "Preview deployments" section.
+# `PREVIEW_SCHEDULE_ENABLED` to "false" (Settings → Secrets and
+# variables → Actions → Variables), or the next scheduled run in
+# preview.yml recreates the stack — with a new endpoint — the same day.
+# Set it back to "true" when you want the preview back; see
+# docs/runbook.md's "Preview deployments" section. (Not
+# `PREVIEW_DEPLOYS`: that name is P2-N074's, a different setting.)
 #
 # Uses the same preview-scoped deploy role as preview.yml (D149/D157),
 # never the production deploy role, and shares that workflow's
@@ -52,4 +53,4 @@ jobs:
           aws cloudformation delete-stack --region "$AWS_REGION" --stack-name "$STACK_NAME"
           aws cloudformation wait stack-delete-complete --region "$AWS_REGION" --stack-name "$STACK_NAME"
           echo "Stack '${STACK_NAME}' deleted. The preview's endpoint is gone until the next deploy recreates it with a new one."
-          echo "Reminder: PREVIEW_DEPLOYS should be 'false' now, or the next scheduled run in preview.yml recreates the stack today."
+          echo "Reminder: PREVIEW_SCHEDULE_ENABLED should be 'false' now, or the next scheduled run in preview.yml recreates the stack today."

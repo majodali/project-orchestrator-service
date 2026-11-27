@@ -11,8 +11,17 @@ name: Preview deploy
 # and redeploying here, because deleting changes the HTTP API id and so
 # the preview's own endpoint (F3) — see docs/runbook.md's "Preview
 # deployments" section for the full teardown/refresh procedure and the
-# `PREVIEW_DEPLOYS` repository variable that lets the owner hold the
-# scheduled run off after a deliberate teardown.
+# `PREVIEW_SCHEDULE_ENABLED` repository variable that lets the owner
+# hold the scheduled run off after a deliberate teardown. (Not
+# `PREVIEW_DEPLOYS`: that name is P2-N074's, a different setting — the
+# comma-separated list of previews the service itself dispatches.)
+#
+# GitHub dispatches `workflow_dispatch` (and runs `schedule`) only from
+# this file as it stands on the default branch, never from a pull
+# request's own copy — so this workflow, and preview-teardown.yml,
+# must be merged to `main` before any preview run, including the first
+# one that proves criteria 7 to 12 and 14. See docs/runbook.md's "How a
+# preview is started".
 #
 # D151's four bounds, all enforced here: explicit dispatch (or the
 # schedule trigger) only, never a `pull_request` event; GitHub always
@@ -34,8 +43,8 @@ name: Preview deploy
         required: true
   schedule:
     # Once a day: redeploys `main` to the preview stack, never deletes
-    # it (criterion 12). Skips itself when PREVIEW_DEPLOYS is "false"
-    # (set by the owner as part of a deliberate teardown — see
+    # it (criterion 12). Skips itself when PREVIEW_SCHEDULE_ENABLED is
+    # "false" (set by the owner as part of a deliberate teardown — see
     # docs/runbook.md) rather than silently giving the stack a new
     # endpoint before the owner is ready for one.
     - cron: "17 6 * * *"
@@ -69,12 +78,12 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           PR_NUMBER: ${{ github.event.inputs.pull_request_number }}
           REPO: ${{ github.repository }}
-          PREVIEW_DEPLOYS: ${{ vars.PREVIEW_DEPLOYS }}
+          PREVIEW_SCHEDULE_ENABLED: ${{ vars.PREVIEW_SCHEDULE_ENABLED }}
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = "schedule" ]; then
-            if [ "${PREVIEW_DEPLOYS:-true}" = "false" ]; then
-              echo "PREVIEW_DEPLOYS is 'false' — skipping the scheduled refresh. See docs/runbook.md's \"Preview deployments\" section to resume."
+            if [ "${PREVIEW_SCHEDULE_ENABLED:-true}" = "false" ]; then
+              echo "PREVIEW_SCHEDULE_ENABLED is 'false' — skipping the scheduled refresh. See docs/runbook.md's \"Preview deployments\" section to resume."
               echo "skip=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi

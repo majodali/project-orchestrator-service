@@ -1251,6 +1251,16 @@ pull request is not from `majodali/project-orchestrator-service` itself
 schedule, redeploying `main` rather than a pull request, so the stack
 never drifts far from `main` between pull-request previews.
 
+GitHub dispatches `workflow_dispatch` (and runs `schedule`) only from a
+workflow file as it stands on the repository's default branch — never
+from a pull request's own copy of it. So `.github/workflows/preview.yml`
+and `.github/workflows/preview-teardown.yml` must already be on `main`
+before the first preview run, including the run that proves criteria 7
+to 12 and 14 of node P2-N073. The owner merges the pull request that
+adds them by hand, as on P2-N055 (D154); that merge deploys production,
+but changes only workflow and documentation files. Any fix the first
+runs find goes into a second pull request, on a new branch.
+
 **What it serves.** Only the fixture project
 `majodali/orchestrator-preview` (D150) — never
 `majodali/project-orchestrator`'s real plan, so a preview run that
@@ -1265,14 +1275,19 @@ stack and resource names (O-prev-4,
 `project-orchestrator-service-preview` and nothing else — not the
 production stack, not the shared SAM-managed artifact stack both
 deploys use. Before dispatching it, set the repository variable
-`PREVIEW_DEPLOYS` to `false` (Settings → Secrets and variables →
-Actions → Variables); otherwise the next day's scheduled run in
+`PREVIEW_SCHEDULE_ENABLED` to `false` (Settings → Secrets and variables
+→ Actions → Variables); otherwise the next day's scheduled run in
 `preview.yml` recreates the stack, with a new endpoint, before you are
-ready for one. Set `PREVIEW_DEPLOYS` back to `true` when you want the
-preview back — the next scheduled run, or a manual dispatch of
+ready for one. Set `PREVIEW_SCHEDULE_ENABLED` back to `true` when you
+want the preview back — the next scheduled run, or a manual dispatch of
 `preview.yml` with a pull request number, recreates it. A delete and a
 recreate changes the HTTP API's id and so `Endpoint` (F3): re-record
 the stable endpoint above once it has.
+
+(`PREVIEW_SCHEDULE_ENABLED` is this switch's own name, distinct from
+`PREVIEW_DEPLOYS` — node P2-N074's setting, the comma-separated list of
+previews the service itself dispatches at `task_open` of a `verify`
+step. The two are not interchangeable.)
 
 **O-prev-1 to O-prev-5** are the five owner actions this feature cannot
 finish without; each is also named, verbatim, in node P2-N073's own
