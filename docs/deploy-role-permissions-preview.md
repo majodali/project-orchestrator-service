@@ -150,7 +150,7 @@ the filled-in version (S-001).
         "iam:TagRole",
         "iam:UntagRole"
       ],
-      "Resource": "arn:aws:iam::<ACCOUNT_ID>:role/project-orchestrator-service-preview-*"
+      "Resource": "arn:aws:iam::<ACCOUNT_ID>:role/project-orchestrator-service-previe*"
     },
     {
       "Sid": "IamAttachOnlyTheLambdaBasicExecutionManagedPolicy",
@@ -160,7 +160,7 @@ the filled-in version (S-001).
         "iam:DetachRolePolicy",
         "iam:ListAttachedRolePolicies"
       ],
-      "Resource": "arn:aws:iam::<ACCOUNT_ID>:role/project-orchestrator-service-preview-*",
+      "Resource": "arn:aws:iam::<ACCOUNT_ID>:role/project-orchestrator-service-previe*",
       "Condition": {
         "ArnEquals": {
           "iam:PolicyARN": "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
@@ -171,7 +171,7 @@ the filled-in version (S-001).
       "Sid": "IamPassRoleToLambdaOnly",
       "Effect": "Allow",
       "Action": "iam:PassRole",
-      "Resource": "arn:aws:iam::<ACCOUNT_ID>:role/project-orchestrator-service-preview-*",
+      "Resource": "arn:aws:iam::<ACCOUNT_ID>:role/project-orchestrator-service-previe*",
       "Condition": {
         "StringEquals": {
           "iam:PassedToService": "lambda.amazonaws.com"
@@ -211,7 +211,7 @@ document's own entries for these `Sid`s for the citations); sharing
 the one managed bucket across both stacks is the same `--resolve-s3`
 default both deploys use, not a widening introduced here.
 
-## The naming caveat (carried from the production document)
+## The naming caveat (carried from the production document, and the 64-character cut it does not hit)
 
 As the production document's own "naming caveat" section says: nothing
 in `template.yaml` gives `McpFunction` or its implicit execution role an
@@ -222,6 +222,25 @@ documentation only ever commits to "a unique physical ID," not an exact
 format. If `STACK_NAME` ever changes for the preview stack, this policy
 needs updating first, the same dependency the production document
 states for its own prefix.
+
+Unlike the production stack, the preview stack's execution role name
+does not fit: an IAM role name holds 64 characters at most, and
+CloudFormation names this one `<stack name>-McpFunctionRole-<12
+characters>`. `project-orchestrator-service-preview` is 36 characters,
+and `McpFunctionRole` is 15, so the full name would be
+36 + 1 + 15 + 1 + 12 = 65 — one over the limit. CloudFormation responds
+by cutting the stack name by exactly the overage (one character) when
+it builds this one resource's physical ID, giving
+`project-orchestrator-service-previe-McpFunctionRole-<12 characters>`
+(35 characters for the cut stack name, dropping the trailing "w" of
+"preview"). The three `role/` resources above end
+`project-orchestrator-service-previe*`, not
+`project-orchestrator-service-preview-*`, so the wildcard still matches
+after the cut. The Lambda function's own name is 61 characters and
+stays under the limit, so it is not cut: `LambdaFunctionAliasesAndFunctionUrls`'s
+resource above keeps the full `project-orchestrator-service-preview-*`.
+If `STACK_NAME` or `McpFunctionRole`'s logical ID ever changes, redo
+this arithmetic before trusting either pattern.
 
 ## The trust policy (D157)
 
