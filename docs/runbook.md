@@ -896,7 +896,7 @@ easy to conflate:
 - **Configuration variables** (repository, organization, or
   environment variables set under Settings → Variables — the `vars`
   context) — "Naming conventions for configuration variables": _"Must
-  not start with the `GITHUB_` prefix."_ This is the rule the three
+  not start with the `GITHUB_` prefix."\_ This is the rule the three
   renamed variables above satisfy.
 - **Environment variables** (what a workflow step actually runs with,
   the `env` context) — "Naming conventions for environment variables":
@@ -1390,6 +1390,22 @@ to 12 and 14 of node P2-N073. The owner merges the pull request that
 adds them by hand, as on P2-N055 (D154); that merge deploys production,
 but changes only workflow and documentation files. Any fix the first
 runs find goes into a second pull request, on a new branch.
+
+**A first creation that fails.** If the stack's first `CreateStack`
+fails partway — a policy that does not yet match the role's actual
+resource names is one way this happens — CloudFormation's rollback can
+itself fail to delete what it half-created (most often the function's
+own execution role), leaving the stack in `ROLLBACK_FAILED` or
+`ROLLBACK_COMPLETE`. A `CreateStack` does not retry onto a stack in
+either state. Dispatch `.github/workflows/preview-teardown.yml` to
+clear it before the next `preview.yml` run.
+
+Dispatching `preview.yml` against a pull request number is also only
+useful while that pull request stays open: GitHub deletes a pull
+request's `refs/pull/<n>/merge` ref once it is merged or closed, and a
+run dispatched afterward fails at checkout with "couldn't find remote
+ref" before any AWS credential is touched. Dispatch against a pull
+request that is still open.
 
 **What it serves.** Only the fixture project
 `majodali/orchestrator-preview` (D150) — never
